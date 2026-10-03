@@ -1,0 +1,9 @@
+[package]
+name = "rdm-cli"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rdm-engine = { path = "../engine" }
+tokio.workspace = true
+clap.workspace = true
