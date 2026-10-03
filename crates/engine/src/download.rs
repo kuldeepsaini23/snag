@@ -312,6 +312,46 @@ async fn fetch_segment(ctx: &WorkerCtx, idx: usize) -> Result<(), EngineError> {
     }
 }
 
+/// Servers without range support (or unknown size): one sequential stream.
+/// Pausing discards the partial file, because it can't be resumed.
 async fn single_stream(job: &Job<'_>, info: &RemoteInfo) -> Result<Outcome, EngineError> {
-    todo!("Task 6")
+    let resp = job.client.get(&info.url).send().await?;
+    if !resp.status().is_success() {
+        return Err(EngineError::from_status(resp.status().as_u16()));
+    }
+    let total = info.size.or(resp.content_length());
+    let mut file = tokio::fs::File::create(&job.part).await?;
+    let mut stream = resp.bytes_stream();
+    let mut downloaded = 0_u64;
+    let mut last_tick = Instant::now();
+    let mut last_bytes = 0_u64;
+    loop {
+        let next = tokio::select! {
+            _ = job.cancel.cancelled() => {
+                drop(file);
+                let _ = tokio::fs::remove_file(&job.part).await;
+                return Ok(Outcome::Paused);
+            }
+            c = stream.next() => c,
+        };
+        let Some(chunk) = next else { break };
+        let chunk = chunk?;
+        if let Some(l) = &job.opts.limiter {
+            l.acquire(chunk.len() as u64).await;
+        }
+        file.write_all(&chunk).await?;
+        downloaded += chunk.len() as u64;
+        if last_tick.elapsed() >= TICK {
+            let speed = (downloaded - last_bytes) as f64 / last_tick.elapsed().as_secs_f64();
+            job.progress.send_replace(Progress { downloaded, total, speed_bps: speed as u64, segments: Vec::new() });
+            last_tick = Instant::now();
+            last_bytes = downloaded;
+        }
+    }
+    file.flush().await?;
+    drop(file);
+    if total.is_some_and(|t| downloaded < t) {
+        return Err(EngineError::Network("connection closed early".into()));
+    }
+    finish(job, total, downloaded).await
 }

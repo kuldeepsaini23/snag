@@ -106,3 +106,62 @@ async fn expired_link_is_reported() {
     let (r, _) = run(&s.url("/expired"), &dir.path().join("x"), &opts(4), CancellationToken::new()).await;
     assert!(matches!(r, Err(EngineError::LinkExpired(403))), "{r:?}");
 }
+
+use rdm_engine::RateLimiter;
+use std::sync::Arc;
+use support::{data_with_seed, seed_for};
+
+#[tokio::test]
+async fn server_without_ranges_uses_single_stream() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("plain.bin");
+    let (r, last) = run(&s.url("/norange/1048576"), &dest, &opts(8), CancellationToken::new()).await;
+    assert!(matches!(r.unwrap(), Outcome::Completed(_)));
+    assert_eq!(std::fs::read(&dest).unwrap(), data(1_048_576));
+    assert!(!state_path(&dest).exists());
+    assert_eq!(last.downloaded, 1_048_576);
+}
+
+#[tokio::test]
+async fn zero_byte_file_completes() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("empty.bin");
+    let (r, _) = run(&s.url("/file/0"), &dest, &opts(8), CancellationToken::new()).await;
+    assert!(matches!(r.unwrap(), Outcome::Completed(_)));
+    assert_eq!(std::fs::metadata(&dest).unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn etag_change_restarts_from_zero() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("changing.bin");
+    let size = 4 * 1024 * 1024;
+
+    let (r, _) = run(&s.url(&format!("/etag/v1/{size}")), &dest, &opts(4), cancel_after(500)).await;
+    assert_eq!(r.unwrap(), Outcome::Paused);
+
+    let (r, _) = run(&s.url(&format!("/etag/v2/{size}")), &dest, &opts(4), CancellationToken::new()).await;
+    assert!(matches!(r.unwrap(), Outcome::Completed(_)));
+    assert_eq!(std::fs::read(&dest).unwrap(), data_with_seed(size, seed_for("v2")));
+}
+
+#[tokio::test]
+async fn speed_limit_is_respected() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("limited.bin");
+    let size = 3 * 1024 * 1024;
+    let o = DownloadOptions {
+        limiter: Some(Arc::new(RateLimiter::new(1024 * 1024))),
+        ..opts(4)
+    };
+    let started = std::time::Instant::now();
+    let (r, _) = run(&s.url(&format!("/file/{size}")), &dest, &o, CancellationToken::new()).await;
+    let secs = started.elapsed().as_secs_f64();
+    assert!(matches!(r.unwrap(), Outcome::Completed(_)));
+    // 1 s burst allowance + 2 MiB at 1 MiB/s ≈ 2 s.
+    assert!((1.7..=3.5).contains(&secs), "took {secs:.2}s");
+}
