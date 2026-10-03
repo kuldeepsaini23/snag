@@ -1,11 +1,13 @@
 pub mod error;
 pub mod filename;
 pub mod info;
+pub mod limiter;
 pub mod segments;
 pub mod state;
 
 pub use error::EngineError;
 pub use info::RemoteInfo;
+pub use limiter::RateLimiter;
 
 use std::time::Duration;
 
