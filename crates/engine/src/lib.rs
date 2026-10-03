@@ -1,3 +1,4 @@
+pub mod download;
 pub mod error;
 pub mod filename;
 pub mod info;
@@ -6,10 +7,12 @@ pub mod probe;
 pub mod segments;
 pub mod state;
 
+pub use download::{DownloadOptions, Outcome, Progress, download};
 pub use error::EngineError;
 pub use info::RemoteInfo;
 pub use limiter::RateLimiter;
 pub use probe::probe;
+pub use tokio_util::sync::CancellationToken;
 
 use std::time::Duration;
 
