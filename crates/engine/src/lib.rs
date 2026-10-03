@@ -1,7 +1,11 @@
 pub mod error;
 pub mod filename;
+pub mod info;
+pub mod segments;
+pub mod state;
 
 pub use error::EngineError;
+pub use info::RemoteInfo;
 
 use std::time::Duration;
 
