@@ -4,7 +4,7 @@ use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use rdm_core::{Manager, MediaFormat, MediaInfo};
+use rdm_core::Manager;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::ops::RangeInclusive;
@@ -74,25 +74,9 @@ async fn add(State(manager): State<Manager>, headers: HeaderMap, Json(req): Json
     (StatusCode::OK, Json(json!({ "id": id.0 })))
 }
 
+/// Reads the page, then lets the user choose the quality in the app window.
 async fn add_media(manager: Manager, url: String) {
-    let Ok(info) = manager.probe_media(url.clone()).await else { return };
-    let format = default_format(&info);
-    if info.entries.is_empty() {
-        manager.add_media(url, info.title, format).await;
-    } else {
-        for entry in info.entries {
-            manager.add_media(entry.url, entry.title, format.clone()).await;
-        }
+    if let Ok(info) = manager.probe_media(url.clone()).await {
+        manager.offer_media(url, info).await;
     }
-}
-
-/// Without a picker: best video up to 1080p, else whatever is offered first (MP3 for audio-only links).
-fn default_format(info: &MediaInfo) -> MediaFormat {
-    info.options
-        .iter()
-        .map(|o| &o.format)
-        .find(|f| matches!(f, MediaFormat::Video { max_height } if *max_height <= 1080))
-        .or(info.options.first().map(|o| &o.format))
-        .cloned()
-        .unwrap_or(MediaFormat::Video { max_height: 1080 })
 }

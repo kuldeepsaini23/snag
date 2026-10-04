@@ -84,6 +84,12 @@ pub fn clipboard_link(text: &str, last_seen: Option<&str>) -> Option<String> {
     (is_url && last_seen != Some(link)).then(|| link.to_string())
 }
 
+/// Explorer argument that selects `path`. Quoted, because file names can contain
+/// commas and spaces, which Explorer would otherwise split on.
+pub fn explorer_select_arg(path: &std::path::Path) -> String {
+    format!("/select,\"{}\"", path.display())
+}
+
 /// Everything the window shows. Pure data: no iced, no manager.
 #[derive(Clone, Debug)]
 pub struct Model {
@@ -148,6 +154,11 @@ impl Model {
                 if self.selected == Some(id) {
                     self.selected = None;
                 }
+            }
+            Event::PickMedia { url, info } => {
+                self.notice = None;
+                self.picker = Some(Picker { url, info, choice: 0 });
+                self.screen = Screen::Picker;
             }
             Event::Settings(s) => {
                 self.draft = Draft::from_settings(&s);
@@ -293,6 +304,22 @@ mod tests {
         let reqs = p.requests();
         assert_eq!(reqs.len(), 2);
         assert_eq!(reqs[1], ("https://y/2".to_string(), "Two".to_string(), MediaFormat::Video { max_height: 720 }));
+    }
+
+    #[test]
+    fn pick_media_event_opens_picker() {
+        let mut m = Model::default();
+        m.apply(Event::PickMedia { url: "https://youtu.be/x".into(), info: info(vec![]) });
+        assert_eq!(m.screen, Screen::Picker);
+        let p = m.picker.expect("picker open");
+        assert_eq!(p.url, "https://youtu.be/x");
+        assert_eq!(p.choice, 0);
+    }
+
+    #[test]
+    fn explorer_select_quotes_the_path() {
+        let p = std::path::Path::new(r"C:\dl\Videos\A, B 😳.mp4");
+        assert_eq!(explorer_select_arg(p), r#"/select,"C:\dl\Videos\A, B 😳.mp4""#);
     }
 
     #[test]

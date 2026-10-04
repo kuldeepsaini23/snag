@@ -114,6 +114,8 @@ pub fn parse_probe(json: &str) -> Result<MediaInfo, String> {
 pub fn build_args(format: &MediaFormat, out_dir: &Path, url: &str) -> Vec<String> {
     let mut args: Vec<String> = [
         "--newline",
+        "--encoding",
+        "utf-8",
         "--no-warnings",
         "--no-playlist",
         "--progress",
@@ -153,6 +155,8 @@ fn command(program: &Path) -> tokio::process::Command {
     let mut cmd = tokio::process::Command::new(program);
     #[cfg(windows)]
     cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flashing up
+    // Report titles and paths in UTF-8, not the console code page (which drops emoji).
+    cmd.env("PYTHONUTF8", "1").env("PYTHONIOENCODING", "utf-8");
     cmd.stdin(std::process::Stdio::null()).kill_on_drop(true);
     cmd
 }
@@ -314,6 +318,8 @@ mod tests {
         assert!(window(&args, ["--merge-output-format", "mp4"]));
         assert!(window(&args, ["-o", r"C:\dl\Videos\%(title)s.%(ext)s"]));
         assert_eq!(args.last().unwrap(), "https://youtu.be/x");
+        // Titles with emoji: yt-dlp must report the real file name, not a console-encoded one.
+        assert!(window(&args, ["--encoding", "utf-8"]), "{args:?}");
     }
 
     #[test]

@@ -190,6 +190,26 @@ async fn real_media_download_mp4_and_mp3() {
 }
 
 #[tokio::test]
+async fn offer_media_asks_the_ui_to_pick() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |_| {}).await;
+    let mut rx = m.subscribe();
+    let info = rdm_core::MediaInfo { title: "Clip".into(), duration: None, options: vec![], entries: vec![] };
+    m.offer_media("https://youtu.be/x".into(), info.clone()).await;
+    let got = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Ok(Event::PickMedia { url, info }) = rx.recv().await {
+                return (url, info);
+            }
+        }
+    })
+    .await
+    .expect("pick event");
+    assert_eq!(got, ("https://youtu.be/x".to_string(), info));
+    assert!(m.snapshot().await.items.is_empty(), "nothing is added until the user picks");
+}
+
+#[tokio::test]
 async fn fresh_state_gets_extension_token() {
     let dir = tempfile::tempdir().unwrap();
     let m = Manager::start(dir.path().join("state.json"));

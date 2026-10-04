@@ -1,4 +1,4 @@
-use crate::state::{Draft, Model, Picker, Screen, clipboard_link};
+use crate::state::{Draft, Model, Picker, Screen, clipboard_link, explorer_select_arg};
 use iced::{Subscription, Task};
 use rdm_core::{AppState, Event, ItemId, Manager, MediaInfo};
 use std::future::Future;
@@ -91,10 +91,17 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::Delete(id) => return fire(&app.manager, move |m| async move { m.remove(id, true).await }),
         Message::ShowInFolder(id) => {
             if let Some(path) = model.dest_of(id) {
-                let _ = std::process::Command::new("explorer").arg(format!("/select,{}", path.display())).spawn();
+                reveal(&path);
             }
         }
-        Message::Core(event) => model.apply(event),
+        Message::Core(event) => {
+            let pick = matches!(event, Event::PickMedia { .. });
+            model.apply(event);
+            if pick {
+                // The extension sent a video: bring the window forward for the quality choice.
+                return iced::window::latest().and_then(iced::window::gain_focus);
+            }
+        }
         Message::Loaded(state) => model.load(state),
         Message::Lagged => {
             let m = app.manager.clone();
@@ -180,6 +187,23 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::Done => {}
     }
     Task::none()
+}
+
+/// Opens Explorer with the file selected; if the file isn't there, opens its folder.
+fn reveal(path: &std::path::Path) {
+    let mut cmd = std::process::Command::new("explorer");
+    if path.exists() {
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.raw_arg(explorer_select_arg(path));
+        }
+    } else if let Some(dir) = path.parent().filter(|d| d.exists()) {
+        cmd.arg(dir);
+    } else {
+        return;
+    }
+    let _ = cmd.spawn();
 }
 
 /// Identity for the core event subscription (there is only ever one feed).

@@ -24,6 +24,9 @@ pub enum Event {
     Updated(Item),
     Removed(ItemId),
     Settings(Settings),
+    /// A video link arrived from outside the window (the browser extension):
+    /// the UI should let the user choose a quality.
+    PickMedia { url: String, info: MediaInfo },
 }
 
 /// Handle to the download manager. Cheap to clone; all clones talk to one actor.
@@ -90,6 +93,11 @@ impl Manager {
     pub async fn probe_media(&self, url: String) -> Result<MediaInfo, String> {
         let ytdlp = self.tools.ytdlp().await?;
         rdm_media::probe(&ytdlp, &url).await
+    }
+
+    /// Asks the UI to show the quality picker for `url` (nothing is added yet).
+    pub async fn offer_media(&self, url: String, info: MediaInfo) {
+        let _ = self.events.send(Event::PickMedia { url, info });
     }
 
     pub async fn add_media(&self, url: String, title: String, format: MediaFormat) -> ItemId {
