@@ -1,0 +1,14 @@
+[package]
+name = "rdm-app"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "rdm"
+path = "src/main.rs"
+
+[dependencies]
+rdm-core = { path = "../core" }
+iced = { version = "0.14", features = ["tokio"] }
+tokio.workspace = true
+futures-util.workspace = true
