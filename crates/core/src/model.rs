@@ -1,5 +1,6 @@
 use crate::category::Category;
 use crate::schedule::Schedule;
+use rdm_media::MediaFormat;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -18,6 +19,16 @@ pub enum Status {
     Failed(String),
 }
 
+/// How an item is downloaded.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub enum Kind {
+    /// A direct file link, fetched by the segmented engine.
+    #[default]
+    Http,
+    /// A video/audio page, fetched by yt-dlp in this format.
+    Media(MediaFormat),
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Item {
     pub id: ItemId,
@@ -33,6 +44,8 @@ pub struct Item {
     pub queue: QueueId,
     /// Unix seconds.
     pub added: i64,
+    #[serde(default)]
+    pub kind: Kind,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -1,6 +1,6 @@
-use crate::state::{Draft, Model, Screen};
+use crate::state::{Draft, Model, Picker, Screen};
 use iced::{Subscription, Task};
-use rdm_core::{AppState, Event, ItemId, Manager};
+use rdm_core::{AppState, Event, ItemId, Manager, MediaInfo};
 use std::future::Future;
 use std::hash::{Hash, Hasher};
 use tokio::sync::broadcast::error::RecvError;
@@ -34,6 +34,11 @@ pub enum Message {
     DraftLimit(String),
     DraftSort(bool),
     DraftStart(bool),
+    /// yt-dlp finished reading a video link.
+    Probed(String, Result<MediaInfo, String>),
+    PickOption(usize),
+    DownloadPicked,
+    CancelPick,
     Done,
 }
 
@@ -66,6 +71,11 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             model.url.clear();
             model.notice = None;
             let m = app.manager.clone();
+            if rdm_media::is_media_url(&url) {
+                model.probing = true;
+                model.notice = Some("Reading video info… (the first time also fetches yt-dlp)".into());
+                return Task::perform(async move { let r = m.probe_media(url.clone()).await; (url, r) }, |(url, r)| Message::Probed(url, r));
+            }
             return Task::perform(async move { m.add(url).await }, Message::Added);
         }
         Message::Added(id) | Message::Select(id) => model.selected = Some(id),
@@ -108,6 +118,40 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::DraftLimit(v) => model.draft.speed_limit_kbps = v,
         Message::DraftSort(v) => model.draft.sort_into_folders = v,
         Message::DraftStart(v) => model.draft.start_immediately = v,
+        Message::Probed(url, result) => {
+            model.probing = false;
+            match result {
+                Ok(info) if !info.options.is_empty() => {
+                    model.notice = None;
+                    model.picker = Some(Picker { url, info, choice: 0 });
+                    model.screen = Screen::Picker;
+                }
+                Ok(_) => model.notice = Some("No downloadable video or audio found on that page.".into()),
+                Err(e) => model.notice = Some(format!("Couldn't read that link: {e}")),
+            }
+        }
+        Message::PickOption(i) => {
+            if let Some(p) = &mut model.picker {
+                p.choice = i;
+            }
+        }
+        Message::DownloadPicked => {
+            let requests = model.picker.take().map(|p| p.requests()).unwrap_or_default();
+            model.screen = Screen::Downloads;
+            let m = app.manager.clone();
+            return Task::perform(
+                async move {
+                    for (url, title, format) in requests {
+                        m.add_media(url, title, format).await;
+                    }
+                },
+                |_| Message::Done,
+            );
+        }
+        Message::CancelPick => {
+            model.picker = None;
+            model.screen = Screen::Downloads;
+        }
         Message::Done => {}
     }
     Task::none()

@@ -46,6 +46,7 @@ mod tests {
             speed_bps: 5,
             queue: 0,
             added: 1,
+            kind: Default::default(),
         });
         s
     }
@@ -69,6 +70,30 @@ mod tests {
         let loaded = load(&p);
         assert_eq!(loaded.items[0].status, Status::Paused);
         assert_eq!(loaded.items[0].speed_bps, 0);
+    }
+
+    #[test]
+    fn old_state_without_kind_loads_as_http() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("state.json");
+        let old = r#"{"next_id":2,"items":[{"id":1,"url":"http://x/a.zip","name":"a.zip","category":"Archive",
+            "status":"Paused","dest":null,"downloaded":0,"total":null,"queue":0,"added":0}]}"#;
+        std::fs::write(&p, old).unwrap();
+        let loaded = load(&p);
+        assert_eq!(loaded.items.len(), 1);
+        assert_eq!(loaded.items[0].kind, crate::model::Kind::Http);
+    }
+
+    #[test]
+    fn media_kind_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("state.json");
+        let mut s = sample();
+        s.items[0].kind = crate::model::Kind::Media(rdm_media::MediaFormat::Video { max_height: 720 });
+        s.items[0].status = Status::Paused;
+        s.items[0].speed_bps = 0;
+        save(&p, &s).unwrap();
+        assert_eq!(load(&p), s);
     }
 
     #[test]

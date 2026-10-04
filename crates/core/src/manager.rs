@@ -1,5 +1,5 @@
 use crate::category::Category;
-use crate::model::{AppState, Item, ItemId, Settings, Status};
+use crate::model::{AppState, Item, ItemId, Kind, Settings, Status};
 use crate::planner::{pick_next, queue_active};
 use crate::schedule::Now;
 use crate::store;
@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
+use rdm_media::{MediaFormat, MediaInfo, MediaOutcome, MediaProgress, YTDLP_URL};
 use tokio::time::Instant;
 
 const TICK: Duration = Duration::from_millis(250);
@@ -30,11 +31,38 @@ pub enum Event {
 pub struct Manager {
     tx: mpsc::UnboundedSender<Cmd>,
     events: broadcast::Sender<Event>,
+    tools: Tools,
+}
+
+/// Locates yt-dlp, downloading it next to `state.json` (in `bin/`) the first time.
+#[derive(Clone)]
+struct Tools {
+    bin_dir: PathBuf,
+    client: Client,
+    /// Only one first-time download at a time.
+    lock: Arc<tokio::sync::Mutex<()>>,
+}
+
+impl Tools {
+    async fn ytdlp(&self) -> Result<PathBuf, String> {
+        let _only_one = self.lock.lock().await;
+        let path = self.bin_dir.join("yt-dlp.exe");
+        if path.exists() {
+            return Ok(path);
+        }
+        let (progress, _) = watch::channel(Progress::default());
+        match download(&self.client, YTDLP_URL, &path, &DownloadOptions::default(), CancellationToken::new(), &progress).await {
+            Ok(Outcome::Completed(_)) => Ok(path),
+            Ok(Outcome::Paused) => Err("yt-dlp download was interrupted".into()),
+            Err(e) => Err(format!("couldn't download yt-dlp: {e}")),
+        }
+    }
 }
 
 enum Cmd {
     Snapshot(oneshot::Sender<AppState>),
     Add(String, oneshot::Sender<ItemId>),
+    AddMedia(String, String, MediaFormat, oneshot::Sender<ItemId>),
     Pause(ItemId),
     Resume(ItemId),
     Remove(ItemId, bool),
@@ -47,9 +75,27 @@ impl Manager {
     pub fn start(state_path: PathBuf) -> Manager {
         let (tx, rx) = mpsc::unbounded_channel();
         let (events, _) = broadcast::channel(1024);
-        let actor = Actor::new(state_path, events.clone());
+        let tools = Tools {
+            bin_dir: state_path.parent().unwrap_or(Path::new(".")).join("bin"),
+            client: default_client(),
+            lock: Arc::default(),
+        };
+        let actor = Actor::new(state_path, events.clone(), tools.clone());
         tokio::spawn(actor.run(rx));
-        Manager { tx, events }
+        Manager { tx, events, tools }
+    }
+
+    /// Reads a video/audio page (title, qualities, playlist entries). Fetches yt-dlp
+    /// on first use.
+    pub async fn probe_media(&self, url: String) -> Result<MediaInfo, String> {
+        let ytdlp = self.tools.ytdlp().await?;
+        rdm_media::probe(&ytdlp, &url).await
+    }
+
+    pub async fn add_media(&self, url: String, title: String, format: MediaFormat) -> ItemId {
+        let (reply, rx) = oneshot::channel();
+        let _ = self.tx.send(Cmd::AddMedia(url, title, format, reply));
+        rx.await.unwrap_or(ItemId(0))
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<Event> {
@@ -114,7 +160,7 @@ struct Running {
 enum Msg {
     /// Probe finished: the actor picks the final destination and replies with it.
     Resolve { id: ItemId, name: String, total: Option<u64>, reply: oneshot::Sender<PathBuf> },
-    Finished { id: ItemId, result: Result<Outcome, EngineError> },
+    Finished { id: ItemId, result: Result<Outcome, String> },
 }
 
 struct Actor {
@@ -123,6 +169,7 @@ struct Actor {
     running: HashMap<ItemId, Running>,
     limiter: Arc<RateLimiter>,
     client: Client,
+    tools: Tools,
     events: broadcast::Sender<Event>,
     msg_tx: mpsc::UnboundedSender<Msg>,
     msg_rx: mpsc::UnboundedReceiver<Msg>,
@@ -131,7 +178,7 @@ struct Actor {
 }
 
 impl Actor {
-    fn new(path: PathBuf, events: broadcast::Sender<Event>) -> Self {
+    fn new(path: PathBuf, events: broadcast::Sender<Event>, tools: Tools) -> Self {
         let state = store::load(&path);
         let limiter = Arc::new(RateLimiter::new(state.settings.speed_limit_bps));
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
@@ -140,7 +187,8 @@ impl Actor {
             state,
             running: HashMap::new(),
             limiter,
-            client: default_client(),
+            client: tools.client.clone(),
+            tools,
             events,
             msg_tx,
             msg_rx,
@@ -191,27 +239,13 @@ impl Actor {
                 let _ = reply.send(self.state.clone());
             }
             Cmd::Add(url, reply) => {
-                let id = ItemId(self.state.next_id);
-                self.state.next_id += 1;
                 let name = filename_from(None, &url);
-                let item = Item {
-                    id,
-                    category: Category::from_name(&name),
-                    name,
-                    url,
-                    status: if self.state.settings.start_immediately { Status::Queued } else { Status::Paused },
-                    dest: None,
-                    downloaded: 0,
-                    total: None,
-                    speed_bps: 0,
-                    queue: 0,
-                    added: chrono::Utc::now().timestamp(),
-                };
-                self.state.items.push(item.clone());
-                self.emit(Event::Added(item));
-                self.dirty = true;
-                let _ = reply.send(id);
-                self.schedule();
+                let category = Category::from_name(&name);
+                let _ = reply.send(self.push_item(url, name, category, Kind::Http));
+            }
+            Cmd::AddMedia(url, title, format, reply) => {
+                let category = if format == MediaFormat::AudioMp3 { Category::Music } else { Category::Video };
+                let _ = reply.send(self.push_item(url, title, category, Kind::Media(format)));
             }
             Cmd::Pause(id) => {
                 if let Some(r) = self.running.get_mut(&id) {
@@ -251,6 +285,30 @@ impl Actor {
         }
     }
 
+    fn push_item(&mut self, url: String, name: String, category: Category, kind: Kind) -> ItemId {
+        let id = ItemId(self.state.next_id);
+        self.state.next_id += 1;
+        let item = Item {
+            id,
+            url,
+            name,
+            category,
+            status: if self.state.settings.start_immediately { Status::Queued } else { Status::Paused },
+            dest: None,
+            downloaded: 0,
+            total: None,
+            speed_bps: 0,
+            queue: 0,
+            added: chrono::Utc::now().timestamp(),
+            kind,
+        };
+        self.state.items.push(item.clone());
+        self.emit(Event::Added(item));
+        self.dirty = true;
+        self.schedule();
+        id
+    }
+
     /// Stops items whose queue went inactive and starts whatever the planner picks.
     fn schedule(&mut self) {
         let now = Now::local();
@@ -271,12 +329,16 @@ impl Actor {
         let Some(item) = self.state.item_mut(id) else { return };
         item.status = Status::Running;
         item.speed_bps = 0;
-        let (url, existing_dest) = (item.url.clone(), item.dest.clone());
+        let (url, existing_dest, kind) = (item.url.clone(), item.dest.clone(), item.kind.clone());
         self.updated(id);
 
         let cancel = CancellationToken::new();
         let (progress_tx, progress_rx) = watch::channel(Progress::default());
         self.running.insert(id, Running { cancel: cancel.clone(), progress: progress_rx, stop: Stop::None });
+        if let Kind::Media(format) = kind {
+            self.start_media(id, url, format, cancel, progress_tx);
+            return;
+        }
 
         let opts = DownloadOptions {
             connections: self.state.settings.connections.max(1),
@@ -303,6 +365,39 @@ impl Actor {
                     }
                 };
                 download(&client, &url, &dest, &opts, cancel, &progress_tx).await
+            }
+            .await
+            .map_err(|e: EngineError| e.to_string());
+            let _ = msg_tx.send(Msg::Finished { id, result });
+        });
+    }
+
+    /// Video/audio items go through yt-dlp; its progress feeds the same `Progress` watch.
+    fn start_media(&mut self, id: ItemId, url: String, format: MediaFormat, cancel: CancellationToken, progress_tx: watch::Sender<Progress>) {
+        let settings = &self.state.settings;
+        let category = if format == MediaFormat::AudioMp3 { Category::Music } else { Category::Video };
+        let dir = if settings.sort_into_folders { settings.download_dir.join(category.folder()) } else { settings.download_dir.clone() };
+        let (tools, msg_tx) = (self.tools.clone(), self.msg_tx.clone());
+        tokio::spawn(async move {
+            let result = async {
+                let ytdlp = tokio::select! {
+                    _ = cancel.cancelled() => return Ok(Outcome::Paused),
+                    path = tools.ytdlp() => path?,
+                };
+                let (media_tx, mut media_rx) = watch::channel(MediaProgress::default());
+                let forward = tokio::spawn(async move {
+                    while media_rx.changed().await.is_ok() {
+                        let p = media_rx.borrow_and_update().clone();
+                        progress_tx.send_replace(Progress { downloaded: p.downloaded, total: p.total, speed_bps: p.speed_bps, segments: Vec::new() });
+                    }
+                });
+                let outcome = rdm_media::download(&ytdlp, &url, &format, &dir, cancel, &media_tx).await;
+                drop(media_tx);
+                let _ = forward.await;
+                Ok(match outcome? {
+                    MediaOutcome::Completed(path) => Outcome::Completed(path),
+                    MediaOutcome::Paused => Outcome::Paused,
+                })
             }
             .await;
             let _ = msg_tx.send(Msg::Finished { id, result });
@@ -351,7 +446,7 @@ impl Actor {
                         }
                         Ok(Outcome::Paused) if r.stop == Stop::Schedule => Status::Queued,
                         Ok(Outcome::Paused) => Status::Paused,
-                        Err(e) => Status::Failed(e.to_string()),
+                        Err(e) => Status::Failed(e),
                     };
                 }
                 self.updated(id);

@@ -1,10 +1,31 @@
-use rdm_core::{AppState, Event, Item, ItemId, Settings, Status};
+use rdm_core::{AppState, Event, Item, ItemId, MediaFormat, MediaInfo, Settings, Status};
 use std::path::PathBuf;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Screen {
     Downloads,
     Settings,
+    Picker,
+}
+
+/// Quality choice for a video/audio link (or a whole playlist).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Picker {
+    pub url: String,
+    pub info: MediaInfo,
+    /// Index into `info.options`.
+    pub choice: usize,
+}
+
+impl Picker {
+    /// What to add: (url, title, format), one per video.
+    pub fn requests(&self) -> Vec<(String, String, MediaFormat)> {
+        let Some(option) = self.info.options.get(self.choice) else { return Vec::new() };
+        if self.info.entries.is_empty() {
+            return vec![(self.url.clone(), self.info.title.clone(), option.format.clone())];
+        }
+        self.info.entries.iter().map(|e| (e.url.clone(), e.title.clone(), option.format.clone())).collect()
+    }
 }
 
 /// Settings as typed into the form (numbers stay text until saved).
@@ -63,6 +84,9 @@ pub struct Model {
     pub screen: Screen,
     pub draft: Draft,
     pub notice: Option<String>,
+    pub picker: Option<Picker>,
+    /// A video link is being read (yt-dlp probe).
+    pub probing: bool,
 }
 
 impl Default for Model {
@@ -76,6 +100,8 @@ impl Default for Model {
             selected: None,
             screen: Screen::Downloads,
             notice: None,
+            picker: None,
+            probing: false,
         }
     }
 }
@@ -128,6 +154,7 @@ impl Model {
 mod tests {
     use super::*;
     use rdm_core::Category;
+    use rdm_media::{Entry, QualityOption};
 
     fn item(id: u64, status: Status, speed: u64) -> Item {
         Item {
@@ -142,6 +169,7 @@ mod tests {
             speed_bps: speed,
             queue: 0,
             added: 0,
+            kind: Default::default(),
         }
     }
 
@@ -219,6 +247,33 @@ mod tests {
         assert!(bad(|d| d.max_concurrent = "0".into()).is_err());
         assert!(bad(|d| d.speed_limit_kbps = "-5".into()).is_err());
         assert!(bad(|d| d.download_dir = "  ".into()).is_err());
+    }
+
+    fn info(entries: Vec<Entry>) -> MediaInfo {
+        MediaInfo {
+            title: "Clip".into(),
+            duration: None,
+            options: vec![
+                QualityOption { label: "720p".into(), format: MediaFormat::Video { max_height: 720 }, approx_size: None },
+                QualityOption { label: "Audio only (MP3)".into(), format: MediaFormat::AudioMp3, approx_size: None },
+            ],
+            entries,
+        }
+    }
+
+    #[test]
+    fn picker_single_video_makes_one_request() {
+        let p = Picker { url: "https://youtu.be/x".into(), info: info(vec![]), choice: 1 };
+        assert_eq!(p.requests(), vec![("https://youtu.be/x".to_string(), "Clip".to_string(), MediaFormat::AudioMp3)]);
+    }
+
+    #[test]
+    fn picker_playlist_makes_one_request_per_entry() {
+        let entries = vec![Entry { url: "https://y/1".into(), title: "One".into() }, Entry { url: "https://y/2".into(), title: "Two".into() }];
+        let p = Picker { url: "https://y/list".into(), info: info(entries), choice: 0 };
+        let reqs = p.requests();
+        assert_eq!(reqs.len(), 2);
+        assert_eq!(reqs[1], ("https://y/2".to_string(), "Two".to_string(), MediaFormat::Video { max_height: 720 }));
     }
 
     #[test]

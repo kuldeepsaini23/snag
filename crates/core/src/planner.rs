@@ -58,6 +58,7 @@ mod tests {
             speed_bps: 0,
             queue,
             added: 0,
+            kind: Default::default(),
         }
     }
 

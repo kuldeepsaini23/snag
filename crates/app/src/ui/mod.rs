@@ -1,7 +1,7 @@
 //! Basic views with default iced widgets. The Figma pass replaces this module.
 
 use crate::format;
-use crate::state::{Model, Screen};
+use crate::state::{Model, Picker, Screen};
 use crate::update::{App, Message};
 use iced::widget::{button, checkbox, column, container, progress_bar, row, scrollable, space, text, text_input};
 use iced::{Alignment, Element, Fill};
@@ -11,6 +11,10 @@ pub fn view(app: &App) -> Element<'_, Message> {
     match app.model.screen {
         Screen::Downloads => downloads(&app.model),
         Screen::Settings => settings(&app.model),
+        Screen::Picker => match &app.model.picker {
+            Some(p) => picker(p),
+            None => downloads(&app.model),
+        },
     }
 }
 
@@ -21,7 +25,7 @@ fn downloads(m: &Model) -> Element<'_, Message> {
             .on_submit(Message::Add)
             .padding(8)
             .width(Fill),
-        button("Add").on_press(Message::Add).padding([8, 16]),
+        button(if m.probing { "Reading…" } else { "Add" }).on_press_maybe((!m.probing).then_some(Message::Add)).padding([8, 16]),
         button("Settings").on_press(Message::OpenSettings).padding([8, 16]),
     ]
     .spacing(8);
@@ -112,5 +116,28 @@ fn settings(m: &Model) -> Element<'_, Message> {
         space::horizontal(),
     ]
     .spacing(8));
+    scrollable(page).into()
+}
+
+fn picker(p: &Picker) -> Element<'_, Message> {
+    let mut page = column![text(&p.info.title).size(20)].spacing(10).padding(20).max_width(620);
+    if !p.info.entries.is_empty() {
+        page = page.push(text(format!("Playlist · {} videos · same quality for all", p.info.entries.len())).size(13));
+    }
+    page = page.push(text("Choose quality").size(14));
+    for (i, option) in p.info.options.iter().enumerate() {
+        let size = option.approx_size.map(|s| format!("≈ {}", format::bytes(s))).unwrap_or_default();
+        let label = row![text(if i == p.choice { "●" } else { "○" }), text(&option.label).width(Fill), text(size).size(13)].spacing(10);
+        let style = if i == p.choice { button::primary } else { button::secondary };
+        page = page.push(button(label).on_press(Message::PickOption(i)).style(style).padding([8, 12]).width(Fill));
+    }
+    let count = p.info.entries.len().max(1);
+    page = page.push(
+        row![
+            button(text(if count > 1 { format!("Download {count} videos") } else { "Download".to_string() })).on_press(Message::DownloadPicked).padding([8, 20]),
+            button("Cancel").on_press(Message::CancelPick).padding([8, 20]),
+        ]
+        .spacing(8),
+    );
     scrollable(page).into()
 }
