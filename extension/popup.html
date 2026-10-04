@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root {
+        --bg: #211f1c;
+        --surface: #2a2724;
+        --raised: #36322e;
+        --line: #ffffff17;
+        --t1: #ffffffe5;
+        --t2: #ffffff91;
+        --t3: #ffffff4f;
+        --accent: #ff9f0a;
+        --ok: #32d74b;
+        --err: #ff453a;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        width: 320px;
+        padding: 14px;
+        background: var(--bg);
+        color: var(--t1);
+        font: 13px/1.4 "Inter", "Segoe UI", system-ui, sans-serif;
+      }
+      header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+      .logo {
+        width: 28px; height: 28px; border-radius: 7px; background: var(--accent);
+        display: grid; place-items: center; color: #1a1816; font-weight: 700;
+      }
+      .status { display: flex; align-items: center; gap: 6px; color: var(--t3); font-size: 12px; }
+      .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--t3); }
+      .dot.ok { background: var(--ok); }
+      .dot.err { background: var(--err); }
+      .card { background: var(--surface); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+      label { display: block; color: var(--t3); font-size: 11px; margin-bottom: 6px; }
+      .row { display: flex; gap: 8px; align-items: center; }
+      input[type="text"] {
+        flex: 1; min-width: 0; background: var(--bg); color: var(--t1);
+        border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; font: inherit;
+      }
+      button {
+        border: 0; border-radius: 8px; padding: 8px 12px; font: inherit; font-weight: 600; cursor: pointer;
+        background: var(--raised); color: var(--t1);
+      }
+      button.primary { background: var(--accent); color: #1a1816; width: 100%; }
+      .toggle { display: flex; justify-content: space-between; align-items: center; }
+      .hint { color: var(--t3); font-size: 11px; }
+      #message { min-height: 18px; font-size: 12px; color: var(--t2); margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="logo">↓</div>
+      <div>
+        <div style="font-weight: 600">RDM</div>
+        <div class="status"><span id="dot" class="dot"></span><span id="status">Looking for the app…</span></div>
+      </div>
+    </header>
+
+    <div class="card">
+      <label for="token">Pairing code (RDM → Settings → Chrome extension)</label>
+      <div class="row">
+        <input id="token" type="text" spellcheck="false" placeholder="32-character code" />
+        <button id="save">Save</button>
+      </div>
+    </div>
+
+    <div class="card toggle">
+      <div>
+        <div>Catch downloads</div>
+        <div class="hint">Files over 1 MB go to RDM instead of Chrome</div>
+      </div>
+      <input id="catch" type="checkbox" />
+    </div>
+
+    <button id="send" class="primary">Send this page to RDM</button>
+    <div id="message"></div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "RDM — Download Manager",
+  "version": "0.1.0",
+  "description": "Sends downloads and videos to the RDM desktop app.",
+  "permissions": ["downloads", "storage", "contextMenus"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "RDM" },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.youtube.com/*",
+        "https://m.youtube.com/*",
+        "https://vimeo.com/*",
+        "https://x.com/*",
+        "https://twitter.com/*",
+        "https://www.instagram.com/*",
+        "https://www.tiktok.com/*",
+        "https://www.dailymotion.com/*",
+        "https://www.twitch.tv/*",
+        "https://soundcloud.com/*",
+        "https://www.facebook.com/*",
+        "https://www.reddit.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
