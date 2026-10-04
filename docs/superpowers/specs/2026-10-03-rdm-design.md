@@ -138,3 +138,5 @@ Agreed with the user to reduce token usage:
 
 The app crate is split into `state.rs` / `update.rs` (logic, kept) and `ui/` (views, replaced later).
 The Figma styling pass (https://www.figma.com/design/oe5r4M2xEWvmWfUCmT8Bsr, 14 screens) comes afterwards and replaces only `ui/` and the theme.
+
+**Reordered (2026-10-04, user):** the basic test UI moves up to step 3, right after `core`. Media (yt-dlp) is now step 4 and the bridge/extension step 5; both are wired into the existing basic UI as they land.
