@@ -33,8 +33,7 @@ mod tests {
     use crate::model::{Item, ItemId};
 
     fn sample() -> AppState {
-        let mut s = AppState::default();
-        s.next_id = 3;
+        let mut s = AppState { next_id: 3, ..Default::default() };
         s.items.push(Item {
             id: ItemId(2),
             url: "http://x/a.zip".into(),
