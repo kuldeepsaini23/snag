@@ -151,3 +151,40 @@ async fn remove_deletes_partial_files() {
     let left: Vec<_> = std::fs::read_dir(dir.path().join("dl")).unwrap().map(|e| e.unwrap().file_name()).collect();
     assert!(left.is_empty(), "leftover files: {left:?}");
 }
+
+/// Real network + real yt-dlp/ffmpeg. Run with: cargo test -p rdm-core --test manager -- --ignored --nocapture
+#[tokio::test]
+#[ignore]
+async fn real_media_download_mp4_and_mp3() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |s| s.sort_into_folders = true).await;
+    let url = "https://www.youtube.com/watch?v=aqz-KE-bpKQ".to_string();
+    let info = m.probe_media(url.clone()).await.expect("probe");
+    println!("title={:?} options={:?}", info.title, info.options.iter().map(|o| &o.label).collect::<Vec<_>>());
+    let mut rx = m.subscribe();
+    let video = m.add_media(url.clone(), info.title.clone(), rdm_core::MediaFormat::Video { max_height: 360 }).await;
+    let audio = m.add_media(url, info.title.clone(), rdm_core::MediaFormat::AudioMp3).await;
+    let mut done = std::collections::HashMap::new();
+    tokio::time::timeout(Duration::from_secs(300), async {
+        while done.len() < 2 {
+            if let Ok(Event::Updated(i)) = rx.recv().await {
+                match &i.status {
+                    Status::Done => { done.insert(i.id, i.dest.clone().unwrap()); }
+                    Status::Failed(e) => panic!("{} failed: {e}", i.name),
+                    _ => {}
+                }
+            }
+        }
+    })
+    .await
+    .expect("both finish");
+    for (id, path) in &done {
+        let len = std::fs::metadata(path).unwrap().len();
+        println!("{id:?} -> {} ({len} bytes)", path.display());
+        assert!(len > 10_000);
+    }
+    assert_eq!(done[&video].extension().unwrap(), "mp4");
+    assert_eq!(done[&audio].extension().unwrap(), "mp3");
+    assert!(done[&video].starts_with(dir.path().join("dl").join("Videos")));
+    assert!(done[&audio].starts_with(dir.path().join("dl").join("Music")));
+}
