@@ -103,6 +103,20 @@ fn settings(m: &Model) -> Element<'_, Message> {
         field("Speed limit in KB/s (0 = unlimited)", &d.speed_limit_kbps, Message::DraftLimit),
         checkbox(d.sort_into_folders).label("Sort into category folders (Videos, Music, …)").on_toggle(Message::DraftSort),
         checkbox(d.start_immediately).label("Start downloads immediately").on_toggle(Message::DraftStart),
+        checkbox(d.clipboard_watch).label("Watch the clipboard for links").on_toggle(Message::DraftClipboard),
+        text("Chrome extension").size(18),
+        text(&m.bridge_status).size(13),
+        column![
+            text("Pairing code: paste it once into the extension popup").size(13),
+            row![
+                text(&m.settings.extension_token).size(14).width(Fill),
+                button("Copy").on_press(Message::CopyToken),
+                button("New code").on_press(Message::NewToken),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
+        ]
+        .spacing(4),
     ]
     .spacing(14)
     .padding(20)

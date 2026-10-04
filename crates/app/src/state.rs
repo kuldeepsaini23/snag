@@ -38,6 +38,7 @@ pub struct Draft {
     pub speed_limit_kbps: String,
     pub sort_into_folders: bool,
     pub start_immediately: bool,
+    pub clipboard_watch: bool,
 }
 
 impl Draft {
@@ -49,6 +50,7 @@ impl Draft {
             speed_limit_kbps: (s.speed_limit_bps / 1024).to_string(),
             sort_into_folders: s.sort_into_folders,
             start_immediately: s.start_immediately,
+            clipboard_watch: s.clipboard_watch,
         }
     }
 
@@ -69,9 +71,17 @@ impl Draft {
             speed_limit_bps: number("Speed limit", &self.speed_limit_kbps, 0..=10_000_000)? * 1024,
             sort_into_folders: self.sort_into_folders,
             start_immediately: self.start_immediately,
+            clipboard_watch: self.clipboard_watch,
             ..base.clone()
         })
     }
+}
+
+/// A link worth suggesting from the clipboard: a single http(s) URL that isn't the last one seen.
+pub fn clipboard_link(text: &str, last_seen: Option<&str>) -> Option<String> {
+    let link = text.trim();
+    let is_url = (link.starts_with("http://") || link.starts_with("https://")) && link.len() < 4096 && !link.contains(char::is_whitespace);
+    (is_url && last_seen != Some(link)).then(|| link.to_string())
 }
 
 /// Everything the window shows. Pure data: no iced, no manager.
@@ -87,6 +97,12 @@ pub struct Model {
     pub picker: Option<Picker>,
     /// A video link is being read (yt-dlp probe).
     pub probing: bool,
+    /// Last clipboard link seen (suggested once, never again).
+    pub last_clipboard: Option<String>,
+    /// The first clipboard read only records what's there, so an old link isn't suggested at launch.
+    pub clipboard_primed: bool,
+    /// Where the browser extension can reach us, or why it can't.
+    pub bridge_status: String,
 }
 
 impl Default for Model {
@@ -102,6 +118,9 @@ impl Default for Model {
             notice: None,
             picker: None,
             probing: false,
+            last_clipboard: None,
+            clipboard_primed: false,
+            bridge_status: String::new(),
         }
     }
 }
@@ -274,6 +293,16 @@ mod tests {
         let reqs = p.requests();
         assert_eq!(reqs.len(), 2);
         assert_eq!(reqs[1], ("https://y/2".to_string(), "Two".to_string(), MediaFormat::Video { max_height: 720 }));
+    }
+
+    #[test]
+    fn clipboard_accepts_new_links_only() {
+        assert_eq!(clipboard_link("  https://x.com/a.zip \n", None).as_deref(), Some("https://x.com/a.zip"));
+        assert_eq!(clipboard_link("https://x.com/a.zip", Some("https://x.com/a.zip")), None);
+        assert_eq!(clipboard_link("hello world", None), None);
+        assert_eq!(clipboard_link("http://a b", None), None);
+        assert_eq!(clipboard_link("https://a\nhttps://b", None), None);
+        assert_eq!(clipboard_link("ftp://x/y", None), None);
     }
 
     #[test]

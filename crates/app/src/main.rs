@@ -13,9 +13,13 @@ fn main() -> iced::Result {
         let _enter = runtime.enter();
         rdm_core::Manager::start(state_path)
     };
+    let bridge_status = match runtime.block_on(rdm_bridge::start(manager.clone(), rdm_bridge::PORTS)) {
+        Ok(b) => format!("Listening for the extension on 127.0.0.1:{}", b.port),
+        Err(e) => format!("Extension bridge unavailable: {e}"),
+    };
 
     let boot_manager = manager.clone();
-    let result = iced::application(move || update::boot(boot_manager.clone()), update::update, ui::view)
+    let result = iced::application(move || update::boot(boot_manager.clone(), bridge_status.clone()), update::update, ui::view)
         .title("RDM")
         .subscription(update::subscription)
         .theme(iced::Theme::Dark)

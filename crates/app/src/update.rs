@@ -1,4 +1,4 @@
-use crate::state::{Draft, Model, Picker, Screen};
+use crate::state::{Draft, Model, Picker, Screen, clipboard_link};
 use iced::{Subscription, Task};
 use rdm_core::{AppState, Event, ItemId, Manager, MediaInfo};
 use std::future::Future;
@@ -39,12 +39,18 @@ pub enum Message {
     PickOption(usize),
     DownloadPicked,
     CancelPick,
+    ClipboardTick,
+    ClipboardText(Option<String>),
+    DraftClipboard(bool),
+    CopyToken,
+    NewToken,
     Done,
 }
 
-pub fn boot(manager: Manager) -> (App, Task<Message>) {
+pub fn boot(manager: Manager, bridge_status: String) -> (App, Task<Message>) {
     let m = manager.clone();
-    (App { model: Model::default(), manager }, Task::perform(async move { m.snapshot().await }, Message::Loaded))
+    let model = Model { bridge_status, ..Model::default() };
+    (App { model, manager }, Task::perform(async move { m.snapshot().await }, Message::Loaded))
 }
 
 /// Runs a manager call in the background; its result isn't needed (events report it).
@@ -152,6 +158,25 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             model.picker = None;
             model.screen = Screen::Downloads;
         }
+        Message::ClipboardTick => return iced::clipboard::read().map(Message::ClipboardText),
+        Message::ClipboardText(text) => {
+            let link = text.and_then(|t| clipboard_link(&t, model.last_clipboard.as_deref()));
+            if let Some(link) = link {
+                model.last_clipboard = Some(link.clone());
+                let suggest = model.clipboard_primed && model.url.is_empty() && model.screen == Screen::Downloads;
+                if suggest {
+                    model.url = link;
+                    model.notice = Some("Link detected from the clipboard. Press Add to download it.".into());
+                }
+            }
+            model.clipboard_primed = true;
+        }
+        Message::DraftClipboard(v) => model.draft.clipboard_watch = v,
+        Message::CopyToken => return iced::clipboard::write(model.settings.extension_token.clone()),
+        Message::NewToken => {
+            let settings = rdm_core::Settings { extension_token: rdm_core::new_token(), ..model.settings.clone() };
+            return fire(&app.manager, move |m| async move { m.update_settings(settings).await });
+        }
         Message::Done => {}
     }
     Task::none()
@@ -167,6 +192,16 @@ impl Hash for Feed {
 }
 
 pub fn subscription(app: &App) -> Subscription<Message> {
+    let feed = core_events(app);
+    if app.model.settings.clipboard_watch {
+        let clipboard = iced::time::every(std::time::Duration::from_millis(700)).map(|_| Message::ClipboardTick);
+        Subscription::batch([feed, clipboard])
+    } else {
+        feed
+    }
+}
+
+fn core_events(app: &App) -> Subscription<Message> {
     Subscription::run_with(Feed(app.manager.clone()), |feed| {
         futures_util::stream::unfold(feed.0.subscribe(), |mut rx| async move {
             let message = match rx.recv().await {
