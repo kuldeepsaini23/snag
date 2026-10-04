@@ -1,0 +1,24 @@
+[package]
+name = "rdm-media"
+version.workspace = true
+edition.workspace = true
+autotests = false
+
+# Stand-in for yt-dlp used by the integration tests (behaviour picked by the URL).
+[[bin]]
+name = "fake-ytdlp"
+path = "tests/fake_ytdlp.rs"
+test = false
+
+[[test]]
+name = "run"
+path = "tests/run.rs"
+
+[dependencies]
+tokio.workspace = true
+tokio-util.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
