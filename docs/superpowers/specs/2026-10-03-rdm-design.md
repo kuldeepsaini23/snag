@@ -125,3 +125,16 @@ Manager ── debounced ──► state.json
 3. `media`: yt-dlp bootstrap, probe, quality sheet, MP4/MP3, playlists.
 4. Speed limit, scheduler, settings sheet, accent picker.
 5. Clipboard watch, localhost bridge and the Chrome extension.
+
+## 7. Addendum (2026-10-04): backend-first delivery
+
+Agreed with the user to reduce token usage:
+
+1. Engine fix pass: review findings C1, C2, I1–I6 (see `.superpowers/sdd/2026-10-03-plan-1-engine/progress.md`).
+2. `core`: Manager, queues, scheduler, speed limit, settings, `state.json` persistence (headless, tested).
+3. `media`: yt-dlp bootstrap, probe, quality list, MP4/MP3, playlists.
+4. Bridge: clipboard watch, localhost server, basic Chrome MV3 extension (plain popup + catch toggle).
+5. **Basic test UI** with default iced widgets, so that every feature works end to end.
+
+The app crate is split into `state.rs` / `update.rs` (logic, kept) and `ui/` (views, replaced later).
+The Figma styling pass (https://www.figma.com/design/oe5r4M2xEWvmWfUCmT8Bsr, 14 screens) comes afterwards and replaces only `ui/` and the theme.
