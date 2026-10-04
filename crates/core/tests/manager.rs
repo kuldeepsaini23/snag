@@ -188,3 +188,11 @@ async fn real_media_download_mp4_and_mp3() {
     assert!(done[&video].starts_with(dir.path().join("dl").join("Videos")));
     assert!(done[&audio].starts_with(dir.path().join("dl").join("Music")));
 }
+
+#[tokio::test]
+async fn fresh_state_gets_extension_token() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = Manager::start(dir.path().join("state.json"));
+    let token = m.snapshot().await.settings.extension_token;
+    assert_eq!(token.len(), 32, "token: {token:?}");
+}

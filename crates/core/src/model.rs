@@ -68,6 +68,8 @@ pub struct Settings {
     pub accent: String,
     pub clipboard_watch: bool,
     pub start_immediately: bool,
+    /// Shared secret the browser extension sends with every request.
+    pub extension_token: String,
 }
 
 impl Default for Settings {
@@ -82,6 +84,7 @@ impl Default for Settings {
             accent: "#ff9f0a".into(),
             clipboard_watch: true,
             start_immediately: true,
+            extension_token: String::new(),
         }
     }
 }
@@ -106,6 +109,21 @@ impl Default for AppState {
     }
 }
 
+/// A fresh pairing token: 32 hex characters.
+pub fn new_token() -> String {
+    use std::hash::{BuildHasher, Hasher};
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+    // RandomState is seeded from the OS per instance: two independent 64-bit halves.
+    (0..2u64)
+        .map(|i| {
+            let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+            h.write_u64(i);
+            h.write_u128(nanos);
+            format!("{:016x}", h.finish())
+        })
+        .collect()
+}
+
 impl AppState {
     pub fn item(&self, id: ItemId) -> Option<&Item> {
         self.items.iter().find(|i| i.id == id)
@@ -117,5 +135,19 @@ impl AppState {
 
     pub fn queue(&self, id: QueueId) -> Option<&Queue> {
         self.queues.iter().find(|q| q.id == id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tokens_are_32_hex_and_differ() {
+        let a = new_token();
+        let b = new_token();
+        assert_eq!(a.len(), 32);
+        assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_ne!(a, b);
     }
 }

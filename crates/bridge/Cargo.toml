@@ -1,0 +1,16 @@
+[package]
+name = "rdm-bridge"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rdm-core = { path = "../core" }
+rdm-media = { path = "../media" }
+axum.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+rdm-engine = { path = "../engine" }
+tempfile.workspace = true

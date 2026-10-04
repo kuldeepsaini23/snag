@@ -2929,6 +2929,21 @@ dependencies = [
  "futures-util",
  "iced",
  "rdm-core",
+ "rdm-media",
+ "tokio",
+]
+
+[[package]]
+name = "rdm-bridge"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "rdm-core",
+ "rdm-engine",
+ "rdm-media",
+ "serde",
+ "serde_json",
+ "tempfile",
  "tokio",
 ]
 
@@ -2949,6 +2964,7 @@ dependencies = [
  "chrono",
  "futures-util",
  "rdm-engine",
+ "rdm-media",
  "serde",
  "serde_json",
  "tempfile",

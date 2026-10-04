@@ -179,7 +179,11 @@ struct Actor {
 
 impl Actor {
     fn new(path: PathBuf, events: broadcast::Sender<Event>, tools: Tools) -> Self {
-        let state = store::load(&path);
+        let mut state = store::load(&path);
+        let needs_token = state.settings.extension_token.is_empty();
+        if needs_token {
+            state.settings.extension_token = crate::model::new_token();
+        }
         let limiter = Arc::new(RateLimiter::new(state.settings.speed_limit_bps));
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
         Self {
@@ -192,7 +196,7 @@ impl Actor {
             events,
             msg_tx,
             msg_rx,
-            dirty: false,
+            dirty: needs_token,
             last_save: Instant::now(),
         }
     }

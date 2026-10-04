@@ -7,7 +7,7 @@ pub mod store;
 
 pub use category::Category;
 pub use manager::{Event, Manager};
-pub use model::{AppState, Item, ItemId, Kind, Queue, QueueId, Settings, Status};
+pub use model::{AppState, Item, ItemId, Kind, Queue, QueueId, Settings, Status, new_token};
 pub use rdm_media::{MediaFormat, MediaInfo, QualityOption};
 pub use planner::pick_next;
 pub use schedule::{Now, Schedule};
