@@ -2928,6 +2928,7 @@ version = "0.1.0"
 dependencies = [
  "futures-util",
  "iced",
+ "rdm-bridge",
  "rdm-core",
  "rdm-media",
  "tokio",
