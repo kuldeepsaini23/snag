@@ -12,7 +12,7 @@ pub async fn probe(client: &Client, url: &str) -> Result<RemoteInfo, EngineError
         StatusCode::PARTIAL_CONTENT => (get(header::CONTENT_RANGE).and_then(|v| parse_total(&v)), true),
         StatusCode::RANGE_NOT_SATISFIABLE => (Some(0), false),
         s if s.is_success() => (resp.content_length(), false),
-        s => return Err(EngineError::from_status(s.as_u16())),
+        _ => return Err(EngineError::from_response(&resp)),
     };
     Ok(RemoteInfo {
         url: url.to_string(),

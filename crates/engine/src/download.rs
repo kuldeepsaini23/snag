@@ -9,8 +9,9 @@ use crate::{
 use futures_util::StreamExt;
 use reqwest::{Client, StatusCode, header};
 use std::collections::HashSet;
+use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
@@ -59,10 +60,14 @@ pub async fn download(
     cancel: CancellationToken,
     progress: &watch::Sender<Progress>,
 ) -> Result<Outcome, EngineError> {
+    let _guard = DestGuard::acquire(dest)?;
     if let Some(dir) = dest.parent().filter(|d| !d.as_os_str().is_empty()) {
         tokio::fs::create_dir_all(dir).await?;
     }
-    let info = probe(client, url).await?;
+    let info = match retrying(&cancel, opts.retry_base, 0, || probe(client, url)).await {
+        Some(result) => result?,
+        None => return Ok(Outcome::Paused),
+    };
     let job = Job {
         client,
         dest,
@@ -73,9 +78,80 @@ pub async fn download(
         progress,
     };
     match (info.size, info.accepts_ranges) {
-        (Some(size), true) if size > 0 => segmented(&job, &info, size).await,
+        (Some(size), true) if size > 0 => match segmented(&job, &info, size).await {
+            // The server stopped honoring ranges: start over on one plain stream.
+            Err(EngineError::RangeNotHonored) => {
+                let _ = tokio::fs::remove_file(&job.part).await;
+                let _ = tokio::fs::remove_file(&job.state_path).await;
+                single_stream(&job, &info).await
+            }
+            other => other,
+        },
         _ => single_stream(&job, &info).await,
     }
+}
+
+/// Destinations currently being written by this process.
+static IN_USE: LazyLock<Mutex<HashSet<PathBuf>>> = LazyLock::new(Default::default);
+
+/// Holds a destination for one `download` call so two downloads never share a part file.
+struct DestGuard(PathBuf);
+
+impl DestGuard {
+    fn acquire(dest: &Path) -> Result<Self, EngineError> {
+        let absolute = std::path::absolute(dest)?;
+        // Windows paths are case-insensitive.
+        let key = PathBuf::from(absolute.to_string_lossy().to_lowercase());
+        if !IN_USE.lock().unwrap().insert(key.clone()) {
+            return Err(EngineError::DestinationBusy);
+        }
+        Ok(Self(key))
+    }
+}
+
+impl Drop for DestGuard {
+    fn drop(&mut self) {
+        IN_USE.lock().unwrap().remove(&self.0);
+    }
+}
+
+/// Runs `op`, retrying retryable errors with backoff. `None` means cancelled.
+async fn retrying<T, F, Fut>(
+    cancel: &CancellationToken,
+    base: Duration,
+    salt: usize,
+    mut op: F,
+) -> Option<Result<T, EngineError>>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, EngineError>>,
+{
+    let mut attempt = 0;
+    loop {
+        let result = tokio::select! {
+            _ = cancel.cancelled() => return None,
+            r = op() => r,
+        };
+        match result {
+            Err(e) if e.is_retryable() && attempt < MAX_RETRIES => {
+                let delay = backoff(&e, base, attempt, salt);
+                attempt += 1;
+                tokio::select! {
+                    _ = cancel.cancelled() => return None,
+                    _ = tokio::time::sleep(delay) => {}
+                }
+            }
+            other => return Some(other),
+        }
+    }
+}
+
+/// Exponential backoff, at least what the server asked for in `Retry-After`, plus a
+/// per-segment offset so refused connections don't all retry at the same instant.
+fn backoff(e: &EngineError, base: Duration, attempt: u32, salt: usize) -> Duration {
+    let exp = base * 2u32.pow(attempt);
+    let wait = e.retry_after().map_or(exp, |ra| ra.max(exp));
+    wait + base * (salt % 7) as u32 / 7
 }
 
 struct Job<'a> {
@@ -94,6 +170,7 @@ type WorkerSet = JoinSet<(usize, Result<(), EngineError>)>;
 struct WorkerCtx {
     client: Client,
     url: String,
+    size: u64,
     part: PathBuf,
     segs: Arc<Mutex<Vec<Segment>>>,
     limiter: Option<Arc<RateLimiter>>,
@@ -128,6 +205,7 @@ async fn segmented(job: &Job<'_>, info: &RemoteInfo, size: u64) -> Result<Outcom
     let ctx = WorkerCtx {
         client: job.client.clone(),
         url: info.url.clone(),
+        size,
         part: job.part.clone(),
         segs: segs.clone(),
         limiter: job.opts.limiter.clone(),
@@ -137,11 +215,13 @@ async fn segmented(job: &Job<'_>, info: &RemoteInfo, size: u64) -> Result<Outcom
 
     let mut set = WorkerSet::new();
     let mut active = HashSet::new();
+    // Lowered when the server refuses extra connections.
+    let mut max_active = job.opts.connections.max(1);
     let pending: Vec<usize> = {
         let s = segs.lock().unwrap();
         s.iter().enumerate().filter(|(_, seg)| seg.remaining() > 0).map(|(i, _)| i).collect()
     };
-    for idx in pending.into_iter().take(job.opts.connections.max(1)) {
+    for idx in pending.into_iter().take(max_active) {
         active.insert(idx);
         spawn_worker(&mut set, &ctx, idx);
     }
@@ -159,7 +239,11 @@ async fn segmented(job: &Job<'_>, info: &RemoteInfo, size: u64) -> Result<Outcom
                 let (idx, result) = joined.map_err(|e| EngineError::Internal(e.to_string()))?;
                 active.remove(&idx);
                 if let Err(e) = result {
-                    if failure.is_none() {
+                    if failure.is_none() && e.is_retryable() && !active.is_empty() {
+                        // Other connections are still healthy: the server is limiting us.
+                        // Run with fewer and leave this segment for a worker that frees up.
+                        max_active = active.len();
+                    } else if failure.is_none() {
                         failure = Some(e);
                         workers_cancel.cancel();
                     }
@@ -168,16 +252,17 @@ async fn segmented(job: &Job<'_>, info: &RemoteInfo, size: u64) -> Result<Outcom
                 if workers_cancel.is_cancelled() {
                     continue;
                 }
-                let next = {
-                    let mut s = segs.lock().unwrap();
-                    let idle = s
-                        .iter()
-                        .enumerate()
-                        .find(|(i, seg)| seg.remaining() > 0 && !active.contains(i))
-                        .map(|(i, _)| i);
-                    idle.or_else(|| segments::split_largest(&mut s, job.opts.min_split))
-                };
-                if let Some(n) = next {
+                while active.len() < max_active {
+                    let next = {
+                        let mut s = segs.lock().unwrap();
+                        let idle = s
+                            .iter()
+                            .enumerate()
+                            .find(|(i, seg)| seg.remaining() > 0 && !active.contains(i))
+                            .map(|(i, _)| i);
+                        idle.or_else(|| segments::split_largest(&mut s, job.opts.min_split))
+                    };
+                    let Some(n) = next else { break };
                     active.insert(n);
                     spawn_worker(&mut set, &ctx, n);
                 }
@@ -194,10 +279,13 @@ async fn segmented(job: &Job<'_>, info: &RemoteInfo, size: u64) -> Result<Outcom
                     speed_bps: speed as u64,
                     segments: snapshot.clone(),
                 });
+                // Best effort: a locked sidecar (antivirus, sync tools) must not kill the
+                // download; the next tick tries again.
                 if last_save.elapsed() >= SAVE_EVERY {
                     state.segments = snapshot;
-                    state.save(&job.state_path).await?;
-                    last_save = Instant::now();
+                    if state.save(&job.state_path).await.is_ok() {
+                        last_save = Instant::now();
+                    }
                 }
             }
         }
@@ -206,10 +294,13 @@ async fn segmented(job: &Job<'_>, info: &RemoteInfo, size: u64) -> Result<Outcom
     state.segments = segs.lock().unwrap().clone();
     let downloaded = state.downloaded();
     if let Some(e) = failure {
-        state.save(&job.state_path).await?;
+        if sync_part(&job.part).await.is_ok() {
+            let _ = state.save(&job.state_path).await;
+        }
         return Err(e);
     }
     if downloaded < size {
+        sync_part(&job.part).await?;
         state.save(&job.state_path).await?;
         job.progress.send_replace(Progress { downloaded, total: Some(size), speed_bps: 0, segments: state.segments.clone() });
         if job.cancel.is_cancelled() {
@@ -218,6 +309,12 @@ async fn segmented(job: &Job<'_>, info: &RemoteInfo, size: u64) -> Result<Outcom
         return Err(EngineError::Internal(format!("stopped at {downloaded} of {size} bytes")));
     }
     finish(job, Some(size), downloaded).await
+}
+
+/// Forces part-file data to disk so a sidecar saved afterwards never claims bytes
+/// that a power loss could still drop.
+async fn sync_part(part: &Path) -> std::io::Result<()> {
+    OpenOptions::new().write(true).open(part).await?.sync_data().await
 }
 
 async fn finish(job: &Job<'_>, total: Option<u64>, downloaded: u64) -> Result<Outcome, EngineError> {
@@ -235,13 +332,22 @@ fn spawn_worker(set: &mut WorkerSet, ctx: &WorkerCtx, idx: usize) {
     });
 }
 
+/// Retries a segment; the retry budget resets whenever an attempt made progress, so
+/// long downloads on flaky networks only fail on repeated failures without progress.
 async fn run_segment(ctx: &WorkerCtx, idx: usize) -> Result<(), EngineError> {
     let mut attempt = 0;
     loop {
+        let before = ctx.segs.lock().unwrap()[idx].written;
         match fetch_segment(ctx, idx).await {
             Ok(()) => return Ok(()),
-            Err(e) if e.is_retryable() && attempt < MAX_RETRIES => {
-                let delay = ctx.retry_base * 2u32.pow(attempt);
+            Err(e) if e.is_retryable() => {
+                if ctx.segs.lock().unwrap()[idx].written > before {
+                    attempt = 0;
+                }
+                if attempt >= MAX_RETRIES {
+                    return Err(e);
+                }
+                let delay = backoff(&e, ctx.retry_base, attempt, idx);
                 attempt += 1;
                 tokio::select! {
                     _ = ctx.cancel.cancelled() => return Ok(()),
@@ -253,10 +359,8 @@ async fn run_segment(ctx: &WorkerCtx, idx: usize) -> Result<(), EngineError> {
     }
 }
 
-/// Streams this segment's remaining range into the part file. The segment's
-/// `end` can shrink while we run (dynamic split), so it's re-read per chunk,
-/// and bytes are reserved under the lock before writing so a concurrent split
-/// never hands out a range we're about to write.
+/// Streams this segment's remaining range into the part file. The segment's `end`
+/// can shrink while we run (dynamic split), so it's re-read per chunk.
 async fn fetch_segment(ctx: &WorkerCtx, idx: usize) -> Result<(), EngineError> {
     let (pos, end) = {
         let s = ctx.segs.lock().unwrap();
@@ -273,7 +377,16 @@ async fn fetch_segment(ctx: &WorkerCtx, idx: usize) -> Result<(), EngineError> {
     match resp.status() {
         StatusCode::PARTIAL_CONTENT => {}
         StatusCode::OK => return Err(EngineError::RangeNotHonored),
-        s => return Err(EngineError::from_status(s.as_u16())),
+        _ => return Err(EngineError::from_response(&resp)),
+    }
+    // Trust the bytes only if the server says they start where we asked.
+    let served = resp
+        .headers()
+        .get(header::CONTENT_RANGE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(parse_content_range);
+    if served != Some((pos, ctx.size)) {
+        return Err(EngineError::RangeNotHonored);
     }
 
     let mut file = OpenOptions::new().write(true).open(&ctx.part).await?;
@@ -287,18 +400,12 @@ async fn fetch_segment(ctx: &WorkerCtx, idx: usize) -> Result<(), EngineError> {
         let Some(chunk) = next else { break };
         let chunk = chunk?;
         if let Some(l) = &ctx.limiter {
-            l.acquire(chunk.len() as u64).await;
+            tokio::select! {
+                _ = ctx.cancel.cancelled() => break,
+                _ = l.acquire(chunk.len() as u64) => {}
+            }
         }
-        let (take, segment_done) = {
-            let mut s = ctx.segs.lock().unwrap();
-            let take = (s[idx].remaining() as usize).min(chunk.len());
-            s[idx].written += take as u64;
-            (take, s[idx].remaining() == 0)
-        };
-        if let Err(e) = file.write_all(&chunk[..take]).await {
-            ctx.segs.lock().unwrap()[idx].written -= take as u64;
-            return Err(e.into());
-        }
+        let (take, segment_done) = commit_chunk(&mut file, &ctx.segs, idx, &chunk).await?;
         if segment_done || take < chunk.len() {
             break;
         }
@@ -312,12 +419,48 @@ async fn fetch_segment(ctx: &WorkerCtx, idx: usize) -> Result<(), EngineError> {
     }
 }
 
+/// `bytes 100-199/1000` → (100, 1000).
+fn parse_content_range(value: &str) -> Option<(u64, u64)> {
+    let (range, total) = value.strip_prefix("bytes ")?.split_once('/')?;
+    let start = range.split_once('-')?.0.trim().parse().ok()?;
+    Some((start, total.trim().parse().ok()?))
+}
+
+/// Writes as much of `chunk` as segment `idx` still needs. The bytes are reserved as
+/// in-flight (so a concurrent split can't hand them out) and only count as `written`
+/// once the write has really completed; a failed write leaves nothing counted.
+/// Returns (bytes taken, segment finished).
+async fn commit_chunk(
+    file: &mut tokio::fs::File,
+    segs: &Mutex<Vec<Segment>>,
+    idx: usize,
+    chunk: &[u8],
+) -> Result<(usize, bool), EngineError> {
+    let take = {
+        let mut s = segs.lock().unwrap();
+        let take = (s[idx].remaining() as usize).min(chunk.len());
+        s[idx].inflight += take as u64;
+        take
+    };
+    // tokio reports write errors only on the next operation, so flush to surface them.
+    let written = async {
+        file.write_all(&chunk[..take]).await?;
+        file.flush().await
+    }
+    .await;
+    let mut s = segs.lock().unwrap();
+    s[idx].inflight -= take as u64;
+    written?;
+    s[idx].written += take as u64;
+    Ok((take, s[idx].remaining() == 0))
+}
+
 /// Servers without range support (or unknown size): one sequential stream.
 /// Pausing discards the partial file, because it can't be resumed.
 async fn single_stream(job: &Job<'_>, info: &RemoteInfo) -> Result<Outcome, EngineError> {
     let resp = job.client.get(&info.url).send().await?;
     if !resp.status().is_success() {
-        return Err(EngineError::from_status(resp.status().as_u16()));
+        return Err(EngineError::from_response(&resp));
     }
     let total = info.size.or(resp.content_length());
     let mut file = tokio::fs::File::create(&job.part).await?;
@@ -327,17 +470,21 @@ async fn single_stream(job: &Job<'_>, info: &RemoteInfo) -> Result<Outcome, Engi
     let mut last_bytes = 0_u64;
     loop {
         let next = tokio::select! {
-            _ = job.cancel.cancelled() => {
-                drop(file);
-                let _ = tokio::fs::remove_file(&job.part).await;
-                return Ok(Outcome::Paused);
-            }
+            _ = job.cancel.cancelled() => None,
             c = stream.next() => c,
         };
+        if job.cancel.is_cancelled() {
+            drop(file);
+            let _ = tokio::fs::remove_file(&job.part).await;
+            return Ok(Outcome::Paused);
+        }
         let Some(chunk) = next else { break };
         let chunk = chunk?;
         if let Some(l) = &job.opts.limiter {
-            l.acquire(chunk.len() as u64).await;
+            tokio::select! {
+                _ = job.cancel.cancelled() => continue,
+                _ = l.acquire(chunk.len() as u64) => {}
+            }
         }
         file.write_all(&chunk).await?;
         downloaded += chunk.len() as u64;
@@ -354,4 +501,31 @@ async fn single_stream(job: &Job<'_>, info: &RemoteInfo) -> Result<Outcome, Engi
         return Err(EngineError::Network("connection closed early".into()));
     }
     finish(job, total, downloaded).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn commit_chunk_does_not_count_bytes_that_failed_to_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ro.bin");
+        std::fs::write(&path, vec![0u8; 1024]).unwrap();
+        // A read-only handle: the write itself fails, but tokio only reports it on flush.
+        let mut file = tokio::fs::File::from_std(std::fs::File::open(&path).unwrap());
+        let segs = Mutex::new(vec![Segment::new(0, 1024)]);
+        let result = commit_chunk(&mut file, &segs, 0, &[7u8; 512]).await;
+        let seg = segs.lock().unwrap()[0].clone();
+        assert!(result.is_err(), "write to read-only file must fail");
+        assert_eq!(seg.written, 0, "failed bytes must not count as downloaded");
+        assert_eq!(seg.pos(), 0, "nothing may stay reserved after a failed write");
+    }
+
+    #[test]
+    fn parses_content_range() {
+        assert_eq!(parse_content_range("bytes 100-199/1000"), Some((100, 1000)));
+        assert_eq!(parse_content_range("bytes 0-0/*"), None);
+        assert_eq!(parse_content_range("garbage"), None);
+    }
 }

@@ -1,9 +1,8 @@
 use clap::Parser;
-use rdm_engine::filename::unique_path;
-use rdm_engine::state::part_path;
+use rdm_engine::filename::resume_target;
 use rdm_engine::{CancellationToken, DownloadOptions, Outcome, Progress, RateLimiter, default_client, download, probe};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 use tokio::sync::watch;
@@ -34,7 +33,7 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let dest = pick_dest(&args.dir, &info.filename);
+    let dest = resume_target(&args.dir, &info.filename, &args.url);
     println!("{} → {}", info.filename, dest.display());
     println!(
         "size: {}  resumable: {}",
@@ -81,12 +80,6 @@ async fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
-}
-
-/// Reuse the destination of an unfinished download so it resumes.
-fn pick_dest(dir: &Path, name: &str) -> PathBuf {
-    let direct = dir.join(name);
-    if part_path(&direct).exists() { direct } else { unique_path(dir, name) }
 }
 
 fn progress_line(p: &Progress) -> String {

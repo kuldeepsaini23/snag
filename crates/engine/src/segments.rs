@@ -6,14 +6,18 @@ pub struct Segment {
     /// Exclusive.
     pub end: u64,
     pub written: u64,
+    /// Bytes handed to a worker's write that hasn't completed yet. Never persisted:
+    /// only `written` bytes are known to be in the file.
+    #[serde(skip, default)]
+    pub inflight: u64,
 }
 
 impl Segment {
     pub fn new(start: u64, end: u64) -> Self {
-        Self { start, end, written: 0 }
+        Self { start, end, written: 0, inflight: 0 }
     }
     pub fn pos(&self) -> u64 {
-        self.start + self.written
+        self.start + self.written + self.inflight
     }
     pub fn remaining(&self) -> u64 {
         self.end.saturating_sub(self.pos())

@@ -1,4 +1,5 @@
 use percent_encoding::percent_decode_str;
+use crate::state::{DownloadState, part_path, state_path};
 use std::path::{Path, PathBuf};
 
 pub fn filename_from(content_disposition: Option<&str>, url: &str) -> String {
@@ -47,24 +48,75 @@ pub fn sanitize(name: &str) -> String {
     if trimmed.is_empty() { "download".to_string() } else { trimmed.to_string() }
 }
 
+/// First free name: `name`, `name (1)`, … A name is taken if the file exists or an
+/// unfinished download (`<name>.rdmpart`) is using it.
 pub fn unique_path(dir: &Path, name: &str) -> PathBuf {
-    let candidate = dir.join(name);
-    if !candidate.exists() {
-        return candidate;
-    }
+    candidates(dir, name)
+        .find(|p| !p.exists() && !part_path(p).exists())
+        .expect("unbounded counter always finds a free name")
+}
+
+/// Where to save `name` from `url` in `dir`: an unfinished download of the same URL
+/// (`<cand>.rdmpart` + sidecar with that URL) is resumed, otherwise a free name is picked.
+pub fn resume_target(dir: &Path, name: &str, url: &str) -> PathBuf {
+    candidates(dir, name)
+        .find(|p| {
+            if part_path(p).exists() {
+                sidecar_url(p).as_deref() == Some(url)
+            } else {
+                !p.exists()
+            }
+        })
+        .expect("unbounded counter always finds a usable name")
+}
+
+fn candidates(dir: &Path, name: &str) -> impl Iterator<Item = PathBuf> {
     let (stem, ext) = match name.rsplit_once('.') {
         Some((s, e)) if !s.is_empty() => (s.to_string(), format!(".{e}")),
         _ => (name.to_string(), String::new()),
     };
-    (1..)
-        .map(|i| dir.join(format!("{stem} ({i}){ext}")))
-        .find(|p| !p.exists())
-        .expect("unbounded counter always finds a free name")
+    let dir = dir.to_path_buf();
+    std::iter::once(dir.join(name)).chain((1..).map(move |i| dir.join(format!("{stem} ({i}){ext}"))))
+}
+
+fn sidecar_url(dest: &Path) -> Option<String> {
+    let bytes = std::fs::read(state_path(dest)).ok()?;
+    serde_json::from_slice::<DownloadState>(&bytes).ok().map(|s| s.url)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn unfinished(dir: &Path, file: &str, url: &str) {
+        let dest = dir.join(file);
+        std::fs::write(crate::state::part_path(&dest), b"partial").unwrap();
+        let state = crate::state::DownloadState { url: url.into(), size: 7, etag: None, last_modified: None, segments: vec![] };
+        std::fs::write(crate::state::state_path(&dest), serde_json::to_vec(&state).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn unique_path_skips_unfinished_part() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.txt.rdmpart"), b"x").unwrap();
+        assert_eq!(unique_path(dir.path(), "a.txt"), dir.path().join("a (1).txt"));
+    }
+
+    #[test]
+    fn resume_target_reuses_unfinished_download_of_same_url() {
+        let dir = tempfile::tempdir().unwrap();
+        unfinished(dir.path(), "a.bin", "http://x/other");
+        unfinished(dir.path(), "a (1).bin", "http://x/mine");
+        assert_eq!(resume_target(dir.path(), "a.bin", "http://x/mine"), dir.path().join("a (1).bin"));
+    }
+
+    #[test]
+    fn resume_target_never_reuses_another_urls_part() {
+        let dir = tempfile::tempdir().unwrap();
+        unfinished(dir.path(), "a.bin", "http://x/other");
+        assert_eq!(resume_target(dir.path(), "a.bin", "http://x/mine"), dir.path().join("a (1).bin"));
+        assert_eq!(resume_target(dir.path(), "b.bin", "http://x/mine"), dir.path().join("b.bin"));
+    }
 
     #[test]
     fn prefers_rfc5987_filename() {

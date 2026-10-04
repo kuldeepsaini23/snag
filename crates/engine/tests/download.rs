@@ -90,13 +90,14 @@ async fn retries_dropped_connections() {
 }
 
 #[tokio::test]
-async fn range_not_honored_fails_cleanly() {
+async fn range_not_honored_falls_back_to_single_stream() {
     let s = TestServer::start().await;
     let dir = tempfile::tempdir().unwrap();
     let dest = dir.path().join("cdn.bin");
     let (r, _) = run(&s.url("/ranges-once/2000000"), &dest, &opts(4), CancellationToken::new()).await;
-    assert!(matches!(r, Err(EngineError::RangeNotHonored)), "{r:?}");
-    assert!(!dest.exists());
+    assert!(matches!(r, Ok(Outcome::Completed(_))), "{r:?}");
+    assert!(std::fs::read(&dest).unwrap() == data(2_000_000), "content mismatch");
+    assert!(!state_path(&dest).exists());
 }
 
 #[tokio::test]
@@ -118,7 +119,7 @@ async fn server_without_ranges_uses_single_stream() {
     let dest = dir.path().join("plain.bin");
     let (r, last) = run(&s.url("/norange/1048576"), &dest, &opts(8), CancellationToken::new()).await;
     assert!(matches!(r.unwrap(), Outcome::Completed(_)));
-    assert_eq!(std::fs::read(&dest).unwrap(), data(1_048_576));
+    assert!(std::fs::read(&dest).unwrap() == data(1_048_576), "content mismatch");
     assert!(!state_path(&dest).exists());
     assert_eq!(last.downloaded, 1_048_576);
 }
@@ -164,4 +165,100 @@ async fn speed_limit_is_respected() {
     assert!(matches!(r.unwrap(), Outcome::Completed(_)));
     // 1 s burst allowance + 2 MiB at 1 MiB/s ≈ 2 s.
     assert!((1.7..=3.5).contains(&secs), "took {secs:.2}s");
+}
+
+#[tokio::test]
+async fn completes_on_connection_limited_server() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("limited.bin");
+    let size = 3 * 1024 * 1024;
+    let (r, _) = run(&s.url(&format!("/limited/{size}")), &dest, &opts(8), CancellationToken::new()).await;
+    assert!(matches!(r, Ok(Outcome::Completed(_))), "{r:?}");
+    assert!(std::fs::read(&dest).unwrap() == data(size), "content mismatch");
+}
+
+#[tokio::test]
+async fn probe_retries_when_server_is_busy() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("busy.bin");
+    let (r, _) = run(&s.url("/busy/1048576"), &dest, &opts(4), CancellationToken::new()).await;
+    assert!(matches!(r, Ok(Outcome::Completed(_))), "{r:?}");
+    assert!(std::fs::read(&dest).unwrap() == data(1_048_576), "content mismatch");
+}
+
+#[tokio::test]
+async fn retry_budget_resets_after_progress() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("drops.bin");
+    let size = 1024 * 1024;
+    // One connection: the single segment is dropped 10 times, each time after real progress.
+    let (r, _) = run(&s.url(&format!("/drops/{size}")), &dest, &opts(1), CancellationToken::new()).await;
+    assert!(matches!(r, Ok(Outcome::Completed(_))), "{r:?}");
+    assert!(std::fs::read(&dest).unwrap() == data(size), "content mismatch");
+}
+
+#[tokio::test]
+async fn periodic_save_failure_is_not_fatal() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("locked.bin");
+    // The sidecar's temp path is occupied by a directory, so every periodic save fails.
+    std::fs::create_dir_all(state_path(&dest).with_extension("rdmstate.tmp")).unwrap();
+    let size = 4 * 1024 * 1024;
+    let (r, _) = run(&s.url(&format!("/slow/{size}")), &dest, &opts(4), CancellationToken::new()).await;
+    assert!(matches!(r, Ok(Outcome::Completed(_))), "{r:?}");
+    assert!(std::fs::read(&dest).unwrap() == data(size), "content mismatch");
+}
+
+#[tokio::test]
+async fn concurrent_download_to_same_destination_is_rejected() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("same.bin");
+    let size = 4 * 1024 * 1024;
+    let url = s.url(&format!("/slow/{size}"));
+    let first = {
+        let (url, dest) = (url.clone(), dest.clone());
+        tokio::spawn(async move { run(&url, &dest, &opts(4), CancellationToken::new()).await.0 })
+    };
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let (second, _) = run(&url, &dest, &opts(4), CancellationToken::new()).await;
+    assert!(matches!(second, Err(EngineError::DestinationBusy)), "{second:?}");
+    assert!(matches!(first.await.unwrap(), Ok(Outcome::Completed(_))));
+    assert!(std::fs::read(&dest).unwrap() == data(size), "content mismatch");
+}
+
+#[tokio::test]
+async fn wrong_content_range_is_detected_and_falls_back() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("wrong.bin");
+    let size = 1024 * 1024;
+    let (r, _) = run(&s.url(&format!("/wrong-range/{size}")), &dest, &opts(4), CancellationToken::new()).await;
+    assert!(matches!(r, Ok(Outcome::Completed(_))), "{r:?}");
+    assert!(std::fs::read(&dest).unwrap() == data(size), "content mismatch");
+}
+
+#[tokio::test]
+async fn pause_is_prompt_with_speed_limit() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("throttled.bin");
+    let o = DownloadOptions { limiter: Some(Arc::new(RateLimiter::new(4 * 1024))), ..opts(4) };
+    let cancel = CancellationToken::new();
+    let trigger = cancel.clone();
+    let cancelled_at = Arc::new(std::sync::Mutex::new(None));
+    let mark = cancelled_at.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        *mark.lock().unwrap() = Some(std::time::Instant::now());
+        trigger.cancel();
+    });
+    let (r, _) = run(&s.url("/file/4194304"), &dest, &o, cancel).await;
+    let lag = cancelled_at.lock().unwrap().expect("cancel fired").elapsed();
+    assert_eq!(r.unwrap(), Outcome::Paused);
+    assert!(lag < Duration::from_millis(1000), "pause took {lag:?}");
 }
