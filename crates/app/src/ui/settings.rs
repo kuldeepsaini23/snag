@@ -138,7 +138,7 @@ fn general(m: &Model, c: Colors) -> Element<'_, Message> {
             "Downloads",
             vec![
                 line("Default folder", "New downloads are saved here unless a category folder applies", field("Folder", &d.download_dir, 260.0, Message::DraftDir, c), c),
-                line("Sort into category folders", "Videos, Music, Archives, Documents, Programs", switch(d.sort_into_folders, Message::DraftSort, c), c),
+                line("Sort into category folders", "Videos, Music, Images, Archives, Documents, Programs", switch(d.sort_into_folders, Message::DraftSort, c), c),
             ],
             c,
         ),

@@ -633,3 +633,21 @@ async fn add_media_to_scheduled_queue_waits() {
     assert_eq!(m.snapshot().await.item(other).unwrap().queue, 0);
     m.shutdown().await;
 }
+
+#[tokio::test]
+async fn gallery_item_saves_all_images_to_its_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let m = manager(dir.path(), |_| {}).await;
+    let mut rx = m.subscribe();
+    let id = m.add_gallery("https://www.pinterest.com/pin/ok".into()).await;
+    let done = wait_item(&mut rx, has(id, Status::Done)).await;
+    assert_eq!(done.category, rdm_core::Category::Image);
+    assert_eq!(done.kind, rdm_core::Kind::Gallery);
+    assert_eq!(done.name, "pinterest.com · ok");
+    let folder = done.dest.clone().expect("the gallery's folder");
+    assert_eq!(folder, dir.path().join("dl").join("pinterest.com · ok"), "sorting is off in these tests");
+    assert!(folder.join("3.jpg").exists());
+    assert_eq!(done.downloaded, 350, "the folder's real size");
+    m.shutdown().await;
+}

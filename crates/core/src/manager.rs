@@ -54,6 +54,12 @@ pub struct Manager {
     cookie_dir: PathBuf,
 }
 
+/// Total size of the files directly in `dir`.
+fn dir_size(dir: &Path) -> Option<u64> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    Some(entries.filter_map(|e| e.ok()?.metadata().ok()).filter(|m| m.is_file()).map(|m| m.len()).sum())
+}
+
 /// Locates yt-dlp, downloading it next to `state.json` (in `bin/`) the first time.
 #[derive(Clone)]
 struct Tools {
@@ -72,6 +78,26 @@ impl Tools {
 
     fn marker(&self) -> PathBuf {
         self.bin_dir.join("yt-dlp.checked")
+    }
+
+    /// gallery-dl, downloaded into `bin/` the first time (detached, like `ytdlp`).
+    async fn gallery_dl(&self) -> Result<PathBuf, String> {
+        let this = self.clone();
+        tokio::spawn(async move {
+            let _only_one = this.lock.lock().await;
+            let path = this.bin_dir.join("gallery-dl.exe");
+            if path.exists() {
+                return Ok(path);
+            }
+            let (progress, _) = watch::channel(Progress::default());
+            match download(&this.client, rdm_media::gallery::GALLERY_DL_URL, &path, &DownloadOptions::default(), CancellationToken::new(), &progress).await {
+                Ok(Outcome::Completed(_)) => Ok(path),
+                Ok(Outcome::Paused) => Err("gallery-dl download was interrupted".into()),
+                Err(e) => Err(format!("couldn't download gallery-dl: {e}")),
+            }
+        })
+        .await
+        .map_err(|e| e.to_string())?
     }
 
     async fn ytdlp_now(&self) -> Result<PathBuf, String> {
@@ -101,6 +127,7 @@ impl Tools {
 enum Cmd {
     Snapshot(oneshot::Sender<AppState>),
     AddMedia(String, String, MediaFormat, QueueId, oneshot::Sender<ItemId>),
+    AddGallery(String, oneshot::Sender<ItemId>),
     AddWith(String, Option<String>, oneshot::Sender<ItemId>),
     Offer(String, MediaInfo),
     SetQueues(Vec<Queue>),
@@ -167,6 +194,13 @@ impl Manager {
 
     pub async fn add_media(&self, url: String, title: String, format: MediaFormat) -> ItemId {
         self.add_media_to(url, title, format, 0).await
+    }
+
+    /// A page of images (Pinterest, Imgur, an Instagram photo post…): saved by gallery-dl.
+    pub async fn add_gallery(&self, url: String) -> ItemId {
+        let (reply, rx) = oneshot::channel();
+        let _ = self.tx.send(Cmd::AddGallery(url, reply));
+        rx.await.unwrap_or(ItemId(0))
     }
 
     /// `add_media` straight into `queue` (an unknown queue means Main), so it never starts in Main first.
@@ -405,6 +439,10 @@ impl Actor {
             Cmd::AddMedia(url, title, format, queue, reply) => {
                 let _ = reply.send(self.push_media(url, title, format, queue));
             }
+            Cmd::AddGallery(url, reply) => {
+                let name = crate::model::gallery_name(&url);
+                let _ = reply.send(self.push_item(url, name, Category::Image, Kind::Gallery, None, 0));
+            }
             Cmd::Offer(url, info) => self.offer(url, info),
             Cmd::SetQueues(queues) => self.set_queues(queues),
             Cmd::MoveToQueue(id, queue) => {
@@ -527,7 +565,7 @@ impl Actor {
     /// Restarts running video downloads so a new speed limit reaches yt-dlp (it continues its partial files).
     fn restart_media(&mut self) {
         for (id, r) in self.running.iter_mut() {
-            let media = self.state.item(*id).is_some_and(|i| matches!(i.kind, Kind::Media(_)));
+            let media = self.state.item(*id).is_some_and(|i| matches!(i.kind, Kind::Media(_) | Kind::Gallery));
             if media && r.stop == Stop::None {
                 r.stop = Stop::Schedule; // comes back as Queued and starts again
                 r.cancel.cancel();
@@ -579,7 +617,7 @@ impl Actor {
         let share = if limit == 0 { 0 } else { (limit / (running.len() + picked.len()).max(1) as u64).max(1) };
         if limit > 0 {
             for (id, r) in self.running.iter_mut() {
-                let video = self.state.item(*id).is_some_and(|i| matches!(i.kind, Kind::Media(_)));
+                let video = self.state.item(*id).is_some_and(|i| matches!(i.kind, Kind::Media(_) | Kind::Gallery));
                 if video && r.stop == Stop::None && (r.limit_bps == 0 || r.limit_bps > share) {
                     r.stop = Stop::Schedule;
                     r.cancel.cancel();
@@ -622,10 +660,14 @@ impl Actor {
 
         let cancel = CancellationToken::new();
         let (progress_tx, progress_rx) = watch::channel(Progress::default());
-        let video = matches!(kind, Kind::Media(_));
+        let video = matches!(kind, Kind::Media(_) | Kind::Gallery);
         self.running.insert(id, Running { cancel: cancel.clone(), progress: progress_rx, stop: Stop::None, limit_bps: if video { share } else { 0 } });
         if let Kind::Media(format) = kind {
             self.start_media(id, url, format, work_dir, share, cancel, progress_tx);
+            return;
+        }
+        if kind == Kind::Gallery {
+            self.start_gallery(id, url, share, cancel, progress_tx);
             return;
         }
 
@@ -712,6 +754,45 @@ impl Actor {
         });
     }
 
+    /// Galleries go through gallery-dl into `<Images>/<name>`; existing images are skipped, so
+    /// a paused or restarted gallery continues.
+    fn start_gallery(&mut self, id: ItemId, url: String, limit_bps: u64, cancel: CancellationToken, progress_tx: watch::Sender<Progress>) {
+        let settings = &self.state.settings;
+        let base = if settings.sort_into_folders { settings.download_dir.join(Category::Image.folder()) } else { settings.download_dir.clone() };
+        let name = self.state.item(id).map(|i| i.name.clone()).unwrap_or_else(|| crate::model::gallery_name(&url));
+        let dir = base.join(name);
+        let cookies = cookie_file(&self.jar, &self.cookie_dir, &id.0.to_string(), &url);
+        let opts = MediaOptions { cookies: cookies.clone(), limit_bps, temp_dir: None };
+        let (tools, msg_tx) = (self.tools.clone(), self.msg_tx.clone());
+        tokio::spawn(async move {
+            let result = async {
+                let exe = tokio::select! {
+                    _ = cancel.cancelled() => return Ok(Outcome::Paused),
+                    path = tools.gallery_dl() => path?,
+                };
+                let (media_tx, mut media_rx) = watch::channel(MediaProgress::default());
+                let forward = tokio::spawn(async move {
+                    while media_rx.changed().await.is_ok() {
+                        let p = media_rx.borrow_and_update().clone();
+                        progress_tx.send_replace(Progress { downloaded: p.downloaded, total: p.total, speed_bps: p.speed_bps, segments: Vec::new() });
+                    }
+                });
+                let outcome = rdm_media::gallery::download(&exe, &url, &dir, &opts, cancel, &media_tx).await;
+                drop(media_tx);
+                let _ = forward.await;
+                Ok(match outcome? {
+                    MediaOutcome::Completed(path) => Outcome::Completed(path),
+                    MediaOutcome::Paused => Outcome::Paused,
+                })
+            }
+            .await;
+            if let Some(file) = cookies {
+                let _ = std::fs::remove_file(file);
+            }
+            let _ = msg_tx.send(Msg::Finished { id, result });
+        });
+    }
+
     fn on_msg(&mut self, msg: Msg) {
         match msg {
             Msg::Resolve { id, name, total, reply } => {
@@ -749,10 +830,11 @@ impl Actor {
                     }
                     item.status = match result {
                         Ok(Outcome::Completed(path)) => {
-                            // The real size: video downloads report progress per stream.
-                            if let Ok(meta) = std::fs::metadata(&path) {
-                                item.downloaded = meta.len();
-                                item.total = Some(meta.len());
+                            // The real size: video downloads report progress per stream; a gallery is a folder.
+                            let size = if path.is_dir() { dir_size(&path) } else { std::fs::metadata(&path).map(|m| m.len()).ok() };
+                            if let Some(size) = size {
+                                item.downloaded = size;
+                                item.total = Some(size);
                             }
                             item.dest = Some(path);
                             Status::Done

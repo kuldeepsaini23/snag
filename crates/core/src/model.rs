@@ -27,6 +27,22 @@ pub enum Kind {
     Http,
     /// A video/audio page, fetched by yt-dlp in this format.
     Media(MediaFormat),
+    /// A page of images, saved by gallery-dl into a folder of its own.
+    Gallery,
+}
+
+/// "pinterest.com · 123": a gallery's name and folder (safe as a Windows file name).
+pub fn gallery_name(url: &str) -> String {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    let rest = rest.split(['?', '#']).next().unwrap_or(rest);
+    let mut parts = rest.split('/').filter(|p| !p.is_empty());
+    let host = parts.next().unwrap_or("gallery");
+    let host = host.strip_prefix("www.").unwrap_or(host);
+    let name = match parts.next_back() {
+        Some(last) => format!("{host} · {last}"),
+        None => host.to_string(),
+    };
+    name.chars().map(|c| if r#"<>:"/\|?*"#.contains(c) || c.is_control() { '_' } else { c }).collect::<String>().trim_end_matches(['.', ' ']).to_string()
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

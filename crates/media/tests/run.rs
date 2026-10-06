@@ -121,3 +121,38 @@ async fn real_cancel_leaves_no_processes_behind() {
     assert_eq!(r, Ok(MediaOutcome::Paused));
     assert_eq!(after, before, "pausing left processes running");
 }
+
+#[tokio::test]
+async fn gallery_downloads_every_image_into_its_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("Images").join("pin");
+    let (tx, rx) = watch::channel(MediaProgress::default());
+    let r = rdm_media::gallery::download(&fake(), "fake://ok", &out, &MediaOptions::default(), CancellationToken::new(), &tx).await;
+    assert_eq!(r, Ok(MediaOutcome::Completed(out.clone())));
+    assert_eq!(rx.borrow().downloaded, 350, "new and already-there images both count");
+    assert!(out.join("3.jpg").exists());
+}
+
+#[tokio::test]
+async fn gallery_reports_errors_and_empty_pages() {
+    let dir = tempfile::tempdir().unwrap();
+    let (tx, _rx) = watch::channel(MediaProgress::default());
+    let r = rdm_media::gallery::download(&fake(), "fake://nope", dir.path(), &MediaOptions::default(), CancellationToken::new(), &tx).await;
+    assert_eq!(r, Err("No suitable extractor found for 'fake://nope'".to_string()));
+    let r = rdm_media::gallery::download(&fake(), "fake://empty", dir.path(), &MediaOptions::default(), CancellationToken::new(), &tx).await;
+    assert_eq!(r, Err("No images found on that page".to_string()));
+}
+
+#[tokio::test]
+async fn gallery_pause_kills_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let (tx, _rx) = watch::channel(MediaProgress::default());
+    let cancel = CancellationToken::new();
+    let stop = cancel.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        stop.cancel();
+    });
+    let r = tokio::time::timeout(std::time::Duration::from_secs(10), rdm_media::gallery::download(&fake(), "fake://slow", dir.path(), &MediaOptions::default(), cancel, &tx)).await;
+    assert_eq!(r, Ok(Ok(MediaOutcome::Paused)));
+}

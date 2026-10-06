@@ -77,6 +77,7 @@ pub fn tile<'a>(item: &Item, width: f32, height: f32, glyph_size: u16, c: Colors
         }
         (Kind::Media(_), _) | (_, Category::Video) => (Color::from_rgb8(0x8a, 0x55, 0x14), Color::from_rgb8(0x24, 0x1b, 0x12), Icon::PlayFill, Color::WHITE),
         (_, Category::Archive) => (c.raised, c.surface, Icon::FileZip, c.text2),
+        (_, Category::Image) => (Color::from_rgb8(0x1f, 0x5c, 0x55), Color::from_rgb8(0x16, 0x26, 0x24), Icon::Image, Color::WHITE),
         (_, Category::Document) => (c.raised, c.surface, if item.name.to_lowercase().ends_with(".pdf") { Icon::FilePdf } else { Icon::FileText }, c.text2),
         (_, Category::Program) => (c.raised, c.surface, Icon::AppWindow, c.text2),
         _ => (c.raised, c.surface, Icon::File, c.text2),

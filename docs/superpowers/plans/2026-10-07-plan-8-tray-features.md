@@ -91,9 +91,19 @@
 - The user picks a name from a shortlist.
 - The logo is drawn in Figma on the Components page.
 - Exported to `.ico` (window, tray, installer) and the extension icons (16/32/48/128).
-- "RDM" is replaced in the title, tray, notifications, extension and data folder. The data folder needs a migration from `%APPDATA%dm`.
+- "RDM" is replaced in the title, tray, notifications, extension and data folder. The data folder needs a migration from `%APPDATA%
+dm`.
 
 ### Task 11: verify
 - Run the tests, clippy and the snapshots.
 - Review the whole branch with a fresh opus reviewer and fix its findings.
 - Merge, rebuild the release and relaunch.
+
+---
+**Next plans (asked 2026-10-07):**
+- Plan 9: the Windows installer (roadmap phase 4).
+- Plan 10: macOS + Linux builds:
+  - Platform layers for reveal-in-folder, notifications, tool binaries and the data dir.
+  - Mac-style window buttons on macOS.
+  - GitHub Actions builds producing a .dmg, an AppImage and a .deb. This needs a GitHub repo, and Apple signing is optional ($99/yr).
+  - The Safari extension, built in Xcode on a Mac.

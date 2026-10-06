@@ -7,6 +7,7 @@ pub enum Category {
     Archive,
     Document,
     Program,
+    Image,
     Other,
 }
 
@@ -19,6 +20,7 @@ impl Category {
             "zip" | "rar" | "7z" | "tar" | "gz" | "bz2" | "xz" | "tgz" | "iso" => Self::Archive,
             "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "txt" | "epub" | "csv" | "md" | "odt" => Self::Document,
             "exe" | "msi" | "apk" | "dmg" | "deb" | "rpm" | "appimage" => Self::Program,
+            "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "svg" | "avif" | "heic" | "tif" | "tiff" => Self::Image,
             _ => Self::Other,
         }
     }
@@ -30,6 +32,7 @@ impl Category {
             Self::Archive => "Archives",
             Self::Document => "Documents",
             Self::Program => "Programs",
+            Self::Image => "Images",
             Self::Other => "Other",
         }
     }
@@ -49,5 +52,17 @@ mod tests {
         assert_eq!(Category::from_name("noext"), Category::Other);
         assert_eq!(Category::Video.folder(), "Videos");
         assert_eq!(Category::Other.folder(), "Other");
+    }
+
+    #[test]
+    fn image_extensions_categorised() {
+        for name in ["a.jpg", "b.JPEG", "c.png", "d.gif", "e.webp", "f.bmp", "g.svg", "h.avif", "i.heic", "j.tif", "k.tiff"] {
+            assert_eq!(Category::from_name(name), Category::Image, "{name}");
+        }
+        assert_eq!(Category::Image.folder(), "Images");
+        // Older state files only know the earlier categories; they must still load.
+        let old: Category = serde_json::from_str("\"Other\"").unwrap();
+        assert_eq!(old, Category::Other);
+        assert_eq!(serde_json::to_string(&Category::Image).unwrap(), "\"Image\"");
     }
 }

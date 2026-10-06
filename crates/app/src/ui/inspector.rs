@@ -17,6 +17,7 @@ pub fn view<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
     let quality = match &i.kind {
         Kind::Media(MediaFormat::Video { max_height }) => format!("Up to {max_height}p"),
         Kind::Media(MediaFormat::AudioMp3) => "MP3 audio".into(),
+        Kind::Gallery => "Original images".into(),
         Kind::Http => "Original file".into(),
     };
     let size = i.total.or((i.downloaded > 0).then_some(i.downloaded)).map(format::bytes).unwrap_or_else(|| "—".into());

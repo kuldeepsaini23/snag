@@ -71,6 +71,11 @@ async fn add(State(manager): State<Manager>, headers: HeaderMap, Json(req): Json
     if !cookies.is_empty() {
         manager.remember_cookies(cookies);
     }
+    // Image sites go to gallery-dl whatever the extension guessed (a page link would otherwise save HTML).
+    if rdm_media::gallery::is_gallery_url(&req.url) {
+        let id = manager.add_gallery(req.url).await;
+        return (StatusCode::OK, Json(json!({ "id": id.0 })));
+    }
     let media = match req.kind.as_deref() {
         Some("media") => true,
         Some("file") => false,
@@ -89,6 +94,10 @@ async fn add(State(manager): State<Manager>, headers: HeaderMap, Json(req): Json
 async fn add_media(manager: Manager, url: String) {
     match manager.probe_media(url.clone()).await {
         Ok(info) => manager.offer_media(url, info).await,
+        // A photo post (no video in it): save its images instead.
+        Err(e) if rdm_media::gallery::is_photo_post(&url, &e) => {
+            manager.add_gallery(url).await;
+        }
         Err(e) => manager.notify(format!("Couldn't read the link from the browser: {e}")).await,
     }
 }

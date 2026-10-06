@@ -32,6 +32,7 @@ pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
         let (glyph, name) = match cat {
             Category::Video => (Icon::FilmStrip, "Videos"),
             Category::Music => (Icon::MusicNotes, "Music"),
+            Category::Image => (Icon::Image, "Images"),
             Category::Archive => (Icon::FileZip, "Archives"),
             Category::Document => (Icon::FileText, "Documents"),
             _ => (Icon::AppWindow, "Programs"),

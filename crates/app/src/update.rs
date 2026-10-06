@@ -183,6 +183,9 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             model.url.clear();
             model.notice = None;
             let m = app.manager.clone();
+            if rdm_media::gallery::is_gallery_url(&url) {
+                return Task::perform(async move { m.add_gallery(url).await }, Message::Added);
+            }
             if rdm_media::is_media_url(&url) {
                 model.probing = true;
                 model.notice = Some("Reading video info… (the first time also fetches yt-dlp)".into());
@@ -382,6 +385,12 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                     return fire(&app.manager, move |m| async move { m.offer_media(url, info).await });
                 }
                 Ok(_) => model.notice = Some("No downloadable video or audio found on that page.".into()),
+                // A photo post: save its images instead.
+                Err(e) if rdm_media::gallery::is_photo_post(&url, &e) => {
+                    model.notice = None;
+                    let m = app.manager.clone();
+                    return Task::perform(async move { m.add_gallery(url).await }, Message::Added);
+                }
                 Err(e) => model.notice = Some(format!("Couldn't read that link: {e}")),
             }
         }

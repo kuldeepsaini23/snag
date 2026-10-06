@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
+pub mod gallery;
+
 pub const YTDLP_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

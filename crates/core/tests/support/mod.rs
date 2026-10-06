@@ -63,6 +63,8 @@ pub fn install_fake_ytdlp(data_dir: &std::path::Path) {
     let bin = data_dir.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     std::fs::copy(fake, bin.join("yt-dlp.exe")).unwrap();
+    // The same fake plays gallery-dl (it switches on the `-D <dir>` argument).
+    std::fs::copy(fake, bin.join("gallery-dl.exe")).unwrap();
 }
 
 /// Range-capable file of `size` deterministic bytes, optionally slowed per 16 KiB chunk.

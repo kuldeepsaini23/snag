@@ -28,7 +28,7 @@ pub enum Library {
 }
 
 /// The sidebar's categories, in order.
-pub const CATEGORIES: [Category; 5] = [Category::Video, Category::Music, Category::Archive, Category::Document, Category::Program];
+pub const CATEGORIES: [Category; 6] = [Category::Video, Category::Music, Category::Image, Category::Archive, Category::Document, Category::Program];
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Counts {
@@ -116,6 +116,8 @@ impl Model {
 pub enum LinkTag {
     Video,
     Playlist,
+    /// A page of images (gallery-dl).
+    Images,
     File,
 }
 
@@ -124,6 +126,7 @@ impl LinkTag {
         match self {
             Self::Video => "Video detected",
             Self::Playlist => "Playlist detected",
+            Self::Images => "Images detected",
             Self::File => "File link",
         }
     }
@@ -135,7 +138,9 @@ pub fn link_tag(url: &str) -> Option<LinkTag> {
     if !web {
         return None;
     }
-    if url.contains("list=") || url.contains("/playlist") {
+    if rdm_media::gallery::is_gallery_url(url) {
+        Some(LinkTag::Images)
+    } else if url.contains("list=") || url.contains("/playlist") {
         Some(LinkTag::Playlist)
     } else if rdm_media::is_media_url(url) {
         Some(LinkTag::Video)
@@ -149,6 +154,7 @@ pub fn kind_label(item: &Item) -> String {
     match &item.kind {
         Kind::Media(MediaFormat::Video { max_height }) => format!("{max_height}p · MP4"),
         Kind::Media(MediaFormat::AudioMp3) => "Audio · MP3".into(),
+        Kind::Gallery => "Images".into(),
         Kind::Http => item
             .name
             .rsplit_once('.')
@@ -393,6 +399,9 @@ mod tests {
         assert_eq!(link_tag("ftp://x/y"), None);
         assert_eq!(link_tag("hello"), None);
         assert_eq!(LinkTag::Video.label(), "Video detected");
+        assert_eq!(link_tag("https://www.pinterest.com/pin/1/"), Some(LinkTag::Images));
+        assert_eq!(link_tag("https://www.reddit.com/gallery/abc"), Some(LinkTag::Images), "before the video check");
+        assert_eq!(LinkTag::Images.label(), "Images detected");
     }
 
     #[test]
@@ -410,6 +419,9 @@ mod tests {
         assert_eq!(row_meta(&done), "Completed · PDF · 12 MB");
         let mp3 = Item { kind: Kind::Media(MediaFormat::AudioMp3), ..item(4, "x", Category::Music, Status::Queued) };
         assert_eq!(row_meta(&mp3), "Queued · Audio · MP3");
+        let mut gallery = Item { kind: Kind::Gallery, ..item(7, "pinterest.com · 1", Category::Image, Status::Done) };
+        gallery.total = Some(350 * 1024);
+        assert_eq!(row_meta(&gallery), "Completed · Images · 350 KB");
         assert_eq!(row_meta(&item(5, "noext", Category::Other, Status::Failed(String::new()))), "Failed");
         assert_eq!(row_meta(&item(6, "f", Category::Other, Status::Failed("HTTP 403".into()))), "HTTP 403");
     }
