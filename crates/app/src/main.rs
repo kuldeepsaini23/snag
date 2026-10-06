@@ -46,6 +46,7 @@ fn main() -> iced::Result {
         .font(ui::icon::INTER_REGULAR)
         .font(ui::icon::INTER_MEDIUM)
         .font(ui::icon::INTER_SEMIBOLD)
+        .font(ui::icon::JETBRAINS_MONO)
         .font(ui::icon::PHOSPHOR)
         .font(ui::icon::PHOSPHOR_FILL)
         .default_font(ui::style::INTER)

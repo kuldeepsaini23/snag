@@ -9,7 +9,8 @@ use iced::{Background, Border, Color, Font, Shadow, Theme, Vector};
 pub const INTER: Font = Font::with_name("Inter");
 pub const MEDIUM: Font = Font { weight: Weight::Medium, ..INTER };
 pub const SEMIBOLD: Font = Font { weight: Weight::Semibold, ..INTER };
-pub const MONO: Font = Font::MONOSPACE;
+/// Numbers (speed, time left, sizes), as in the Figma file.
+pub const MONO: Font = Font::with_name("JetBrains Mono");
 
 fn border(color: Color, width: f32, radius: f32) -> Border {
     Border { color, width, radius: Radius::from(radius) }

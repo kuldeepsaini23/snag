@@ -142,7 +142,7 @@ fn options<'a>(p: &'a Picker, c: Colors) -> Element<'a, Message> {
             MediaFormat::Video { .. } => "MP4",
             MediaFormat::AudioMp3 => "MP3",
         };
-        let size = o.approx_size.map(|s| format!("≈ {}", format::bytes(s))).unwrap_or_default();
+        let size = o.approx_size.map(|s| format!("≈ {}", format::size(s))).unwrap_or_default();
         let row = row![label, Space::new().width(Fill), small(what, c.text3), text(size).size(12).font(style::MONO).color(c.text2)].spacing(12).align_y(Alignment::Center);
         col.push(button(row).width(Fill).padding([9, 12]).style(style::option(c, chosen)).on_press(Message::PickOption(i)))
     });

@@ -140,7 +140,12 @@ fn toast(m: &Model, c: Colors) -> Option<Element<'_, Message>> {
     Some(card(body.into()).into())
 }
 
-/// Small secondary text.
+/// Small secondary text (Figma: Inter Regular 11.5).
 pub fn small<'a>(s: impl text::IntoFragment<'a>, color: Color) -> text::Text<'a> {
     text(s).size(11.5).color(color)
+}
+
+/// Counts, subtitles and On/Off (Figma: Inter Regular 11).
+pub fn tiny<'a>(s: impl text::IntoFragment<'a>, color: Color) -> text::Text<'a> {
+    text(s).size(11).color(color)
 }

@@ -3,7 +3,7 @@
 use super::icon::{Icon, PHOSPHOR_FONT, icon};
 use super::style;
 use super::theme::Colors;
-use super::small;
+use super::tiny;
 use crate::format;
 use crate::state::{Model, SettingsTab};
 use crate::update::{Message, search_input};
@@ -16,7 +16,7 @@ pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
     let subtitle = if running == 0 { "Nothing downloading".to_string() } else { format!("{running} active · {}", format::speed(speed)) };
     let logo = container(icon(Icon::Download, 15).color(c.on_accent)).center(28).style(style::tag(c.accent, c.on_accent));
     let square = |i: Icon, on: bool, msg: Message| button(container(icon(i, 15)).center(Fill)).width(30).height(28).padding(0).style(style::icon_button(c, on)).on_press(msg);
-    let title = column![text("Downloads").size(13).font(style::SEMIBOLD), small(subtitle, c.text3)].spacing(1);
+    let title = column![text("Downloads").size(13).font(style::SEMIBOLD), tiny(subtitle, c.text3)].spacing(1);
 
     let counts = m.counts();
     let pills = FILTERS.iter().fold(row![].spacing(2), |r, &f| {
@@ -30,7 +30,7 @@ pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
         let label = row![
             icon(glyph, 13),
             text(name).size(12.5).font(if on { style::MEDIUM } else { style::INTER }),
-            small(counts.of(f).to_string(), c.text3),
+            tiny(counts.of(f).to_string(), c.text3),
         ]
         .spacing(6)
         .align_y(Alignment::Center);
@@ -42,7 +42,7 @@ pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
         .id(search_input())
         .on_input(Message::Search)
         .icon(text_input::Icon { font: PHOSPHOR_FONT, code_point: Icon::MagnifyingGlass.ch(), size: Some(13.0.into()), spacing: 7.0, side: text_input::Side::Left })
-        .size(12.5)
+        .size(12)
         .padding([6, 10])
         .width(150)
         .style(style::input(c));

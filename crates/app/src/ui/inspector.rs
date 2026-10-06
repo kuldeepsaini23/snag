@@ -4,7 +4,6 @@ use super::icon::{Icon, icon};
 use super::list::tile;
 use super::style;
 use super::theme::Colors;
-use super::small;
 use crate::choices::QueueChoice;
 use crate::format;
 use crate::state::{Model, file_missing};
@@ -26,9 +25,9 @@ pub fn view<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
     let kind = view::kind_label(i);
 
     let line = |label: &'static str, value: Element<'a, Message>| -> Element<'a, Message> {
-        row![small(label, c.text2).width(70), container(value).width(Fill).align_x(Alignment::End).clip(true)].align_y(Alignment::Center).padding([8, 10]).into()
+        row![text(label).size(12.5).color(c.text2).width(70), container(value).width(Fill).align_x(Alignment::End).clip(true)].align_y(Alignment::Center).padding([8, 10]).into()
     };
-    let value = |s: String| -> Element<'a, Message> { text(s).size(12).wrapping(text::Wrapping::None).into() };
+    let value = |s: String| -> Element<'a, Message> { text(s).size(12.5).wrapping(text::Wrapping::None).into() };
     let mut table: Vec<Element<'a, Message>> = vec![
         line("Source", value(view::ellipsize(&view::host(&i.url), 30))),
         line("Quality", value(quality)),
@@ -117,7 +116,7 @@ fn problem<'a>(i: &'a Item, c: Colors) -> Option<Element<'a, Message>> {
     let (title, body, action, label) = match &i.status {
         Status::Failed(e) => (
             "Download failed",
-            format!("{}\n{} downloaded so far is kept.", if e.is_empty() { "The download stopped." } else { e.as_str() }, format::bytes(i.downloaded)),
+            format!("{}\n{} downloaded so far is kept.", if e.is_empty() { "The download stopped." } else { e.as_str() }, format::size(i.downloaded)),
             Message::Resume(i.id),
             "Retry",
         ),

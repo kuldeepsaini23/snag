@@ -161,10 +161,10 @@ pub fn kind_label(item: &Item) -> String {
 /// The second line of a row.
 pub fn row_meta(item: &Item) -> String {
     let size = match (item.downloaded, item.total) {
-        (d, Some(t)) if item.status != Status::Done => format!("{} of {}", format::bytes(d), format::bytes(t)),
-        (_, Some(t)) => format::bytes(t),
+        (d, Some(t)) if item.status != Status::Done => format!("{} of {}", format::size(d), format::size(t)),
+        (_, Some(t)) => format::size(t),
         (0, None) => String::new(),
-        (d, None) => format::bytes(d),
+        (d, None) => format::size(d),
     };
     let lead = match &item.status {
         Status::Failed(e) if e.is_empty() => return "Failed".into(),
@@ -383,13 +383,13 @@ mod tests {
         running.kind = Kind::Media(MediaFormat::Video { max_height: 1080 });
         running.downloaded = 642 * 1024 * 1024;
         running.total = Some(1229 * 1024 * 1024);
-        assert_eq!(row_meta(&running), "1080p · MP4 · 642.0 MB of 1.2 GB");
+        assert_eq!(row_meta(&running), "1080p · MP4 · 642 MB of 1.2 GB");
         let mut paused = item(2, "u.iso", Category::Archive, Status::Paused);
         paused.downloaded = 2048;
         assert_eq!(row_meta(&paused), "Paused · ISO · 2.0 KB");
         let mut done = item(3, "n.pdf", Category::Document, Status::Done);
         done.total = Some(12 * 1024 * 1024);
-        assert_eq!(row_meta(&done), "Completed · PDF · 12.0 MB");
+        assert_eq!(row_meta(&done), "Completed · PDF · 12 MB");
         let mp3 = Item { kind: Kind::Media(MediaFormat::AudioMp3), ..item(4, "x", Category::Music, Status::Queued) };
         assert_eq!(row_meta(&mp3), "Queued · Audio · MP3");
         assert_eq!(row_meta(&item(5, "noext", Category::Other, Status::Failed(String::new()))), "Failed");

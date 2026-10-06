@@ -3,7 +3,7 @@
 use super::icon::{Icon, icon};
 use super::style;
 use super::theme::Colors;
-use super::small;
+use super::tiny;
 use crate::state::{Model, SettingsTab};
 use crate::update::Message;
 use crate::view::{CATEGORIES, Library};
@@ -23,8 +23,8 @@ pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
         .align_y(Alignment::Center);
         button(content).style(style::choice(c, selected, 7.0)).padding([7, 10]).width(Fill).on_press(msg)
     };
-    let count = |n: usize| -> Element<'static, Message> { small(n.to_string(), c.text3).into() };
-    let on_off = |on: bool| -> Element<'static, Message> { small(if on { "On" } else { "Off" }, if on { c.accent } else { c.text3 }).into() };
+    let count = |n: usize| -> Element<'static, Message> { tiny(n.to_string(), c.text3).into() };
+    let on_off = |on: bool| -> Element<'static, Message> { tiny(if on { "On" } else { "Off" }, if on { c.accent } else { c.text3 }).into() };
 
     let mut list = column![heading("Library", c)].spacing(1);
     list = list.push(entry(Icon::Folder, "All downloads".into(), count(counts.all), m.library == Library::All, Message::SetLibrary(Library::All)));

@@ -3,7 +3,9 @@
 //!
 //! `RDM_SNAP_DIR=<dir>`: writes `<dir>/snap.bmp` every second.
 //! `RDM_SNAP_SCENES=demo,selected,popover,…`: steps through those scenes, one per second,
-//! writing `<dir>/<scene>.bmp`. Scenes only change what the window shows, never the downloads.
+//! writing `<dir>/<scene>.bmp`. Scenes only change what the window shows; when the list ends the
+//! window reloads the real state from the manager, so nothing a scene set can be saved by a later
+//! click (e.g. closing Settings).
 
 use crate::state::{Model, Picker, Screen, SettingsTab};
 use crate::update::Message;
@@ -39,7 +41,14 @@ pub fn take(model: &mut Model) -> Task<Message> {
                 st.2 = false;
                 return Task::none();
             }
-            st.1 = None;
+            if st.1.take().is_some() {
+                // Last scene captured: back to the real state.
+                st.2 = true;
+                apply(model, "");
+                model.selected = None;
+                model.speed_preview = None;
+                return Task::done(Message::Lagged);
+            }
         }
         st.2 = true;
     }
@@ -58,7 +67,7 @@ fn apply(m: &mut Model, scene: &str) {
         "failed" => m.selected = m.items.iter().find(|i| matches!(i.status, Status::Failed(_))).map(|i| i.id),
         "popover" => {
             m.speed_open = true;
-            m.settings.speed_limit_bps = 2 * 1024 * 1024;
+            m.speed_preview = Some(2 * 1024 * 1024);
         }
         "picker" => open_picker(m, info(vec![]), 2),
         "audio" => open_picker(m, info(vec![]), 5),

@@ -16,7 +16,7 @@ use rdm_core::{Category, Item, Kind, MediaFormat, Status};
 pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
     let mut page = column![url_bar(m, c)].spacing(10);
     let hint = if m.probing { "Reading video info…" } else { "Copy any link and it appears here automatically. Press Enter to pick quality." };
-    page = page.push(container(small(hint, c.text3)).padding([0, 2]));
+    page = page.push(container(text(hint).size(12).color(c.text3)).padding([0, 2]));
 
     if m.items.is_empty() {
         page = page.push(empty_state(c));
@@ -32,7 +32,7 @@ pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
         }
         if !recent.is_empty() {
             let size: u64 = recent.iter().map(|i| i.total.unwrap_or(i.downloaded)).sum();
-            groups = groups.push(group_title("Recent", format!("{} completed · {}", recent.len(), format::bytes(size)), c));
+            groups = groups.push(group_title("Recent", format!("{} completed · {}", recent.len(), format::size(size)), c));
             groups = recent.into_iter().fold(groups, |g, i| g.push(item_row(m, i, c)));
         }
         if nothing {
@@ -54,19 +54,19 @@ fn url_bar(m: &Model, c: Colors) -> Element<'_, Message> {
         .id(url_input())
         .on_input(Message::UrlChanged)
         .on_submit(Message::Add)
-        .size(13.5)
+        .size(13)
         .padding([10, 4])
         .style(style::bare_input(c));
     let mut bar = row![icon(Icon::Link, 15).color(if tag.is_some() { c.accent } else { c.text3 }), input].spacing(8).align_y(Alignment::Center);
     if let Some(t) = tag {
-        bar = bar.push(container(text(t.label()).size(11).font(style::MEDIUM)).padding([2, 7]).style(style::tag(c.accent_soft, c.accent)));
+        bar = bar.push(container(text(t.label()).size(11.5).font(style::MEDIUM)).padding([2, 7]).style(style::tag(c.accent_soft, c.accent)));
     }
     let go = button(icon(Icon::ArrowRight, 14)).style(style::ghost(c)).padding(6).on_press_maybe((!m.probing).then_some(Message::Add));
     container(bar.push(go)).padding([0, 12]).style(style::url_bar(c, tag.is_some())).into()
 }
 
 fn group_title<'a>(title: &'a str, meta: String, c: Colors) -> Element<'a, Message> {
-    row![text(title).size(13).font(style::SEMIBOLD), small(meta, c.text3)].spacing(8).align_y(Alignment::Center).padding([10, 2]).into()
+    row![text(title).size(13).font(style::SEMIBOLD), text(meta).size(12).color(c.text3)].spacing(8).align_y(Alignment::Center).padding([10, 2]).into()
 }
 
 /// The coloured square that stands in for a thumbnail.
@@ -114,13 +114,13 @@ fn item_row<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
         small(view::row_meta(i), c.text3).into()
     };
 
-    let mut middle = column![text(view::ellipsize(&i.name, 90)).size(13.5).font(style::MEDIUM).wrapping(Wrapping::None), meta].spacing(3).width(Fill);
+    let mut middle = column![text(view::ellipsize(&i.name, 90)).size(13).font(style::MEDIUM).wrapping(Wrapping::None), meta].spacing(3).width(Fill);
     if !matches!(i.status, Status::Done) {
         let fill = if failed { c.danger } else if i.status == Status::Running { c.accent } else { c.text3 };
         middle = middle.push(container(progress_bar(0.0..=100.0, percent).girth(3).style(style::progress(c.hover, fill))).padding([3, 0]));
     }
 
-    let mono = |s: String, color: Color| text(s).size(11).font(style::MONO).color(color);
+    let mono = |s: String, size: f32, color: Color| text(s).size(size).font(style::MONO).color(color);
     let (top, bottom): (String, String) = match &i.status {
         Status::Running => (
             format::speed(i.speed_bps),
@@ -133,7 +133,7 @@ fn item_row<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
         Status::Done => view::when_label(i.added, chrono::Local::now()),
     };
     let top_color = if failed { c.danger } else { c.text2 };
-    let right = column![mono(top, top_color), mono(bottom, c.text3)].align_x(Alignment::End).spacing(2).width(96);
+    let right = column![mono(top, 11.5, top_color), mono(bottom, 11.0, c.text3)].align_x(Alignment::End).spacing(2).width(96);
 
     let (glyph, action) = match &i.status {
         Status::Done if missing => (Icon::ArrowClockwise, Some(Message::Redownload(i.id))),
