@@ -9,6 +9,7 @@ mod tray;
 mod ui;
 mod update;
 mod view;
+mod motion;
 
 use std::path::PathBuf;
 

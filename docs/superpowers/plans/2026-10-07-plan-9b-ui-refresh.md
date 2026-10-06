@@ -51,9 +51,13 @@
   - one line of meta, with the progress bar under it;
   - the action button appears on hover or selection only (less noise);
   - speed and ETA stay.
+- **Cancel** (user: "if I pause something how can I cancel it"):
+  - Unfinished downloads (running, queued, paused, failed) get a "Cancel" × on the row and in the inspector.
+  - Cancel removes the item and deletes its partial data. Remove from list stays for finished items.
 - Tests:
   - `sidebar_animation_state`
   - `row_actions_show_on_hover_or_selected`
+  - `cancel_only_for_unfinished`
 
 ### Task R3: micro-animations
 - Sheets (picker, settings, quit confirm): fade plus a 0.97→1 scale-in.

@@ -19,6 +19,7 @@ chrono.workspace = true
 tray-icon = "0.26.0"
 tauri-winrt-notification = "0.8.1"
 winreg = "0.56.0"
+windows-sys = { version = "0.61.2", features = ["Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
 tempfile.workspace = true
