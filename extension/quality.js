@@ -30,6 +30,51 @@ function safeAccent(value) {
   return typeof value === "string" && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(value) ? value : DEFAULT_ACCENT;
 }
 
+/** Media the page's player already fetched (the sniffer's list) as instant download rows. */
+function sniffedRows(items) {
+  return items.map((item) => {
+    if (item.kind !== "file") return { label: `Stream (${item.kind.toUpperCase()})`, detail: "", url: item.url, kind: "media" };
+    let ext = "";
+    try {
+      ext = (new URL(item.url).pathname.match(/\.([a-z0-9]{2,4})$/i) || [])[1] || "";
+    } catch (_) {
+      // Not a URL: no extension.
+    }
+    const audio = /^(mp3|m4a|aac|ogg|oga|opus|flac|wav)$/i.test(ext);
+    const label = ext ? `${ext.toUpperCase()} ${audio ? "audio" : "video"}` : "Media file";
+    return { label, detail: sizeLabel(item.size), url: item.url, kind: "file" };
+  });
+}
+
+/**
+ * Snag's reading of a page, started early (prefetch) and shared by whoever asks: one read per
+ * page; answers kept for `ttlMs` (the links inside them expire), failures not kept at all.
+ */
+class ProbeCache {
+  constructor(read, clock, ttlMs) {
+    this.read = read;
+    this.clock = clock;
+    this.ttlMs = ttlMs;
+    this.entries = new Map();
+  }
+
+  get(url) {
+    const hit = this.entries.get(url);
+    if (hit && this.clock() - hit.at < this.ttlMs) return hit.answer;
+    const answer = this.read(url).then(
+      (info) => ({ ok: true, info }),
+      (e) => {
+        this.entries.delete(url);
+        return { ok: false, error: e.message };
+      },
+    );
+    this.entries.set(url, { at: this.clock(), answer });
+    // Keep the map small: the oldest pages go first.
+    if (this.entries.size > 30) this.entries.delete(this.entries.keys().next().value);
+    return answer;
+  }
+}
+
 const RELOAD = "Snag's extension was updated: reload this page";
 
 /**
@@ -55,4 +100,4 @@ function makeAsk(runtime, timeoutMs) {
     });
 }
 
-if (typeof module !== "undefined") module.exports = { sizeLabel, qualityRows, safeAccent, makeAsk, DEFAULT_ACCENT };
+if (typeof module !== "undefined") module.exports = { sizeLabel, qualityRows, sniffedRows, ProbeCache, safeAccent, makeAsk, DEFAULT_ACCENT };

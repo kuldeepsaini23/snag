@@ -87,8 +87,7 @@
       ask({ type: "send", url: location.href, kind: "media", referrer: location.href, withFallback: true }).then((r) => done(r.ok ? "Sent to Snag ✓" : r.error));
     };
 
-    const showChoices = (info) => {
-      panel.textContent = "";
+    const header = (info) => {
       const head = el("div", "head");
       if (info.thumbnail) {
         const img = el("img", "thumb");
@@ -101,12 +100,17 @@
       x.title = "Close";
       x.addEventListener("click", close);
       head.append(x);
-      panel.append(head);
+      return head;
+    };
+
+    // Snag's qualities for the page (ready at once when the prefetch finished).
+    const qualityList = (info) => {
+      const box = el("div");
       if (info.playlist > 0) {
         const all = el("button", "row");
         all.append(el("span", "label", `Whole playlist (${info.playlist})`), el("span", "detail", "choose in Snag"));
         all.addEventListener("click", sendPage);
-        panel.append(all);
+        box.append(all);
       }
       for (const q of qualityRows(info)) {
         const row = el("button", "row");
@@ -118,29 +122,56 @@
           const choice = { url: location.href, title: info.title || document.title, format: q.format, thumbnail: info.thumbnail || undefined, duration: info.duration || undefined };
           ask({ type: "add-media", choice }).then((r) => done(r.ok ? `Downloading ${q.label} ✓` : r.error));
         });
-        panel.append(row);
+        box.append(row);
       }
-      panel.classList.add("open");
+      return box;
+    };
+
+    // What the player already fetched: starts downloading at once, like IDM's button.
+    const sniffedList = (items) => {
+      const box = el("div");
+      for (const s of sniffedRows(items)) {
+        const row = el("button", "row");
+        row.append(el("span", "label", s.label), el("span", "badge", "NOW"), el("span", "detail", s.detail));
+        row.title = s.url;
+        row.addEventListener("click", () => {
+          note([el("span", "spinner"), "Starting…"]);
+          ask({ type: "send", url: s.url, kind: s.kind, referrer: location.href }).then((r) => done(r.ok ? "Downloading ✓" : r.error));
+        });
+        box.append(row);
+      }
+      return box;
     };
 
     pill.addEventListener("click", async () => {
       if (panel.classList.contains("open")) return close();
-      pill.disabled = true;
       const status = await askQuick({ type: "status" });
-      if (status.ok === false) {
-        pill.disabled = false;
-        return done(status.error);
+      if (status.ok === false) return done(status.error);
+      if (!status.app) return done("Snag isn't running: start it and try again");
+
+      // Open at once with what's known; Snag's full quality list fills in when ready.
+      const media = await askQuick({ type: "media-list" });
+      const items = (media.items || []).slice(0, 6);
+      panel.textContent = "";
+      panel.append(header({}));
+      if (items.length) panel.append(sniffedList(items));
+      const pending = el("div", "note");
+      pending.append(el("span", "spinner"), status.app.paired ? "Finding all qualities…" : "Click Allow in the Snag window…");
+      panel.append(pending);
+      panel.classList.add("open");
+
+      const r = await ask({ type: "probe", url: location.href });
+      if (!panel.isConnected || !panel.classList.contains("open")) return;
+      if (r.ok && r.info.options && r.info.options.length) {
+        panel.replaceChild(header(r.info), panel.firstChild);
+        pending.replaceWith(qualityList(r.info));
+      } else if (items.length) {
+        pending.textContent = "Pick one above: Snag can't list qualities for this page.";
+      } else if (!r.ok && /reload this page|no answer|isn't running|not allowed|connect/i.test(r.error || "")) {
+        done(r.error);
+      } else {
+        sendPage();
       }
-      if (!status.app) {
-        pill.disabled = false;
-        return done("Snag isn't running: start it and try again");
-      }
-      note([el("span", "spinner"), status.app.paired ? "Reading the video…" : "Click Allow in the Snag window…"]);
-      const r = await ask({ type: "probe", url: location.href, referrer: location.href });
-      pill.disabled = false;
-      if (r.ok && r.info.options && r.info.options.length) showChoices(r.info);
-      else if (!r.ok && /reload this page|no answer|isn't running|not allowed|connect/i.test(r.error || "")) done(r.error);
-      else sendPage();
     });
     document.addEventListener("keydown", (e) => e.key === "Escape" && close());
     return host;
@@ -154,6 +185,7 @@
     if (on && !existing) document.documentElement.appendChild(build());
     if (!on && existing) existing.remove();
   }
+  let prefetched = "";
   function sync() {
     // Cut off by an extension update: leave the page to the new copy of this script.
     if (!chrome.runtime?.id) return clearInterval(timer);
@@ -161,7 +193,13 @@
       lastUrl = location.href;
       mediaSeen = 0;
     }
-    show(isVideoPage(location.hostname, location.pathname) || mediaSeen > 0);
+    const on = isVideoPage(location.hostname, location.pathname) || mediaSeen > 0;
+    show(on);
+    // Snag starts reading the page now, so the qualities are ready by the time you click.
+    if (on && prefetched !== location.href) {
+      prefetched = location.href;
+      askQuick({ type: "prefetch", url: location.href });
+    }
   }
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.type === "media-count") {

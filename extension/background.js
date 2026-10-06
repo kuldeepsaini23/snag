@@ -1,7 +1,7 @@
 // Snag extension background: finds the desktop app on 127.0.0.1 and hands it links.
 // Chrome runs it as a service worker; Firefox loads catch-rules.js before it (see build.js).
 
-if (typeof importScripts === "function") importScripts("catch-rules.js", "sniffer.js");
+if (typeof importScripts === "function") importScripts("catch-rules.js", "sniffer.js", "quality.js");
 
 const PORTS = [47321, 47322, 47323, 47324, 47325, 47326];
 const DEFAULTS = { token: "", catchDownloads: true, minSizeMB: 1 };
@@ -175,6 +175,10 @@ async function probeInApp(url, referrer) {
   return body;
 }
 
+// Pages Snag has read (or is reading): the menu opens with them ready. Ten minutes, then the
+// links inside go stale.
+const probes = new ProbeCache((url) => probeInApp(url), () => Date.now(), 10 * 60 * 1000);
+
 /** The quality picked in the menu: Snag adds it straight away. */
 async function addMediaInApp(choice) {
   const { app, token } = await pairedApp();
@@ -272,10 +276,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     return true;
   }
   if (msg.type === "probe") {
-    probeInApp(msg.url, msg.referrer)
-      .then((info) => reply({ ok: true, info }))
-      .catch((e) => reply({ ok: false, error: e.message }));
+    probes.get(msg.url).then(reply);
     return true;
+  }
+  if (msg.type === "prefetch") {
+    // Only when already connected: a prefetch must never pop up "Allow?" in Snag.
+    settings()
+      .then((s) => findApp(s.token))
+      .then((app) => {
+        if (app && app.paired) probes.get(msg.url);
+      });
+    reply({ ok: true });
+    return false;
   }
   if (msg.type === "add-media") {
     addMediaInApp(msg.choice)

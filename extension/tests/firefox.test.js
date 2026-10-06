@@ -5,7 +5,7 @@ const base = require("../manifest.json");
 
 test("firefox manifest runs the background as scripts, catch rules first", () => {
   const ff = firefoxManifest(base);
-  assert.deepStrictEqual(ff.background, { scripts: ["catch-rules.js", "sniffer.js", "background.js"] });
+  assert.deepStrictEqual(ff.background, { scripts: ["catch-rules.js", "sniffer.js", "quality.js", "background.js"] });
   assert.strictEqual(ff.background.service_worker, undefined);
 });
 

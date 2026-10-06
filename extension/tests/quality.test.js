@@ -53,3 +53,39 @@ test("asking the extension never hangs: cut-off page script, errors and silence 
   assert.strictEqual(r3.ok, false);
   assert.match(r3.error, /no answer/i);
 });
+
+test("what the player is already playing: one instant row each", () => {
+  const { sniffedRows } = require("../quality.js");
+  const rows = sniffedRows([
+    { kind: "hls", url: "https://cdn.x/hls/master.m3u8?sig=1" },
+    { kind: "file", url: "https://cdn.x/v/movie_720.mp4?t=9", size: 120 * 1024 * 1024 },
+    { kind: "file", url: "https://cdn.x/a/track.m4a" },
+  ]);
+  assert.deepStrictEqual(rows.map((r) => r.label), ["Stream (HLS)", "MP4 video", "M4A audio"]);
+  assert.deepStrictEqual(rows.map((r) => r.kind), ["media", "file", "file"]);
+  assert.strictEqual(rows[1].detail, "120 MB");
+  assert.strictEqual(rows[1].url, "https://cdn.x/v/movie_720.mp4?t=9");
+  assert.deepStrictEqual(sniffedRows([]), []);
+});
+
+test("prefetch: a page is read once, then the answer is ready (and expires)", async () => {
+  const { ProbeCache } = require("../quality.js");
+  let now = 0;
+  let calls = 0;
+  const cache = new ProbeCache(async (url) => {
+    calls++;
+    if (url.includes("bad")) throw new Error("Unsupported URL");
+    return { title: url };
+  }, () => now, 60_000);
+  const a = cache.get("https://v.x/1");
+  const b = cache.get("https://v.x/1"); // asked again while still reading: same read
+  assert.deepStrictEqual(await a, { ok: true, info: { title: "https://v.x/1" } });
+  assert.deepStrictEqual(await b, await a);
+  assert.strictEqual(calls, 1);
+  assert.deepStrictEqual(await cache.get("https://v.x/bad"), { ok: false, error: "Unsupported URL" });
+  await cache.get("https://v.x/bad");
+  assert.strictEqual(calls, 3, "failures are not kept: the next click tries again");
+  now = 61_000;
+  await cache.get("https://v.x/1");
+  assert.strictEqual(calls, 4, "old answers expire (links in them stop working)");
+});

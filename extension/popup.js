@@ -138,7 +138,7 @@ async function init() {
       say(result.ok ? "Sent to Snag ✓" : result.error);
     };
     say("Reading the page…");
-    const probe = await chrome.runtime.sendMessage({ type: "probe", url: tab.url, referrer: tab.url });
+    const probe = await chrome.runtime.sendMessage({ type: "probe", url: tab.url });
     if (!probe.ok || !probe.info.options || !probe.info.options.length) return sendPage();
     say("");
     showQualities(tab, probe.info, sendPage);
