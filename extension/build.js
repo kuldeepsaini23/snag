@@ -6,7 +6,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const FILES = ["background.js", "catch-rules.js", "sniffer.js", "content.js", "popup.html", "popup.js"];
+const FILES = ["background.js", "catch-rules.js", "sniffer.js", "content.js", "popup.html", "popup.js", "grab.html", "grab.js", "grab-page.js"];
 
 /** Firefox runs MV3 backgrounds as plain scripts (no service worker, no importScripts). */
 function firefoxManifest(base) {

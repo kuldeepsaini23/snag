@@ -98,6 +98,22 @@ async function sendToApp(url, kind, referrer) {
   return body;
 }
 
+/** "Grab all": many links from one page in one request. */
+async function sendBatch(urls, referrer) {
+  const { token } = await settings();
+  const app = await findApp(token);
+  if (!app) throw new Error("Snag isn't running");
+  if (!app.paired) throw new Error("Not paired: paste the pairing code from Snag → Settings");
+  const resp = await fetch(`http://127.0.0.1:${app.port}/add-batch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-RDM-Token": token },
+    body: JSON.stringify({ urls, referrer, cookies: await cookiesFor(referrer) }),
+  });
+  const body = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(body.error || `Snag answered ${resp.status}`);
+  return body;
+}
+
 /** Brief ✓ / ! on the toolbar icon. */
 function flash(ok) {
   chrome.action.setBadgeBackgroundColor({ color: ok ? "#32d74b" : "#ff453a" });
@@ -154,6 +170,12 @@ chrome.contextMenus.onClicked.addListener((info) => {
 
 // Popup and in-page button.
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+  if (msg.type === "send-batch") {
+    sendBatch(msg.urls, msg.referrer)
+      .then((body) => reply({ ok: true, added: body.added }))
+      .catch((e) => reply({ ok: false, error: e.message }));
+    return true;
+  }
   if (msg.type === "media-list") {
     reply({ items: tabMedia.get(msg.tabId)?.items || [] });
     return false;

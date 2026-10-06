@@ -172,3 +172,29 @@ async fn image_page_from_browser_becomes_a_gallery() {
     let items = m.snapshot().await.items;
     assert_eq!(items[1].kind, rdm_core::Kind::Http, "never lost to an extractor that may not know it");
 }
+
+#[tokio::test]
+async fn add_batch_adds_each_link_as_a_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path()).await;
+    let b = start(m.clone(), 48191..=48200).await.unwrap();
+    let send = |body: Value, token: &'static str| {
+        Client::new()
+            .post(format!("http://127.0.0.1:{}/add-batch", b.port))
+            .header("X-RDM-Token", token)
+            .header("Content-Type", "application/json")
+            .body(body.to_string())
+            .send()
+    };
+    let body = json!({"urls": ["https://x.test/a.zip", "https://x.test/b.pdf", "ftp://x.test/c", "https://x.test/a.zip"], "referrer": "https://x.test/page"});
+    assert_eq!(send(body.clone(), "wrong").await.unwrap().status().as_u16(), 401);
+    let resp = send(body, TOKEN).await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let reply: Value = serde_json::from_str(&resp.text().await.unwrap()).unwrap();
+    assert_eq!(reply["added"], 2, "web links only, each once: {reply}");
+    let items = m.snapshot().await.items;
+    assert_eq!(items.len(), 2);
+    assert!(items.iter().all(|i| i.kind == rdm_core::Kind::Http && i.referrer.as_deref() == Some("https://x.test/page")));
+    let too_many: Vec<String> = (0..1001).map(|i| format!("https://x.test/{i}.zip")).collect();
+    assert_eq!(send(json!({ "urls": too_many }), TOKEN).await.unwrap().status().as_u16(), 400);
+}

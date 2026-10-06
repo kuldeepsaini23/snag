@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Snag — Grab from page</title>
+    <style>
+      :root {
+        --bg: #1a1816; --panel: #211f1c; --surface: #2a2724; --raised: #36322e; --line: #ffffff17;
+        --t1: #ffffffe5; --t2: #ffffffa6; --t3: #ffffff73; --accent: #ff9f0a;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--t1); font: 13px/1.4 "Inter", "Segoe UI", system-ui, sans-serif; }
+      header { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
+      header img { width: 28px; height: 28px; }
+      h1 { font-size: 15px; margin: 0; }
+      #page { color: var(--t3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60vw; }
+      .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 61px; z-index: 2; }
+      .preset { border: 1px solid var(--line); background: transparent; color: var(--t2); border-radius: 20px; padding: 5px 12px; cursor: pointer; font: inherit; }
+      .preset.on { background: var(--accent); color: #1a1816; border-color: var(--accent); font-weight: 600; }
+      input[type="text"] { background: var(--bg); color: var(--t1); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font: inherit; }
+      .spacer { flex: 1; }
+      #go { background: #fff; color: #1a1816; border: 0; border-radius: 8px; padding: 8px 14px; font: inherit; font-weight: 600; cursor: pointer; }
+      #go:disabled { background: var(--raised); color: var(--t3); cursor: default; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+      th { color: var(--t3); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; position: sticky; top: 113px; background: var(--bg); }
+      td.name { max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      td.name small { display: block; color: var(--t3); overflow: hidden; text-overflow: ellipsis; }
+      td.thumb img { width: 64px; height: 40px; object-fit: cover; border-radius: 6px; background: var(--surface); }
+      .type { font-size: 10px; font-weight: 600; text-transform: uppercase; color: var(--t2); background: var(--raised); border-radius: 4px; padding: 1px 6px; }
+      #message { padding: 10px 20px; color: var(--t2); min-height: 20px; }
+      .empty { padding: 40px 20px; color: var(--t3); text-align: center; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <img src="icon-32.png" alt="" />
+      <div>
+        <h1>Grab from page</h1>
+        <div id="page">Reading the page…</div>
+      </div>
+    </header>
+    <div class="bar">
+      <button class="preset" data-preset="images">Images</button>
+      <button class="preset" data-preset="videos">Videos &amp; audio</button>
+      <button class="preset" data-preset="documents">Documents</button>
+      <button class="preset" data-preset="archives">Archives &amp; programs</button>
+      <button class="preset" data-preset="everything">Everything</button>
+      <input id="exts" type="text" placeholder="Only: zip, pdf…" size="14" />
+      <input id="text" type="text" placeholder="Name contains…" size="16" />
+      <label><input id="all" type="checkbox" /> All</label>
+      <div class="spacer"></div>
+      <button id="go" disabled>Download 0</button>
+    </div>
+    <div id="message"></div>
+    <table>
+      <thead><tr><th></th><th></th><th>Name</th><th>Type</th><th>Size</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <script src="grab.js"></script>
+    <script src="grab-page.js"></script>
+  </body>
+</html>

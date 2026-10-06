@@ -90,6 +90,13 @@ async function init() {
     say(result.ok ? "Sent to Snag ✓" : result.error);
   });
 
+  $("grab").addEventListener("click", async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) return;
+    chrome.tabs.create({ url: chrome.runtime.getURL(`grab.html?tab=${tab.id}`) });
+    window.close();
+  });
+
   refreshStatus();
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab) showMedia(tab);

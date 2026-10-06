@@ -22,7 +22,7 @@ pub async fn start(manager: Manager, ports: RangeInclusive<u16>) -> Result<Bridg
     for port in ports {
         match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
             Ok(listener) => {
-                let app = Router::new().route("/ping", get(ping)).route("/add", post(add)).route("/focus", post(focus)).route("/quit", post(quit)).with_state(manager);
+                let app = Router::new().route("/ping", get(ping)).route("/add", post(add)).route("/focus", post(focus)).route("/quit", post(quit)).route("/add-batch", post(add_batch)).with_state(manager);
                 tokio::spawn(async move {
                     let _ = axum::serve(listener, app).await;
                 });
@@ -113,6 +113,43 @@ async fn focus(State(manager): State<Manager>, headers: HeaderMap) -> (StatusCod
     }
     manager.focus().await;
     (StatusCode::OK, Json(json!({ "ok": true })))
+}
+
+/// One request should never add more than this ("Grab all" on a huge page).
+const BATCH_MAX: usize = 1000;
+
+#[derive(Deserialize)]
+struct BatchRequest {
+    urls: Vec<String>,
+    #[serde(default)]
+    referrer: Option<String>,
+    #[serde(default)]
+    cookies: Vec<Value>,
+}
+
+/// "Grab all" from the extension: direct links from one page, each added as a file download.
+async fn add_batch(State(manager): State<Manager>, headers: HeaderMap, Json(req): Json<BatchRequest>) -> (StatusCode, Json<Value>) {
+    if !authorized(&manager, &headers).await {
+        return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "not paired: paste the pairing code from Snag settings" })));
+    }
+    if req.urls.len() > BATCH_MAX {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": format!("at most {BATCH_MAX} links at once") })));
+    }
+    let cookies: Vec<Cookie> = req.cookies.into_iter().filter_map(|c| serde_json::from_value(c).ok()).collect();
+    if !cookies.is_empty() {
+        manager.remember_cookies(cookies);
+    }
+    let referrer = req.referrer.filter(|r| r.starts_with("http"));
+    let mut seen = std::collections::HashSet::new();
+    let mut added = 0;
+    for url in req.urls {
+        let web = url.starts_with("http://") || url.starts_with("https://");
+        if web && seen.insert(url.clone()) {
+            manager.add_with(url, referrer.clone()).await;
+            added += 1;
+        }
+    }
+    (StatusCode::OK, Json(json!({ "added": added })))
 }
 
 async fn quit(State(manager): State<Manager>, headers: HeaderMap) -> (StatusCode, Json<Value>) {
