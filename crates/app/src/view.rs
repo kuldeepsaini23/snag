@@ -652,4 +652,35 @@ mod tests {
         assert_eq!(main_action(&item(4, "d", Category::Other, Status::Paused)), Some(MainAction::Resume));
         assert_eq!(main_action(&item(5, "e", Category::Other, Status::Failed("x".into()))), Some(MainAction::Resume));
     }
+
+    #[test]
+    fn quit_asks_only_when_something_runs() {
+        let mut idle = Model::default();
+        idle.apply(Event::Added(item(1, "a.zip", Category::Archive, Status::Done)));
+        idle.apply(Event::Added(item(2, "b.zip", Category::Archive, Status::Paused)));
+        assert!(idle.request_quit(), "nothing running: quit straight away");
+        assert!(!idle.confirm_quit);
+
+        let mut busy = model();
+        assert_eq!(busy.busy_count(), 2, "one running, one queued");
+        assert!(!busy.request_quit(), "something is downloading: ask first");
+        assert!(busy.confirm_quit);
+    }
+
+    #[test]
+    fn keep_downloading_cancels_quit() {
+        let mut m = model();
+        assert!(!m.request_quit());
+        m.keep_downloading();
+        assert!(!m.confirm_quit);
+    }
+
+    #[test]
+    fn pause_and_resume_all_pick_the_right_items() {
+        let m = model();
+        let mut paused = m.pause_all_ids();
+        paused.sort();
+        assert_eq!(paused, vec![ItemId(1), ItemId(3)], "running and queued");
+        assert_eq!(m.resume_all_ids(), vec![ItemId(4)], "paused and failed");
+    }
 }

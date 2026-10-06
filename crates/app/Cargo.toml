@@ -15,6 +15,7 @@ iced = { version = "0.14", features = ["tokio"] }
 tokio.workspace = true
 futures-util.workspace = true
 chrono.workspace = true
+tray-icon = "0.26.0"
 
 [dev-dependencies]
 tempfile.workspace = true

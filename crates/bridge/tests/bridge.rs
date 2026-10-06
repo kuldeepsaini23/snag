@@ -140,3 +140,16 @@ async fn falls_back_to_next_port() {
     let b = start(manager(dir.path()).await, 48141..=48150).await.unwrap();
     assert_eq!(b.port, 48142);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn quit_request_asks_the_running_app_to_quit() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path()).await;
+    let b = start(m.clone(), 48171..=48180).await.unwrap();
+    let mut rx = m.subscribe();
+    let port = b.port;
+    assert!(!tokio::task::spawn_blocking(move || rdm_bridge::quit_running(port..=port, "wrong")).await.unwrap(), "needs the pairing token");
+    let answered = tokio::task::spawn_blocking(move || rdm_bridge::quit_running(port..=port, TOKEN)).await.unwrap();
+    assert!(answered);
+    assert!(matches!(rx.recv().await, Ok(rdm_core::Event::Quit)));
+}

@@ -22,7 +22,7 @@ pub async fn start(manager: Manager, ports: RangeInclusive<u16>) -> Result<Bridg
     for port in ports {
         match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
             Ok(listener) => {
-                let app = Router::new().route("/ping", get(ping)).route("/add", post(add)).route("/focus", post(focus)).with_state(manager);
+                let app = Router::new().route("/ping", get(ping)).route("/add", post(add)).route("/focus", post(focus)).route("/quit", post(quit)).with_state(manager);
                 tokio::spawn(async move {
                     let _ = axum::serve(listener, app).await;
                 });
@@ -101,9 +101,26 @@ async fn focus(State(manager): State<Manager>, headers: HeaderMap) -> (StatusCod
     (StatusCode::OK, Json(json!({ "ok": true })))
 }
 
+async fn quit(State(manager): State<Manager>, headers: HeaderMap) -> (StatusCode, Json<Value>) {
+    if !authorized(&manager, &headers).await {
+        return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "not paired" })));
+    }
+    manager.request_quit().await;
+    (StatusCode::OK, Json(json!({ "ok": true })))
+}
+
 /// For a second RDM that is about to quit: asks the running one to show its window.
 /// Plain blocking HTTP so it works before any runtime exists. Returns whether one answered.
 pub fn focus_running(ports: RangeInclusive<u16>, token: &str) -> bool {
+    signal_running(ports, token, "/focus")
+}
+
+/// `rdm --quit` / the uninstaller: asks the running RDM to pause, save and quit.
+pub fn quit_running(ports: RangeInclusive<u16>, token: &str) -> bool {
+    signal_running(ports, token, "/quit")
+}
+
+fn signal_running(ports: RangeInclusive<u16>, token: &str, path: &str) -> bool {
     use std::io::{Read, Write};
     use std::time::Duration;
     for port in ports {
@@ -111,7 +128,7 @@ pub fn focus_running(ports: RangeInclusive<u16>, token: &str) -> bool {
         let Ok(mut stream) = std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(300)) else { continue };
         let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
         let request = format!(
-            "POST /focus HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nX-RDM-Token: {token}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            "POST {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nX-RDM-Token: {token}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
         );
         if stream.write_all(request.as_bytes()).is_err() {
             continue;

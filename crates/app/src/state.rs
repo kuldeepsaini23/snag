@@ -236,6 +236,8 @@ pub struct Model {
     pub toast: Option<String>,
     /// The window fills the screen: no resize grips.
     pub maximized: bool,
+    /// Quit was asked for while downloads run: the "still downloading" sheet is up.
+    pub confirm_quit: bool,
 }
 
 impl Default for Model {
@@ -267,6 +269,7 @@ impl Default for Model {
             settings_tab: SettingsTab::General,
             toast: None,
             maximized: false,
+            confirm_quit: false,
         }
     }
 }
@@ -305,7 +308,7 @@ impl Model {
                 self.screen = Screen::Picker;
             }
             Event::Notice(text) => self.notice = Some(text),
-            Event::Focus => {}
+            Event::Focus | Event::Quit => {}
             Event::Queues(queues) => self.queues = queues,
             Event::Settings(s) => {
                 if self.screen != Screen::Settings {
@@ -369,6 +372,29 @@ impl Model {
         self.notice = None;
         self.speed_open = false;
         self.screen = Screen::Settings;
+    }
+
+    /// Downloads that quitting would interrupt (running or waiting their turn).
+    pub fn busy_count(&self) -> usize {
+        self.items.iter().filter(|i| matches!(i.status, Status::Running | Status::Queued)).count()
+    }
+
+    /// Quit from the tray: true = quit now; false = ask first (the confirm sheet is shown).
+    pub fn request_quit(&mut self) -> bool {
+        self.confirm_quit = self.busy_count() > 0;
+        !self.confirm_quit
+    }
+
+    pub fn keep_downloading(&mut self) {
+        self.confirm_quit = false;
+    }
+
+    pub fn pause_all_ids(&self) -> Vec<ItemId> {
+        self.items.iter().filter(|i| matches!(i.status, Status::Running | Status::Queued)).map(|i| i.id).collect()
+    }
+
+    pub fn resume_all_ids(&self) -> Vec<ItemId> {
+        self.items.iter().filter(|i| matches!(i.status, Status::Paused | Status::Failed(_))).map(|i| i.id).collect()
     }
 
     /// Another tab of the open sheet; edits on every tab are kept until the sheet closes.

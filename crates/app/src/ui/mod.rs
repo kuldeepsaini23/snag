@@ -52,6 +52,9 @@ pub fn view(app: &App) -> Element<'_, Message> {
         (Screen::Settings, _) => layers = layers.push(modal(settings::view(m, c), Message::CloseSettings)),
         _ => {}
     }
+    if m.confirm_quit {
+        layers = layers.push(modal(confirm_quit(m, c), Message::KeepDownloading));
+    }
     if m.screen == Screen::Downloads
         && let Some(t) = toast(m, c)
     {
@@ -86,6 +89,34 @@ fn resize_grips<'a>() -> Element<'a, Message> {
         ],
     ]
     .into()
+}
+
+/// Quit from the tray while something downloads.
+fn confirm_quit(m: &Model, c: Colors) -> Element<'_, Message> {
+    let n = m.busy_count();
+    let (what, them) = if n == 1 { ("1 download is".to_string(), "it") } else { (format!("{n} downloads are"), "them") };
+    let badge = container(icon(Icon::WarningCircle, 22).color(c.accent)).center(44).style(style::tag(c.accent_soft, c.accent));
+    let content = column![
+        row![
+            badge,
+            column![
+                text(format!("{what} still running")).size(16).font(style::SEMIBOLD),
+                text(format!("Quitting pauses {them}. RDM continues from where it stopped the next time you open it.")).size(12.5).color(c.text2),
+            ]
+            .spacing(4)
+            .width(Fill),
+        ]
+        .spacing(14)
+        .align_y(Alignment::Center),
+        row![
+            Space::new().width(Fill),
+            button(text("Quit anyway").size(12.5).font(style::SEMIBOLD)).style(style::danger(c)).padding([8, 14]).on_press(Message::QuitAnyway),
+            button(text("Keep downloading").size(12.5).font(style::SEMIBOLD)).style(style::primary(c)).padding([8, 14]).on_press(Message::KeepDownloading),
+        ]
+        .spacing(8),
+    ]
+    .spacing(18);
+    container(content).width(440).padding(20).style(style::sheet(c)).into()
 }
 
 /// A sheet over a dimmed window; clicking the dim area sends `on_blur`.

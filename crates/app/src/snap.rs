@@ -94,6 +94,10 @@ fn apply(m: &mut Model, scene: &str) {
             m.items = items;
             m.selected = Some(ItemId(2000));
         }
+        "quit" => {
+            m.items = demo_items();
+            m.confirm_quit = true;
+        }
         "toast" => m.toast = Some("https://vimeo.com/824123456".into()),
         "notice" => m.notice = Some("Added “Rust Async Explained” (1080p)".into()),
         "empty" => m.items.clear(),

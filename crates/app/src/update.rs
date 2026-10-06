@@ -14,6 +14,9 @@ pub struct App {
     pub manager: Manager,
     /// %APPDATA%\rdm: state.json, tools, cookies.
     pub data_dir: PathBuf,
+    /// Held only to keep the tray icon alive (None if Windows refused it).
+    #[allow(dead_code)]
+    pub tray: Option<crate::tray::Tray>,
 }
 
 /// Text inputs the app focuses itself.
@@ -56,6 +59,14 @@ pub enum Message {
     /// The window changed size: check whether it is maximised now.
     WinResized,
     WinMaximized(bool),
+    /// Close button / Alt+F4: hide to the tray, keep downloading.
+    HideWindow,
+    TrayOpen,
+    TrayQuit,
+    QuitAnyway,
+    KeepDownloading,
+    PauseAll,
+    ResumeAll,
     // List
     SetFilter(Filter),
     SetLibrary(Library),
@@ -129,7 +140,8 @@ pub enum Message {
 pub fn boot(manager: Manager, bridge_status: String, data_dir: PathBuf) -> (App, Task<Message>) {
     let m = manager.clone();
     let model = Model { bridge_status, ..Model::default() };
-    (App { model, manager, data_dir }, Task::perform(async move { m.snapshot().await }, Message::Loaded))
+    let tray = crate::tray::create();
+    (App { model, manager, data_dir, tray }, Task::perform(async move { m.snapshot().await }, Message::Loaded))
 }
 
 /// Runs a manager call in the background; its result isn't needed (events report it).
@@ -189,12 +201,13 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
                 reveal(&path);
             }
         }
+        Message::Core(Event::Quit) => return iced::exit(),
         Message::Core(event) => {
             let pick = matches!(event, Event::PickMedia { .. } | Event::Focus);
             model.apply(event);
             if pick {
-                // The extension sent a video: bring the window forward for the quality choice.
-                return window::latest().and_then(window::gain_focus);
+                // The extension sent a video, or RDM was started again: bring the (maybe hidden) window forward.
+                return show_window();
             }
         }
         Message::Loaded(state) => model.load(state),
@@ -207,7 +220,33 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::WinMaximize => return on_window(window::toggle_maximize),
         Message::WinResized => return window::latest().and_then(window::is_maximized).map(Message::WinMaximized),
         Message::WinMaximized(on) => model.maximized = on,
-        Message::WinClose => return on_window(window::close),
+        Message::WinClose | Message::HideWindow => return window::latest().and_then(|id| window::set_mode(id, window::Mode::Hidden)),
+        Message::TrayOpen => return show_window(),
+        Message::TrayQuit => {
+            if model.request_quit() {
+                return iced::exit();
+            }
+            // Something is downloading: show the window with the "still downloading" question.
+            return show_window();
+        }
+        Message::QuitAnyway => return iced::exit(),
+        Message::KeepDownloading => model.keep_downloading(),
+        Message::PauseAll => {
+            let ids = model.pause_all_ids();
+            return fire(&app.manager, move |m| async move {
+                for id in ids {
+                    m.pause(id).await;
+                }
+            });
+        }
+        Message::ResumeAll => {
+            let ids = model.resume_all_ids();
+            return fire(&app.manager, move |m| async move {
+                for id in ids {
+                    m.resume(id).await;
+                }
+            });
+        }
         Message::WinResize(edge) => return window::latest().and_then(move |id| window::drag_resize(id, edge)),
         Message::SetFilter(f) => model.filter = f,
         Message::SetLibrary(l) => model.library = l,
@@ -215,7 +254,9 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::FocusSearch => return operation::focus(search_input()),
         Message::ToggleSidebar => model.sidebar_open = !model.sidebar_open,
         Message::Escape => {
-            if model.speed_open {
+            if model.confirm_quit {
+                model.keep_downloading();
+            } else if model.speed_open {
                 model.speed_open = false;
             } else if model.screen == Screen::Settings {
                 return update(app, Message::CloseSettings);
@@ -366,6 +407,11 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
     Task::none()
 }
 
+/// Un-hides, restores and focuses the window.
+fn show_window() -> Task<Message> {
+    window::latest().and_then(|id| Task::batch([window::set_mode(id, window::Mode::Windowed), window::minimize(id, false), window::gain_focus(id)]))
+}
+
 fn set_limit(app: &App, bps: u64) -> Task<Message> {
     let settings = rdm_core::Settings { speed_limit_bps: bps, ..app.model.settings.clone() };
     fire(&app.manager, move |m| async move { m.update_settings(settings).await })
@@ -410,7 +456,13 @@ impl Hash for Feed {
 }
 
 pub fn subscription(app: &App) -> Subscription<Message> {
-    let mut subs = vec![core_events(app), keyboard::listen().filter_map(on_key), window::resize_events().map(|_| Message::WinResized)];
+    let mut subs = vec![
+        core_events(app),
+        keyboard::listen().filter_map(on_key),
+        window::resize_events().map(|_| Message::WinResized),
+        window::close_requests().map(|_| Message::HideWindow),
+        crate::tray::subscription(),
+    ];
     #[cfg(debug_assertions)]
     subs.push(crate::snap::subscription());
     if app.model.settings.clipboard_watch {

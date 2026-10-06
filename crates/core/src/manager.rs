@@ -39,6 +39,8 @@ pub enum Event {
     Notice(String),
     /// Bring the window to the front (a second RDM was started).
     Focus,
+    /// Another process (rdm --quit, the uninstaller) asks RDM to quit; it pauses and saves first.
+    Quit,
 }
 
 /// Handle to the download manager. Cheap to clone; all clones talk to one actor.
@@ -150,6 +152,11 @@ impl Manager {
 
     pub async fn focus(&self) {
         let _ = self.events.send(Event::Focus);
+    }
+
+    /// Asks the UI to quit (see `Event::Quit`).
+    pub async fn request_quit(&self) {
+        let _ = self.events.send(Event::Quit);
     }
 
     /// Asks the UI to show the quality picker for `url` (nothing is added yet).
