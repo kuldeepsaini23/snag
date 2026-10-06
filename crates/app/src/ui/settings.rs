@@ -22,7 +22,7 @@ pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
                 .width(Fill)
                 .padding([7, 10])
                 .style(style::choice(c, on, 7.0))
-                .on_press(Message::OpenSettings(tab)),
+                .on_press(Message::SettingsTab(tab)),
         )
     });
     let nav = container(nav).width(204).height(Fill).padding([18, 12]).style(move |_| container::Style {

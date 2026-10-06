@@ -50,6 +50,8 @@ fn main() -> iced::Result {
         .font(ui::icon::PHOSPHOR)
         .font(ui::icon::PHOSPHOR_FILL)
         .default_font(ui::style::INTER)
+        // The Figma sizes are drawn for dense screens; at 100% Windows scaling they read small.
+        .scale_factor(|_| ui::theme::UI_SCALE)
         .window(window)
         .centered()
         .run();

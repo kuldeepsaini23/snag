@@ -37,8 +37,11 @@ pub fn take(model: &mut Model) -> Task<Message> {
             if let Some(name) = list.get(st.0).cloned() {
                 apply(model, &name);
                 st.0 += 1;
-                st.1 = Some(name);
+                st.1 = Some(name.clone());
                 st.2 = false;
+                if name == "narrow" {
+                    return window::latest().and_then(|id| window::resize(id, iced::Size::new(960.0, 600.0)));
+                }
                 return Task::none();
             }
             if st.1.take().is_some() {
@@ -82,6 +85,14 @@ fn apply(m: &mut Model, scene: &str) {
                 p.toggle_entry(3);
                 p.toggle_entry(6);
             }
+        }
+        "long" => {
+            let mut items = demo_items();
+            let long = "An extremely long video title that keeps going and going — part 1 of the complete series about async Rust, tokio, pinning, executors and cancellation (4K remaster, director's cut, extended edition)";
+            items.push(Item { id: ItemId(2000), name: long.into(), status: Status::Failed(format!("yt-dlp: ERROR: [youtube] abc: {}", "Sign in to confirm you're not a bot. ".repeat(8))), ..items[3].clone() });
+            items.push(Item { id: ItemId(2001), name: long.into(), ..items[4].clone() });
+            m.items = items;
+            m.selected = Some(ItemId(2000));
         }
         "toast" => m.toast = Some("https://vimeo.com/824123456".into()),
         "notice" => m.notice = Some("Added “Rust Async Explained” (1080p)".into()),

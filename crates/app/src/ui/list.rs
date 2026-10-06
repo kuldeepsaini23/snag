@@ -102,16 +102,16 @@ fn item_row<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
 
     // Second line, coloured by state.
     let meta: Element<'a, Message> = if missing {
-        small("File missing · download it again", c.danger).into()
+        small("File missing · download it again", c.danger).wrapping(Wrapping::None).into()
     } else if waiting {
         let start = m.queues.iter().find(|q| q.id == i.queue).and_then(|q| q.schedule.as_ref()).map(|s| crate::queues::fmt_hhmm(s.start)).unwrap_or_default();
         dot_line(format!("Scheduled {start} · {}", view::kind_label(i)), c.accent)
     } else if i.status == Status::Done {
         dot_line(view::row_meta(i), c.success)
     } else if failed {
-        small(view::ellipsize(&view::row_meta(i), 90), c.danger).into()
+        small(view::ellipsize(&view::row_meta(i), 90), c.danger).wrapping(Wrapping::None).into()
     } else {
-        small(view::row_meta(i), c.text3).into()
+        small(view::row_meta(i), c.text3).wrapping(Wrapping::None).into()
     };
 
     let mut middle = column![text(view::ellipsize(&i.name, 90)).size(13).font(style::MEDIUM).wrapping(Wrapping::None), meta].spacing(3).width(Fill);
@@ -145,12 +145,13 @@ fn item_row<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
     };
     let act = button(container(icon(glyph, 15)).center(Fill)).width(30).height(30).padding(0).style(style::ghost(c)).on_press_maybe(action);
 
+    let middle = container(middle).width(Fill).clip(true);
     let content = row![tile(i, 76.0, 44.0, 16, c), middle, right, act].spacing(14).align_y(Alignment::Center);
     button(content).width(Fill).padding([9, 10]).style(style::row(c, m.selected == Some(i.id), failed)).on_press(Message::Select(i.id)).into()
 }
 
 fn dot_line<'a>(s: String, color: Color) -> Element<'a, Message> {
-    row![container(Space::new()).width(7).height(7).style(style::tag(color, color)), text(s).size(11.5).color(color)]
+    row![container(Space::new()).width(7).height(7).style(style::tag(color, color)), text(s).size(11.5).color(color).wrapping(Wrapping::None)]
         .spacing(6)
         .align_y(Alignment::Center)
         .into()

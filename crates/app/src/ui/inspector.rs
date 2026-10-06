@@ -9,7 +9,7 @@ use crate::format;
 use crate::state::{Model, file_missing};
 use crate::update::Message;
 use crate::view;
-use iced::widget::{Space, button, column, container, pick_list, row, rule, text};
+use iced::widget::{Space, button, column, container, pick_list, row, rule, scrollable, text};
 use iced::{Alignment, Element, Fill};
 use rdm_core::{Item, Kind, MediaFormat, Status};
 
@@ -49,17 +49,18 @@ pub fn view<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
     }
     let table = interleave(table, c);
 
-    let mut panel = column![
-        tile(i, 268.0, 140.0, 34, c),
-        text(&i.name).size(14).font(style::SEMIBOLD),
+    let mut details = column![
+        tile(i, 252.0, 140.0, 34, c),
+        text(view::ellipsize(&i.name, 120)).size(14).font(style::SEMIBOLD).wrapping(text::Wrapping::WordOrGlyph),
         container(table).style(style::card(c)),
     ]
     .spacing(12);
-
     if let Some(card) = problem(i, c) {
-        panel = panel.push(card);
+        details = details.push(card);
     }
-    panel = panel.push(Space::new().height(Fill));
+    // Details scroll on short windows; the buttons below stay on screen.
+    let details = container(details).padding(iced::Padding { right: 8.0, ..Default::default() });
+    let mut panel = column![scrollable(details).height(Fill).style(style::scroll(c))].spacing(12);
 
     // Remove keeps the file; Delete sits apart, is red and needs a second click.
     let armed = m.pending_delete == Some(i.id);
@@ -77,10 +78,11 @@ pub fn view<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
     ];
     panel = panel.push(manage);
 
-    let (glyph, label, action) = match i.status {
-        Status::Running | Status::Queued => (Icon::Pause, "Pause", Some(Message::Pause(i.id))),
-        Status::Paused | Status::Failed(_) => (Icon::Play, "Resume", Some(Message::Resume(i.id))),
-        Status::Done => (Icon::ArrowClockwise, "Download again", Some(Message::Redownload(i.id))),
+    let (glyph, label, action) = match view::main_action(i) {
+        Some(view::MainAction::Pause) => (Icon::Pause, "Pause", Some(Message::Pause(i.id))),
+        Some(view::MainAction::Resume) => (Icon::Play, "Resume", Some(Message::Resume(i.id))),
+        Some(view::MainAction::Redownload) => (Icon::ArrowClockwise, "Download again", Some(Message::Redownload(i.id))),
+        None => (Icon::CheckCircle, "Finished", None),
     };
     let wide = |glyph: Icon, label: &'a str| container(row![icon(glyph, 13), text(label).size(12.5).font(style::SEMIBOLD)].spacing(7).align_y(Alignment::Center)).center_x(Fill);
     panel = panel.push(
@@ -125,7 +127,7 @@ fn problem<'a>(i: &'a Item, c: Colors) -> Option<Element<'a, Message>> {
     };
     let card = column![
         row![icon(Icon::WarningCircle, 15).color(c.danger), text(title).size(13).font(style::SEMIBOLD)].spacing(8).align_y(Alignment::Center),
-        text(body).size(12).color(c.text2),
+        text(view::ellipsize(&body, 400)).size(12).color(c.text2).wrapping(text::Wrapping::WordOrGlyph),
         button(text(label).size(12).font(style::SEMIBOLD)).style(style::primary(c)).padding([6, 12]).on_press(action),
     ]
     .spacing(8);

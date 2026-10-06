@@ -57,7 +57,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
     {
         layers = layers.push(container(opaque(t)).width(Fill).height(Fill).align_x(Alignment::End).align_y(Alignment::End).padding([40, 20]));
     }
-    layers.push(resize_grips()).into()
+    if m.maximized { layers.into() } else { layers.push(resize_grips()).into() }
 }
 
 /// Thin strips along the edges and corners that resize the frameless window.

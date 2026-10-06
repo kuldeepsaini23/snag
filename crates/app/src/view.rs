@@ -178,6 +178,24 @@ pub fn row_meta(item: &Item) -> String {
     if parts.is_empty() { format::status_label(&item.status) } else { parts.join(" · ") }
 }
 
+/// The inspector's main button for an item.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MainAction {
+    Pause,
+    Resume,
+    /// Only for a finished item whose file is gone.
+    Redownload,
+}
+
+pub fn main_action(item: &Item) -> Option<MainAction> {
+    match item.status {
+        Status::Running | Status::Queued => Some(MainAction::Pause),
+        Status::Paused | Status::Failed(_) => Some(MainAction::Resume),
+        Status::Done if crate::state::file_missing(item) => Some(MainAction::Redownload),
+        Status::Done => None,
+    }
+}
+
 /// "youtube.com" from "https://www.youtube.com/watch?…".
 pub fn host(url: &str) -> String {
     let rest = url.split_once("://").map_or(url, |(_, r)| r);
@@ -582,5 +600,56 @@ mod tests {
         assert_eq!(when_label(today, now), ("Today".to_string(), "14:02".to_string()));
         assert_eq!(when_label(earlier, now), ("Sep 30".to_string(), "09:05".to_string()));
         assert_eq!(when_label(0, now).1.len(), 5, "any timestamp gives a time");
+    }
+
+    #[test]
+    fn switching_settings_tab_keeps_edits() {
+        let mut m = model();
+        m.queues[1].schedule = Some(Schedule { start: 23 * 60, stop: None, days: [true; 7] });
+        m.open_settings(crate::state::SettingsTab::General);
+        m.draft.download_dir = r"D:\elsewhere".into();
+        m.draft.accent = "#0a84ff".into();
+        m.queue_drafts[0].name = "Everything".into();
+        m.switch_settings_tab(crate::state::SettingsTab::Speed);
+        assert_eq!(m.settings_tab, crate::state::SettingsTab::Speed);
+        assert_eq!(m.draft.download_dir, r"D:\elsewhere", "edits on other tabs survive a tab switch");
+        assert_eq!(m.draft.accent, "#0a84ff");
+        assert_eq!(m.queue_drafts[0].name, "Everything");
+        let (settings, queues) = m.close_settings().expect("valid");
+        assert_eq!(settings.download_dir, std::path::PathBuf::from(r"D:\elsewhere"));
+        assert_eq!(queues[0].name, "Everything");
+    }
+
+    #[test]
+    fn settings_echo_keeps_open_sheet_draft() {
+        let mut m = model();
+        m.queues[1].schedule = Some(Schedule { start: 23 * 60, stop: None, days: [true; 7] });
+        m.open_settings(crate::state::SettingsTab::Extension);
+        m.draft.download_dir = r"D:\elsewhere".into();
+        let regenerated = rdm_core::Settings { extension_token: "new-token".into(), ..m.settings.clone() };
+        m.apply(Event::Settings(regenerated));
+        assert_eq!(m.settings.extension_token, "new-token");
+        assert_eq!(m.draft.download_dir, r"D:\elsewhere", "an echo while the sheet is open keeps the typing");
+        let (saved, _) = m.close_settings().expect("valid");
+        assert_eq!(saved.extension_token, "new-token", "saving doesn't undo the regenerated token");
+        // Closed: an echo refreshes the draft as before.
+        m.apply(Event::Settings(rdm_core::Settings { connections: 2, ..m.settings.clone() }));
+        assert_eq!(m.draft.connections, "2");
+    }
+
+    #[test]
+    fn finished_item_with_its_file_offers_no_redownload() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.zip");
+        std::fs::write(&file, b"x").unwrap();
+        let mut done = item(1, "a.zip", Category::Archive, Status::Done);
+        done.dest = Some(file);
+        assert_eq!(main_action(&done), None, "a finished file that's still there has nothing to redo");
+        done.dest = Some(dir.path().join("gone.zip"));
+        assert_eq!(main_action(&done), Some(MainAction::Redownload));
+        assert_eq!(main_action(&item(2, "b", Category::Other, Status::Running)), Some(MainAction::Pause));
+        assert_eq!(main_action(&item(3, "c", Category::Other, Status::Queued)), Some(MainAction::Pause));
+        assert_eq!(main_action(&item(4, "d", Category::Other, Status::Paused)), Some(MainAction::Resume));
+        assert_eq!(main_action(&item(5, "e", Category::Other, Status::Failed("x".into()))), Some(MainAction::Resume));
     }
 }

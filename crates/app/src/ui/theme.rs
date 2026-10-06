@@ -5,6 +5,9 @@ use iced::theme::Palette;
 
 pub const DEFAULT_ACCENT: &str = "#ff9f0a";
 
+/// Everything is drawn this much larger than the Figma sizes (the user picked it for readability).
+pub const UI_SCALE: f32 = 1.08;
+
 /// The accent swatches offered in Settings → Appearance (name, hex).
 pub const SWATCHES: [(&str, &str); 7] = [
     ("Orange", "#ff9f0a"),
@@ -75,8 +78,9 @@ pub fn colors(accent_hex: &str) -> Colors {
         line: white(0x17 as f32 / 255.0),
         line_strong: white(0x26 as f32 / 255.0),
         text: white(0xe5 as f32 / 255.0),
-        text2: white(0x91 as f32 / 255.0),
-        text3: white(0x4f as f32 / 255.0),
+        // Brighter than Figma's 0x91 / 0x4f: those greys are too faint on 100%-scaled screens.
+        text2: white(0xa6 as f32 / 255.0),
+        text3: white(0x73 as f32 / 255.0),
         success: Color::from_rgb8(0x32, 0xd7, 0x4b),
         danger: Color::from_rgb8(0xff, 0x45, 0x3a),
         accent,

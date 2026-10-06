@@ -57,13 +57,14 @@ pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
         if close { b.style(style::close_button(c)) } else { b.style(style::ghost(c)) }
     };
 
+    // Title and filter pills give way first when the window is narrow, so the window buttons stay on screen.
+    let middle = container(row![title, Space::new().width(Fill), pills, Space::new().width(Fill)].spacing(10).align_y(Alignment::Center))
+        .width(Fill)
+        .clip(true);
     let bar = row![
         logo,
         square(Icon::Sidebar, false, Message::ToggleSidebar),
-        title,
-        Space::new().width(Fill),
-        pills,
-        Space::new().width(Fill),
+        middle,
         search,
         square(Icon::Gauge, m.speed_open, Message::ToggleSpeed),
         square(Icon::Gear, false, Message::OpenSettings(SettingsTab::General)),

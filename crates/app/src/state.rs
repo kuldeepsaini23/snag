@@ -234,6 +234,8 @@ pub struct Model {
     pub settings_tab: SettingsTab,
     /// A link seen on the clipboard, offered in a toast.
     pub toast: Option<String>,
+    /// The window fills the screen: no resize grips.
+    pub maximized: bool,
 }
 
 impl Default for Model {
@@ -264,6 +266,7 @@ impl Default for Model {
             speed_preview: None,
             settings_tab: SettingsTab::General,
             toast: None,
+            maximized: false,
         }
     }
 }
@@ -273,7 +276,10 @@ impl Model {
     pub fn load(&mut self, state: AppState) {
         self.items = state.items;
         self.queues = state.queues;
-        self.draft = Draft::from_settings(&state.settings);
+        // An open settings sheet keeps what's being typed; it is saved on close.
+        if self.screen != Screen::Settings {
+            self.draft = Draft::from_settings(&state.settings);
+        }
         self.settings = state.settings;
         if self.selected.is_some_and(|id| !self.items.iter().any(|i| i.id == id)) {
             self.selected = None;
@@ -302,7 +308,9 @@ impl Model {
             Event::Focus => {}
             Event::Queues(queues) => self.queues = queues,
             Event::Settings(s) => {
-                self.draft = Draft::from_settings(&s);
+                if self.screen != Screen::Settings {
+                    self.draft = Draft::from_settings(&s);
+                }
                 self.settings = s;
             }
         }
@@ -361,6 +369,11 @@ impl Model {
         self.notice = None;
         self.speed_open = false;
         self.screen = Screen::Settings;
+    }
+
+    /// Another tab of the open sheet; edits on every tab are kept until the sheet closes.
+    pub fn switch_settings_tab(&mut self, tab: SettingsTab) {
+        self.settings_tab = tab;
     }
 
     /// Closing the sheet saves it: the settings and queues to send, or it stays open with the error.

@@ -53,6 +53,9 @@ pub enum Message {
     WinClose,
     /// Pressed on a window edge: resize from there (the window has no native frame).
     WinResize(window::Direction),
+    /// The window changed size: check whether it is maximised now.
+    WinResized,
+    WinMaximized(bool),
     // List
     SetFilter(Filter),
     SetLibrary(Library),
@@ -70,6 +73,8 @@ pub enum Message {
     QuickLimit(u64),
     // Settings sheet
     OpenSettings(SettingsTab),
+    /// The sheet's nav: another tab, keeping edits.
+    SettingsTab(SettingsTab),
     CloseSettings,
     DraftDir(String),
     DraftConnections(usize),
@@ -200,6 +205,8 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::WinDrag => return on_window(window::drag),
         Message::WinMinimize => return window::latest().and_then(|id| window::minimize(id, true)),
         Message::WinMaximize => return on_window(window::toggle_maximize),
+        Message::WinResized => return window::latest().and_then(window::is_maximized).map(Message::WinMaximized),
+        Message::WinMaximized(on) => model.maximized = on,
         Message::WinClose => return on_window(window::close),
         Message::WinResize(edge) => return window::latest().and_then(move |id| window::drag_resize(id, edge)),
         Message::SetFilter(f) => model.filter = f,
@@ -237,6 +244,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             return set_limit(app, bps);
         }
         Message::OpenSettings(tab) => model.open_settings(tab),
+        Message::SettingsTab(tab) => model.switch_settings_tab(tab),
         Message::CloseSettings => {
             if let Ok((settings, queues)) = model.close_settings() {
                 let (old_settings, old_queues) = (model.settings.clone(), model.queues.clone());
@@ -402,7 +410,7 @@ impl Hash for Feed {
 }
 
 pub fn subscription(app: &App) -> Subscription<Message> {
-    let mut subs = vec![core_events(app), keyboard::listen().filter_map(on_key)];
+    let mut subs = vec![core_events(app), keyboard::listen().filter_map(on_key), window::resize_events().map(|_| Message::WinResized)];
     #[cfg(debug_assertions)]
     subs.push(crate::snap::subscription());
     if app.model.settings.clipboard_watch {
