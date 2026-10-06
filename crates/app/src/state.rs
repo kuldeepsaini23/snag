@@ -181,6 +181,8 @@ impl Model {
                 self.picker = Some(Picker { url, info, choice: 0 });
                 self.screen = Screen::Picker;
             }
+            Event::Notice(text) => self.notice = Some(text),
+            Event::Focus => {}
             Event::Settings(s) => {
                 self.draft = Draft::from_settings(&s);
                 self.settings = s;
@@ -368,6 +370,15 @@ mod tests {
         assert!(!m.confirm_delete(ItemId(2)), "another item re-arms instead of deleting");
         assert!(m.confirm_delete(ItemId(2)), "second click on the same item deletes");
         assert_eq!(m.pending_delete, None);
+    }
+
+    #[test]
+    fn notice_event_is_shown() {
+        let mut m = Model::default();
+        m.apply(Event::Notice("Couldn't read that link".into()));
+        assert_eq!(m.notice.as_deref(), Some("Couldn't read that link"));
+        m.apply(Event::Focus);
+        assert_eq!(m.notice.as_deref(), Some("Couldn't read that link"), "focus doesn't change the view");
     }
 
     #[test]

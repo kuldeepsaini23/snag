@@ -9,6 +9,13 @@ fn main() -> iced::Result {
     // The download manager runs on its own runtime, independent of the UI's.
     let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
     let state_path = std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_default().join("rdm").join("state.json");
+    // Only one RDM: a second copy would run the same downloads into the same files.
+    let data_dir = state_path.parent().map(PathBuf::from).unwrap_or_default();
+    let Some(_instance) = rdm_core::instance::lock(&data_dir) else {
+        let token = rdm_core::store::load(&state_path).settings.extension_token;
+        rdm_bridge::focus_running(rdm_bridge::PORTS, &token);
+        return Ok(());
+    };
     let manager = {
         let _enter = runtime.enter();
         rdm_core::Manager::start(state_path)

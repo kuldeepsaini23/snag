@@ -22,4 +22,21 @@ function shouldCatch(item, settings, now) {
   return true;
 }
 
-if (typeof module !== "undefined") module.exports = { shouldCatch };
+/** Pages that show a single video/track, where the "Download with RDM" button makes sense. */
+function isVideoPage(hostname, pathname) {
+  const on = (domain) => hostname === domain || hostname.endsWith("." + domain);
+  const parts = pathname.split("/").filter(Boolean);
+  if (on("youtube.com")) return pathname === "/watch" || pathname.startsWith("/shorts/");
+  if (on("x.com") || on("twitter.com")) return pathname.includes("/status/");
+  if (on("instagram.com")) return /^\/(p|reel|reels|tv)\//.test(pathname);
+  if (on("tiktok.com")) return pathname.includes("/video/");
+  if (on("vimeo.com")) return /^\/\d+/.test(pathname);
+  if (on("reddit.com")) return pathname.includes("/comments/");
+  if (on("facebook.com")) return pathname === "/watch" || /^\/(watch|reel|videos)\//.test(pathname) || pathname.includes("/videos/");
+  if (on("twitch.tv")) return pathname.startsWith("/videos/") || pathname.includes("/clip/");
+  if (on("soundcloud.com")) return parts.length >= 2;
+  if (on("dailymotion.com")) return pathname.startsWith("/video/");
+  return false;
+}
+
+if (typeof module !== "undefined") module.exports = { shouldCatch, isVideoPage };

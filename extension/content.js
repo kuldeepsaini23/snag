@@ -4,15 +4,6 @@
 (() => {
   const HOST_ID = "rdm-download-pill";
 
-  function isVideoPage() {
-    const { hostname, pathname } = location;
-    if (hostname.endsWith("youtube.com")) return pathname === "/watch" || pathname.startsWith("/shorts/");
-    if (hostname.endsWith("x.com") || hostname.endsWith("twitter.com")) return pathname.includes("/status/");
-    if (hostname.endsWith("instagram.com")) return /^\/(p|reel|reels|tv)\//.test(pathname);
-    if (hostname.endsWith("tiktok.com")) return pathname.includes("/video/");
-    return pathname.length > 1;
-  }
-
   function build() {
     const host = document.createElement("div");
     host.id = HOST_ID;
@@ -52,7 +43,7 @@
     if (location.href === lastUrl) return;
     lastUrl = location.href;
     const existing = document.getElementById(HOST_ID);
-    if (isVideoPage()) {
+    if (isVideoPage(location.hostname, location.pathname)) {
       if (!existing) document.documentElement.appendChild(build());
     } else if (existing) {
       existing.remove();

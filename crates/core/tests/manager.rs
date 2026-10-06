@@ -210,6 +210,28 @@ async fn offer_media_asks_the_ui_to_pick() {
 }
 
 #[tokio::test]
+async fn notices_and_focus_requests_reach_the_ui() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |_| {}).await;
+    let mut rx = m.subscribe();
+    m.notify("Couldn't read that link".into()).await;
+    m.focus().await;
+    let mut got = Vec::new();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while got.len() < 2 {
+            match rx.recv().await {
+                Ok(Event::Notice(text)) => got.push(text),
+                Ok(Event::Focus) => got.push("focus".into()),
+                _ => {}
+            }
+        }
+    })
+    .await
+    .expect("both events");
+    assert_eq!(got, vec!["Couldn't read that link".to_string(), "focus".to_string()]);
+}
+
+#[tokio::test]
 async fn fresh_state_gets_extension_token() {
     let dir = tempfile::tempdir().unwrap();
     let m = Manager::start(dir.path().join("state.json"));

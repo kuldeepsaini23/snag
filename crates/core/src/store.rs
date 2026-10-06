@@ -1,10 +1,16 @@
 use crate::model::{AppState, Status};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Missing or unreadable state starts fresh. Items that were running when the app
 /// stopped come back paused.
 pub fn load(path: &Path) -> AppState {
-    let Some(mut state) = std::fs::read(path).ok().and_then(|b| serde_json::from_slice::<AppState>(&b).ok()) else {
+    let Ok(bytes) = std::fs::read(path) else { return AppState::default() };
+    let Ok(mut state) = serde_json::from_slice::<AppState>(&bytes) else {
+        // Never overwrite a list we can't read (newer/older build, torn write): keep it for recovery.
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+        let mut backup = path.as_os_str().to_owned();
+        backup.push(format!(".bad-{stamp}"));
+        let _ = std::fs::rename(path, PathBuf::from(backup));
         return AppState::default();
     };
     for item in &mut state.items {
@@ -22,7 +28,10 @@ pub fn save(path: &Path, state: &AppState) -> std::io::Result<()> {
         std::fs::create_dir_all(dir)?;
     }
     let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, serde_json::to_vec_pretty(state).map_err(std::io::Error::other)?)?;
+    let mut file = std::fs::File::create(&tmp)?;
+    std::io::Write::write_all(&mut file, &serde_json::to_vec_pretty(state).map_err(std::io::Error::other)?)?;
+    file.sync_all()?; // on disk before it replaces the old list
+    drop(file);
     std::fs::rename(&tmp, path)
 }
 
@@ -94,6 +103,21 @@ mod tests {
         s.items[0].speed_bps = 0;
         save(&p, &s).unwrap();
         assert_eq!(load(&p), s);
+    }
+
+    #[test]
+    fn corrupt_state_is_kept_as_a_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("state.json");
+        std::fs::write(&p, b"{oops").unwrap();
+        assert_eq!(load(&p), AppState::default());
+        let backups: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|f| f.file_name().unwrap().to_string_lossy().starts_with("state.json.bad-"))
+            .collect();
+        assert_eq!(backups.len(), 1, "the unreadable file must be kept, not overwritten");
+        assert_eq!(std::fs::read(&backups[0]).unwrap(), b"{oops");
     }
 
     #[test]

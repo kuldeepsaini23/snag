@@ -27,6 +27,10 @@ pub enum Event {
     /// A video link arrived from outside the window (the browser extension):
     /// the UI should let the user choose a quality.
     PickMedia { url: String, info: MediaInfo },
+    /// Something the user should see (e.g. a link from the browser that couldn't be read).
+    Notice(String),
+    /// Bring the window to the front (a second RDM was started).
+    Focus,
 }
 
 /// Handle to the download manager. Cheap to clone; all clones talk to one actor.
@@ -94,6 +98,14 @@ impl Manager {
     pub async fn probe_media(&self, url: String) -> Result<MediaInfo, String> {
         let ytdlp = self.tools.ytdlp().await?;
         rdm_media::probe(&ytdlp, &url).await
+    }
+
+    pub async fn notify(&self, text: String) {
+        let _ = self.events.send(Event::Notice(text));
+    }
+
+    pub async fn focus(&self) {
+        let _ = self.events.send(Event::Focus);
     }
 
     /// Asks the UI to show the quality picker for `url` (nothing is added yet).

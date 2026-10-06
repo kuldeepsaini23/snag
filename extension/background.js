@@ -58,7 +58,11 @@ chrome.downloads.onCreated.addListener(async (item) => {
     handBack.delete(url);
     return;
   }
-  if (!shouldCatch(item, await settings(), Date.now())) return;
+  const s = await settings();
+  if (!shouldCatch(item, s, Date.now())) return;
+  // Only take the download away from the browser when RDM is running and paired.
+  const app = await findApp(s.token);
+  if (!app || !app.paired) return;
 
   try {
     await chrome.downloads.cancel(item.id);

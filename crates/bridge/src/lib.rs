@@ -22,7 +22,7 @@ pub async fn start(manager: Manager, ports: RangeInclusive<u16>) -> Result<Bridg
     for port in ports {
         match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
             Ok(listener) => {
-                let app = Router::new().route("/ping", get(ping)).route("/add", post(add)).with_state(manager);
+                let app = Router::new().route("/ping", get(ping)).route("/add", post(add)).route("/focus", post(focus)).with_state(manager);
                 tokio::spawn(async move {
                     let _ = axum::serve(listener, app).await;
                 });
@@ -76,7 +76,40 @@ async fn add(State(manager): State<Manager>, headers: HeaderMap, Json(req): Json
 
 /// Reads the page, then lets the user choose the quality in the app window.
 async fn add_media(manager: Manager, url: String) {
-    if let Ok(info) = manager.probe_media(url.clone()).await {
-        manager.offer_media(url, info).await;
+    match manager.probe_media(url.clone()).await {
+        Ok(info) => manager.offer_media(url, info).await,
+        Err(e) => manager.notify(format!("Couldn't read the link from the browser: {e}")).await,
     }
+}
+
+async fn focus(State(manager): State<Manager>, headers: HeaderMap) -> (StatusCode, Json<Value>) {
+    if !authorized(&manager, &headers).await {
+        return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "not paired" })));
+    }
+    manager.focus().await;
+    (StatusCode::OK, Json(json!({ "ok": true })))
+}
+
+/// For a second RDM that is about to quit: asks the running one to show its window.
+/// Plain blocking HTTP so it works before any runtime exists. Returns whether one answered.
+pub fn focus_running(ports: RangeInclusive<u16>, token: &str) -> bool {
+    use std::io::{Read, Write};
+    use std::time::Duration;
+    for port in ports {
+        let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+        let Ok(mut stream) = std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(300)) else { continue };
+        let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+        let request = format!(
+            "POST /focus HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nX-RDM-Token: {token}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        );
+        if stream.write_all(request.as_bytes()).is_err() {
+            continue;
+        }
+        let mut reply = String::new();
+        let _ = stream.read_to_string(&mut reply);
+        if reply.starts_with("HTTP/1.1 200") {
+            return true;
+        }
+    }
+    false
 }

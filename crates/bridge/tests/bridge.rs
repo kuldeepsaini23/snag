@@ -82,6 +82,39 @@ async fn rejects_non_http_url() {
 }
 
 #[tokio::test]
+async fn focus_request_brings_the_window_forward() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path()).await;
+    let b = start(m.clone(), 48151..=48160).await.unwrap();
+    let mut rx = m.subscribe();
+    let send = |token: &'static str| Client::new().post(format!("http://127.0.0.1:{}/focus", b.port)).header("X-RDM-Token", token).send();
+    assert_eq!(send("wrong").await.unwrap().status().as_u16(), 401);
+    assert_eq!(send(TOKEN).await.unwrap().status().as_u16(), 200);
+    let got = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if let Ok(rdm_core::Event::Focus) = rx.recv().await {
+                return true;
+            }
+        }
+    })
+    .await;
+    assert_eq!(got, Ok(true));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn second_instance_can_bring_the_first_forward() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path()).await;
+    let b = start(m.clone(), 48161..=48170).await.unwrap();
+    let mut rx = m.subscribe();
+    let port = b.port;
+    let answered = tokio::task::spawn_blocking(move || rdm_bridge::focus_running(port..=port, TOKEN)).await.unwrap();
+    assert!(answered);
+    assert!(matches!(rx.recv().await, Ok(rdm_core::Event::Focus)));
+    assert!(!tokio::task::spawn_blocking(move || rdm_bridge::focus_running(port..=port, "wrong")).await.unwrap());
+}
+
+#[tokio::test]
 async fn falls_back_to_next_port() {
     let dir = tempfile::tempdir().unwrap();
     let _taken = std::net::TcpListener::bind("127.0.0.1:48141").unwrap();

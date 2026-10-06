@@ -1,4 +1,5 @@
 pub mod category;
+pub mod instance;
 pub mod manager;
 pub mod model;
 pub mod planner;

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "RDM — Download Manager",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Sends downloads and videos to the RDM desktop app.",
   "permissions": ["downloads", "storage", "contextMenus"],
   "host_permissions": ["http://127.0.0.1/*"],
@@ -23,7 +23,7 @@
         "https://www.facebook.com/*",
         "https://www.reddit.com/*"
       ],
-      "js": ["content.js"],
+      "js": ["catch-rules.js", "content.js"],
       "run_at": "document_idle"
     }
   ]

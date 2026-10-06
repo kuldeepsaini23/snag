@@ -101,7 +101,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             }
         }
         Message::Core(event) => {
-            let pick = matches!(event, Event::PickMedia { .. });
+            let pick = matches!(event, Event::PickMedia { .. } | Event::Focus);
             model.apply(event);
             if pick {
                 // The extension sent a video: bring the window forward for the quality choice.
