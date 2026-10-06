@@ -19,6 +19,7 @@ pub fn view<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
         Kind::Media(MediaFormat::AudioMp3) => "MP3 audio".into(),
         Kind::Media(MediaFormat::Live { max_height }) => format!("Live recording, up to {max_height}p"),
         Kind::Gallery => "Original images".into(),
+        Kind::Torrent => "Torrent (from peers)".into(),
         Kind::Http => "Original file".into(),
     };
     let size = i.total.or((i.downloaded > 0).then_some(i.downloaded)).map(format::bytes).unwrap_or_else(|| "—".into());

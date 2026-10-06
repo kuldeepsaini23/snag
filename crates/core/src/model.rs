@@ -29,6 +29,8 @@ pub enum Kind {
     Media(MediaFormat),
     /// A page of images, saved by gallery-dl into a folder of its own.
     Gallery,
+    /// A magnet link or `.torrent` (librqbit).
+    Torrent,
 }
 
 /// "pinterest.com · wallpapers · 3fa2": a gallery's name and folder. The most telling part of
@@ -122,6 +124,8 @@ pub struct Settings {
     pub subtitle_langs: String,
     /// Retry downloads that failed for a temporary reason (timeouts, busy servers).
     pub auto_retry: bool,
+    /// Torrents: keep sharing with others after the download finishes.
+    pub keep_sharing: bool,
 }
 
 impl Default for Settings {
@@ -143,6 +147,7 @@ impl Default for Settings {
             subtitles: false,
             subtitle_langs: "en.*".into(),
             auto_retry: true,
+            keep_sharing: false,
         }
     }
 }

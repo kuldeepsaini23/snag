@@ -1,0 +1,13 @@
+[package]
+name = "rdm-torrent"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+librqbit = { version = "9.0.1", default-features = false, features = ["default-tls"] }
+tokio.workspace = true
+tokio-util.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["full"] }

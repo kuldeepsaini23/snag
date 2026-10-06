@@ -64,12 +64,18 @@ async fn add(State(manager): State<Manager>, headers: HeaderMap, Json(req): Json
     if !authorized(&manager, &headers).await {
         return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "not paired: paste the pairing code from Snag settings" })));
     }
-    if !(req.url.starts_with("http://") || req.url.starts_with("https://")) {
-        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "only http(s) links can be downloaded" })));
+    let torrent = rdm_core::is_torrent_link(&req.url);
+    if !(req.url.starts_with("http://") || req.url.starts_with("https://") || torrent) {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "only http(s) and magnet links can be downloaded" })));
     }
     let cookies: Vec<Cookie> = req.cookies.into_iter().filter_map(|c| serde_json::from_value(c).ok()).collect();
     if !cookies.is_empty() {
         manager.remember_cookies(cookies);
+    }
+    // Magnet links and .torrent files (also .torrent downloads the browser caught) are torrents.
+    if torrent {
+        let id = manager.add_torrent(req.url).await;
+        return (StatusCode::OK, Json(json!({ "id": id.0 })));
     }
     // Page links on image sites go to gallery-dl (they'd otherwise save HTML). A real file the
     // browser was downloading (kind "file": already cancelled there) always stays a file download.

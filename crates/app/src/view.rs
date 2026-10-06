@@ -198,6 +198,8 @@ pub enum LinkTag {
     Playlist,
     /// A page of images (gallery-dl).
     Images,
+    /// A magnet link or `.torrent`.
+    Torrent,
     File,
 }
 
@@ -207,6 +209,7 @@ impl LinkTag {
             Self::Video => "Video detected",
             Self::Playlist => "Playlist detected",
             Self::Images => "Images detected",
+            Self::Torrent => "Torrent",
             Self::File => "File link",
         }
     }
@@ -214,6 +217,9 @@ impl LinkTag {
 
 pub fn link_tag(url: &str) -> Option<LinkTag> {
     let url = url.trim();
+    if rdm_core::is_torrent_link(url) {
+        return Some(LinkTag::Torrent);
+    }
     let web = (url.starts_with("http://") || url.starts_with("https://")) && !url.contains(char::is_whitespace);
     if !web {
         return None;
@@ -236,6 +242,7 @@ pub fn kind_label(item: &Item) -> String {
         Kind::Media(MediaFormat::AudioMp3) => "Audio · MP3".into(),
         Kind::Media(MediaFormat::Live { max_height }) => format!("Live · {max_height}p"),
         Kind::Gallery => "Images".into(),
+        Kind::Torrent => "Torrent".into(),
         Kind::Http => item
             .name
             .rsplit_once('.')
@@ -486,6 +493,9 @@ mod tests {
         assert_eq!(link_tag("https://www.pinterest.com/pin/1/"), Some(LinkTag::Images));
         assert_eq!(link_tag("https://www.reddit.com/gallery/abc"), Some(LinkTag::Images), "before the video check");
         assert_eq!(LinkTag::Images.label(), "Images detected");
+        assert_eq!(link_tag("magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=x"), Some(LinkTag::Torrent));
+        assert_eq!(link_tag("https://site.org/ubuntu.iso.torrent"), Some(LinkTag::Torrent));
+        assert_eq!(LinkTag::Torrent.label(), "Torrent");
     }
 
     #[test]

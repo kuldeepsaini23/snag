@@ -206,12 +206,20 @@ fn connections(m: &Model, c: Colors) -> Element<'_, Message> {
         ),
         section(
             "Reliability",
-            vec![line(
-                "Retry failed downloads",
-                "After a timeout or a busy server: tries again after 10 s, 30 s and 90 s",
-                switch(d.auto_retry, Message::DraftAutoRetry, c),
-                c,
-            )],
+            vec![
+                line(
+                    "Retry failed downloads",
+                    "After a timeout or a busy server: tries again after 10 s, 30 s and 90 s",
+                    switch(d.auto_retry, Message::DraftAutoRetry, c),
+                    c,
+                ),
+                line(
+                    "Keep sharing torrents",
+                    "After a torrent finishes, keep uploading it to others (off: Snag stops when done)",
+                    switch(d.keep_sharing, Message::DraftKeepSharing, c),
+                    c,
+                ),
+            ],
             c,
         ),
     ]

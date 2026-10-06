@@ -148,6 +148,7 @@ pub struct Draft {
     pub subtitles: bool,
     pub subtitle_langs: String,
     pub auto_retry: bool,
+    pub keep_sharing: bool,
     /// "#rrggbb" as typed (Custom colour).
     pub accent: String,
 }
@@ -168,6 +169,7 @@ impl Draft {
             subtitles: s.subtitles,
             subtitle_langs: s.subtitle_langs.clone(),
             auto_retry: s.auto_retry,
+            keep_sharing: s.keep_sharing,
             accent: s.accent.clone(),
         }
     }
@@ -200,6 +202,7 @@ impl Draft {
             subtitles: self.subtitles,
             subtitle_langs: if self.subtitle_langs.trim().is_empty() { base.subtitle_langs.clone() } else { self.subtitle_langs.trim().to_string() },
             auto_retry: self.auto_retry,
+            keep_sharing: self.keep_sharing,
             accent: accent.to_string(),
             ..base.clone()
         })
@@ -209,7 +212,8 @@ impl Draft {
 /// A link worth suggesting from the clipboard: a single http(s) URL that isn't the last one seen.
 pub fn clipboard_link(text: &str, last_seen: Option<&str>) -> Option<String> {
     let link = text.trim();
-    let is_url = (link.starts_with("http://") || link.starts_with("https://")) && link.len() < 4096 && !link.contains(char::is_whitespace);
+    let web = link.starts_with("http://") || link.starts_with("https://") || rdm_core::is_torrent_link(link);
+    let is_url = web && link.len() < 4096 && !link.contains(char::is_whitespace);
     (is_url && last_seen != Some(link)).then(|| link.to_string())
 }
 
@@ -778,6 +782,8 @@ mod tests {
         assert_eq!(clipboard_link("http://a b", None), None);
         assert_eq!(clipboard_link("https://a\nhttps://b", None), None);
         assert_eq!(clipboard_link("ftp://x/y", None), None);
+        let magnet = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=x";
+        assert_eq!(clipboard_link(magnet, None).as_deref(), Some(magnet), "magnet links too");
     }
 
     #[test]

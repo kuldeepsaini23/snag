@@ -14,3 +14,4 @@ pub use model::{AppState, Item, ItemId, Kind, Queue, QueueId, Settings, Status, 
 pub use rdm_media::{Entry, MediaFormat, MediaInfo, QualityOption};
 pub use planner::pick_next;
 pub use schedule::{Now, Schedule};
+pub use rdm_torrent::is_torrent_link;

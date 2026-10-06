@@ -74,6 +74,7 @@ pub enum Message {
     DraftNotify(bool),
     DraftSubtitles(bool),
     DraftAutoRetry(bool),
+    DraftKeepSharing(bool),
     DraftSubtitleLangs(String),
     RefreshTyped(ItemId, String),
     /// Use the typed link for this item.
@@ -223,18 +224,22 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             if url.is_empty() {
                 return Task::none();
             }
-            if url.starts_with("http://") || url.starts_with("https://") {
+            if url.starts_with("http://") || url.starts_with("https://") || rdm_core::is_torrent_link(&url) {
                 model.url.clear();
             }
             return update(app, Message::AddLink(url));
         }
         Message::AddLink(url) => {
-            if !(url.starts_with("http://") || url.starts_with("https://")) {
-                model.notice = Some("Paste a link that starts with http:// or https://".into());
+            let torrent = rdm_core::is_torrent_link(&url);
+            if !(url.starts_with("http://") || url.starts_with("https://") || torrent) {
+                model.notice = Some("Paste a web link (http:// or https://) or a magnet link".into());
                 return Task::none();
             }
             model.notice = None;
             let m = app.manager.clone();
+            if torrent {
+                return Task::perform(async move { m.add_torrent(url).await }, Message::Added);
+            }
             if rdm_media::gallery::is_gallery_url(&url) {
                 return Task::perform(async move { m.add_gallery(url).await }, Message::Added);
             }
@@ -304,6 +309,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::DraftNotify(v) => model.draft.notify = v,
         Message::DraftSubtitles(v) => model.draft.subtitles = v,
         Message::DraftAutoRetry(v) => model.draft.auto_retry = v,
+        Message::DraftKeepSharing(v) => model.draft.keep_sharing = v,
         Message::DraftSubtitleLangs(v) => model.draft.subtitle_langs = v,
         Message::RefreshTyped(id, text) => model.refresh_typed(id, text),
         Message::RefreshUrl(id) => {

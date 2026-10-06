@@ -54,9 +54,34 @@ pub struct Manager {
     cookie_dir: PathBuf,
     /// Media link → the page it was found on (sent as Referer to yt-dlp). Memory only.
     referrers: Referrers,
+    torrents: Arc<Torrents>,
 }
 
 type Referrers = Arc<Mutex<HashMap<String, String>>>;
+
+/// The torrent engine, started on first use.
+#[derive(Default)]
+struct Torrents {
+    engine: tokio::sync::OnceCell<rdm_torrent::TorrentEngine>,
+    /// Tests: local peers only (no DHT or trackers).
+    peers: Mutex<Option<Vec<std::net::SocketAddr>>>,
+}
+
+impl Torrents {
+    async fn engine(&self, dir: &Path) -> Result<rdm_torrent::TorrentEngine, String> {
+        let peers = self.peers.lock().ok().and_then(|p| p.clone());
+        self.engine
+            .get_or_try_init(|| async {
+                let opts = match peers {
+                    Some(peers) => rdm_torrent::EngineOptions { local_only: true, peers },
+                    None => rdm_torrent::EngineOptions::default(),
+                };
+                rdm_torrent::TorrentEngine::start(dir, opts).await
+            })
+            .await
+            .cloned()
+    }
+}
 
 /// Total size of the files directly in `dir`.
 fn dir_size(dir: &Path) -> Option<u64> {
@@ -132,6 +157,7 @@ enum Cmd {
     Snapshot(oneshot::Sender<AppState>),
     AddMedia(String, String, MediaFormat, QueueId, Option<String>, Option<f64>, oneshot::Sender<ItemId>),
     AddGallery(String, oneshot::Sender<ItemId>),
+    AddTorrent(String, oneshot::Sender<ItemId>),
     Refresh(ItemId, String),
     AddWith(String, Option<String>, oneshot::Sender<ItemId>),
     Offer(String, MediaInfo),
@@ -166,11 +192,13 @@ impl Manager {
         // Cookie files left by a run that was killed or crashed: never leave sessions on disk.
         let _ = std::fs::remove_dir_all(&cookie_dir);
         let referrers = Referrers::default();
+        let torrents = Arc::new(Torrents::default());
         let mut actor = Actor::new(state_path, events.clone(), tools.clone(), jar.clone(), cookie_dir.clone());
         actor.retry_base = retry_base;
         actor.referrers = referrers.clone();
+        actor.torrents = torrents.clone();
         tokio::spawn(actor.run(rx));
-        Manager { tx, events, tools, jar, cookie_dir, referrers }
+        Manager { tx, events, tools, jar, cookie_dir, referrers, torrents }
     }
 
     /// Reads a video/audio page (title, qualities, playlist entries). Fetches yt-dlp
@@ -260,6 +288,21 @@ impl Manager {
     }
 
     /// Browser cookies for later downloads (memory only).
+    /// A magnet link or a link to a `.torrent` file.
+    pub async fn add_torrent(&self, url: String) -> ItemId {
+        let (reply, rx) = oneshot::channel();
+        let _ = self.tx.send(Cmd::AddTorrent(url, reply));
+        rx.await.unwrap_or(ItemId(0))
+    }
+
+    /// Tests: torrents use only these peers (no DHT, no trackers). Before the first torrent.
+    #[doc(hidden)]
+    pub fn use_torrent_peers(&self, peers: Vec<std::net::SocketAddr>) {
+        if let Ok(mut p) = self.torrents.peers.lock() {
+            *p = Some(peers);
+        }
+    }
+
     /// The page a media link was found on (the browser's media sniffer): yt-dlp sends it as
     /// Referer, which many stream hosts require.
     pub fn remember_referrer(&self, url: String, page: String) {
@@ -416,6 +459,7 @@ struct Actor {
     /// Automatic retries used per item since it last started by hand or finished.
     retries: HashMap<ItemId, u32>,
     referrers: Referrers,
+    torrents: Arc<Torrents>,
     /// The current retry timer of each item; anything the user does cancels it.
     retry_gen: HashMap<ItemId, u64>,
     next_gen: u64,
@@ -447,6 +491,7 @@ impl Actor {
             last_save: Instant::now(),
             retries: HashMap::new(),
             referrers: Referrers::default(),
+            torrents: Arc::default(),
             retry_gen: HashMap::new(),
             next_gen: 0,
             retry_base: RETRY_BASE,
@@ -518,6 +563,11 @@ impl Actor {
                     self.schedule();
                 }
             }
+            Cmd::AddTorrent(url, reply) => {
+                let name = rdm_torrent::link_name(&url);
+                let category = Category::from_name(&name);
+                let _ = reply.send(self.push_item(url, name, category, Kind::Torrent, None, 0));
+            }
             Cmd::AddGallery(url, reply) => {
                 let name = crate::model::gallery_name(&url);
                 let _ = reply.send(self.push_item(url, name, Category::Image, Kind::Gallery, None, 0));
@@ -580,6 +630,13 @@ impl Actor {
             }
             Cmd::Remove(id, delete_file) => {
                 self.cancel_retry(id);
+                // The torrent engine forgets it too (Snag itself handles the files).
+                if let Some(item) = self.state.item(id).filter(|i| i.kind == Kind::Torrent && i.url.starts_with("magnet:"))
+                    && let Some(engine) = self.torrents.engine.get().cloned()
+                {
+                    let source = rdm_torrent::Source::Magnet(item.url.clone());
+                    tokio::spawn(async move { engine.forget(&source).await });
+                }
                 if let Some(r) = self.running.get_mut(&id) {
                     r.stop = Stop::Remove { delete_file };
                     r.cancel.cancel();
@@ -672,7 +729,7 @@ impl Actor {
     /// Restarts running video downloads so a new speed limit reaches yt-dlp (it continues its partial files).
     fn restart_media(&mut self) {
         for (id, r) in self.running.iter_mut() {
-            let media = self.state.item(*id).is_some_and(|i| matches!(i.kind, Kind::Media(_) | Kind::Gallery));
+            let media = self.state.item(*id).is_some_and(|i| matches!(i.kind, Kind::Media(_) | Kind::Gallery | Kind::Torrent));
             if media && r.stop == Stop::None {
                 r.stop = Stop::Schedule; // comes back as Queued and starts again
                 r.cancel.cancel();
@@ -727,7 +784,7 @@ impl Actor {
         let share = if limit == 0 { 0 } else { (limit / (running.len() + picked.len()).max(1) as u64).max(1) };
         if limit > 0 {
             for (id, r) in self.running.iter_mut() {
-                let video = self.state.item(*id).is_some_and(|i| matches!(i.kind, Kind::Media(_) | Kind::Gallery));
+                let video = self.state.item(*id).is_some_and(|i| matches!(i.kind, Kind::Media(_) | Kind::Gallery | Kind::Torrent));
                 if video && r.stop == Stop::None && (r.limit_bps == 0 || r.limit_bps > share) {
                     r.stop = Stop::Schedule;
                     r.cancel.cancel();
@@ -770,7 +827,7 @@ impl Actor {
 
         let cancel = CancellationToken::new();
         let (progress_tx, progress_rx) = watch::channel(Progress::default());
-        let video = matches!(kind, Kind::Media(_) | Kind::Gallery);
+        let video = matches!(kind, Kind::Media(_) | Kind::Gallery | Kind::Torrent);
         self.running.insert(id, Running { cancel: cancel.clone(), progress: progress_rx, stop: Stop::None, limit_bps: if video { share } else { 0 } });
         if let Kind::Media(format) = kind {
             self.start_media(id, url, format, work_dir, share, cancel, progress_tx);
@@ -778,6 +835,10 @@ impl Actor {
         }
         if kind == Kind::Gallery {
             self.start_gallery(id, url, share, cancel, progress_tx);
+            return;
+        }
+        if kind == Kind::Torrent {
+            self.start_torrent(id, url, share, cancel, progress_tx);
             return;
         }
 
@@ -905,6 +966,56 @@ impl Actor {
         });
     }
 
+    /// Torrents go to `<download>/Torrents` (a folder per multi-file torrent). Stopping pauses
+    /// them; starting again continues from the pieces already on disk.
+    fn start_torrent(&mut self, id: ItemId, url: String, limit_bps: u64, cancel: CancellationToken, progress_tx: watch::Sender<Progress>) {
+        let settings = &self.state.settings;
+        let base = if settings.sort_into_folders { settings.download_dir.join("Torrents") } else { settings.download_dir.clone() };
+        let data_dir = self.path.parent().unwrap_or(Path::new(".")).to_path_buf();
+        let keep_sharing = settings.keep_sharing;
+        let (torrents, client, msg_tx) = (self.torrents.clone(), self.client.clone(), self.msg_tx.clone());
+        tokio::spawn(async move {
+            let result = async {
+                let source = if url.starts_with("magnet:") {
+                    rdm_torrent::Source::Magnet(url.clone())
+                } else {
+                    let get = client.get(&url).send();
+                    let bytes = tokio::select! {
+                        _ = cancel.cancelled() => return Ok(Outcome::Paused),
+                        r = get => r.and_then(|r| r.error_for_status()).map_err(|e| format!("couldn't fetch the .torrent: {e}"))?.bytes().await.map_err(|e| e.to_string())?,
+                    };
+                    rdm_torrent::Source::File(bytes.to_vec())
+                };
+                let session_dir = data_dir.join("torrents");
+                let engine = tokio::select! {
+                    _ = cancel.cancelled() => return Ok(Outcome::Paused),
+                    e = torrents.engine(&session_dir) => e?,
+                };
+                engine.set_limit(limit_bps);
+                let (tx, mut rx) = watch::channel(rdm_torrent::Progress::default());
+                let forward = tokio::spawn(async move {
+                    while rx.changed().await.is_ok() {
+                        let p = rx.borrow_and_update().clone();
+                        let total = (p.total > 0).then_some(p.total);
+                        progress_tx.send_replace(Progress { downloaded: p.downloaded, total, speed_bps: p.speed_bps, segments: Vec::new() });
+                    }
+                });
+                let outcome = engine.download(&source, &base, cancel, &tx).await;
+                if keep_sharing && matches!(outcome, Ok(rdm_torrent::Outcome::Completed(_))) {
+                    let _ = engine.share(&source, &tx).await;
+                }
+                drop(tx);
+                let _ = forward.await;
+                Ok(match outcome? {
+                    rdm_torrent::Outcome::Completed(path) => Outcome::Completed(path),
+                    rdm_torrent::Outcome::Paused => Outcome::Paused,
+                })
+            }
+            .await;
+            let _ = msg_tx.send(Msg::Finished { id, result });
+        });
+    }
+
     fn on_msg(&mut self, msg: Msg) {
         match msg {
             Msg::Resolve { id, name, total, reply } => {
@@ -962,6 +1073,12 @@ impl Actor {
                             if let Some(size) = size {
                                 item.downloaded = size;
                                 item.total = Some(size);
+                            }
+                            if item.kind == Kind::Torrent
+                                && let Some(name) = path.file_name().map(|n| n.to_string_lossy().to_string())
+                            {
+                                item.category = if path.is_dir() { Category::Other } else { Category::from_name(&name) };
+                                item.name = name;
                             }
                             item.dest = Some(path);
                             Status::Done

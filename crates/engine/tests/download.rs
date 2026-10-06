@@ -23,6 +23,27 @@ async fn run(url: &str, dest: &Path, o: &DownloadOptions, cancel: CancellationTo
     (r, last)
 }
 
+/// Cancels once the sidecar has saved some progress (or after 20 s): independent of how busy
+/// the machine is, unlike a fixed delay.
+fn cancel_once_saved(dest: &Path) -> CancellationToken {
+    let t = CancellationToken::new();
+    let t2 = t.clone();
+    let sidecar = state_path(dest);
+    tokio::spawn(async move {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+        while tokio::time::Instant::now() < deadline {
+            if let Ok(Some(s)) = DownloadState::load(&sidecar).await
+                && s.downloaded() > 0
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        t2.cancel();
+    });
+    t
+}
+
 fn cancel_after(ms: u64) -> CancellationToken {
     let t = CancellationToken::new();
     let t2 = t.clone();
@@ -87,7 +108,7 @@ async fn pause_then_resume_keeps_progress() {
     let size = 4 * 1024 * 1024;
     let url = s.url(&format!("/slow/{size}"));
 
-    let (r, _) = run(&url, &dest, &opts(4), cancel_after(500)).await;
+    let (r, _) = run(&url, &dest, &opts(4), cancel_once_saved(&dest)).await;
     assert_eq!(r.unwrap(), Outcome::Paused);
     assert!(!dest.exists());
     assert!(part_path(&dest).exists());

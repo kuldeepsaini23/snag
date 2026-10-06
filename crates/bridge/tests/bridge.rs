@@ -198,3 +198,19 @@ async fn add_batch_adds_each_link_as_a_file() {
     let too_many: Vec<String> = (0..1001).map(|i| format!("https://x.test/{i}.zip")).collect();
     assert_eq!(send(json!({ "urls": too_many }), TOKEN).await.unwrap().status().as_u16(), 400);
 }
+
+#[tokio::test]
+async fn magnet_and_torrent_links_become_torrents() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path()).await;
+    let b = start(m.clone(), 48201..=48210).await.unwrap();
+    let magnet = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Ubuntu";
+    let (status, body) = post(b.port, json!({ "url": magnet }), TOKEN).await;
+    assert_eq!(status, 200, "{body}");
+    let (status, body) = post(b.port, json!({ "url": "https://site.org/debian.iso.torrent", "kind": "file" }), TOKEN).await;
+    assert_eq!(status, 200, "{body}");
+    let items = m.snapshot().await.items;
+    assert_eq!(items.len(), 2);
+    assert!(items.iter().all(|i| i.kind == rdm_core::Kind::Torrent), "{items:?}");
+    assert_eq!(items[0].name, "Ubuntu");
+}
