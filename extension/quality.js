@@ -30,4 +30,29 @@ function safeAccent(value) {
   return typeof value === "string" && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(value) ? value : DEFAULT_ACCENT;
 }
 
-if (typeof module !== "undefined") module.exports = { sizeLabel, qualityRows, safeAccent, DEFAULT_ACCENT };
+const RELOAD = "Snag's extension was updated: reload this page";
+
+/**
+ * `runtime.sendMessage` as a promise that always settles: a page script cut off by an extension
+ * reload, a browser error, or no answer within `timeoutMs` all become `{ ok: false, error }`.
+ */
+function makeAsk(runtime, timeoutMs) {
+  return (msg) =>
+    new Promise((resolve) => {
+      const timer = setTimeout(() => resolve({ ok: false, error: "Snag gave no answer. Is it running?" }), timeoutMs);
+      const settle = (r) => {
+        clearTimeout(timer);
+        resolve(r);
+      };
+      try {
+        runtime.sendMessage(msg, (reply) => {
+          if (runtime.lastError || reply === undefined) settle({ ok: false, error: RELOAD });
+          else settle(reply);
+        });
+      } catch (_) {
+        settle({ ok: false, error: RELOAD });
+      }
+    });
+}
+
+if (typeof module !== "undefined") module.exports = { sizeLabel, qualityRows, safeAccent, makeAsk, DEFAULT_ACCENT };

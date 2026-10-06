@@ -3,6 +3,11 @@
 
 (() => {
   const HOST_ID = "rdm-download-pill";
+  // Reading a page can wait for "Allow" in Snag (up to two minutes) and then yt-dlp.
+  const ask = makeAsk(chrome.runtime, 150000);
+  const askQuick = makeAsk(chrome.runtime, 5000);
+  // A button left by an older copy of this script (the extension was updated) is dead: replace it.
+  document.getElementById(HOST_ID)?.remove();
 
   function build() {
     const host = document.createElement("div");
@@ -79,9 +84,7 @@
     // Snag couldn't list qualities: hand it the page (and the stream it played) as before.
     const sendPage = () => {
       note([el("span", "spinner"), "Sending to Snag…"]);
-      chrome.runtime.sendMessage({ type: "send", url: location.href, kind: "media", referrer: location.href, withFallback: true }, (r) => {
-        done(r && r.ok ? "Sent to Snag ✓" : (r && r.error) || "Snag isn't running");
-      });
+      ask({ type: "send", url: location.href, kind: "media", referrer: location.href, withFallback: true }).then((r) => done(r.ok ? "Sent to Snag ✓" : r.error));
     };
 
     const showChoices = (info) => {
@@ -113,23 +116,31 @@
         row.addEventListener("click", () => {
           note([el("span", "spinner"), `Adding ${q.label}…`]);
           const choice = { url: location.href, title: info.title || document.title, format: q.format, thumbnail: info.thumbnail || undefined, duration: info.duration || undefined };
-          chrome.runtime.sendMessage({ type: "add-media", choice }, (r) => done(r && r.ok ? `Downloading ${q.label} ✓` : (r && r.error) || "Snag isn't running"));
+          ask({ type: "add-media", choice }).then((r) => done(r.ok ? `Downloading ${q.label} ✓` : r.error));
         });
         panel.append(row);
       }
       panel.classList.add("open");
     };
 
-    pill.addEventListener("click", () => {
+    pill.addEventListener("click", async () => {
       if (panel.classList.contains("open")) return close();
-      note([el("span", "spinner"), "Reading the video…"]);
       pill.disabled = true;
-      chrome.runtime.sendMessage({ type: "probe", url: location.href, referrer: location.href }, (r) => {
+      const status = await askQuick({ type: "status" });
+      if (status.ok === false) {
         pill.disabled = false;
-        if (r && r.ok && r.info.options && r.info.options.length) showChoices(r.info);
-        else if (r && r.ok === false && /isn't running|not allowed|connect/i.test(r.error || "")) done(r.error);
-        else sendPage();
-      });
+        return done(status.error);
+      }
+      if (!status.app) {
+        pill.disabled = false;
+        return done("Snag isn't running: start it and try again");
+      }
+      note([el("span", "spinner"), status.app.paired ? "Reading the video…" : "Click Allow in the Snag window…"]);
+      const r = await ask({ type: "probe", url: location.href, referrer: location.href });
+      pill.disabled = false;
+      if (r.ok && r.info.options && r.info.options.length) showChoices(r.info);
+      else if (!r.ok && /reload this page|no answer|isn't running|not allowed|connect/i.test(r.error || "")) done(r.error);
+      else sendPage();
     });
     document.addEventListener("keydown", (e) => e.key === "Escape" && close());
     return host;
@@ -144,6 +155,8 @@
     if (!on && existing) existing.remove();
   }
   function sync() {
+    // Cut off by an extension update: leave the page to the new copy of this script.
+    if (!chrome.runtime?.id) return clearInterval(timer);
     if (location.href !== lastUrl) {
       lastUrl = location.href;
       mediaSeen = 0;
@@ -156,10 +169,10 @@
       sync();
     }
   });
-  chrome.runtime.sendMessage({ type: "media-list" }, (r) => {
-    mediaSeen = (r && r.items && r.items.length) || 0;
+  askQuick({ type: "media-list" }).then((r) => {
+    mediaSeen = (r.items && r.items.length) || 0;
     sync();
   });
+  const timer = setInterval(sync, 1000);
   sync();
-  setInterval(sync, 1000);
 })();

@@ -33,3 +33,23 @@ test("the accent from Snag is used only when it is a real colour", () => {
   assert.strictEqual(safeAccent("red; background:url(x)"), "#ff9f0a");
   assert.strictEqual(safeAccent(undefined), "#ff9f0a");
 });
+
+test("asking the extension never hangs: cut-off page script, errors and silence all answer", async () => {
+  const { makeAsk } = require("../quality.js");
+  const ok = makeAsk({ sendMessage: (m, cb) => cb({ ok: true, echo: m.type }), lastError: undefined }, 1000);
+  assert.deepStrictEqual(await ok({ type: "probe" }), { ok: true, echo: "probe" });
+  // The extension was reloaded: this page's script is cut off and sendMessage throws.
+  const cut = makeAsk({ sendMessage: () => { throw new Error("Extension context invalidated."); } }, 1000);
+  const r1 = await cut({ type: "probe" });
+  assert.strictEqual(r1.ok, false);
+  assert.match(r1.error, /reload this page/i);
+  // The browser reports an error instead of an answer.
+  const rt = { sendMessage: (m, cb) => { rt.lastError = { message: "Could not establish connection" }; cb(undefined); } };
+  const r2 = await makeAsk(rt, 1000)({ type: "probe" });
+  assert.strictEqual(r2.ok, false);
+  assert.match(r2.error, /reload this page/i);
+  // No answer at all.
+  const r3 = await makeAsk({ sendMessage: () => {} }, 30)({ type: "probe" });
+  assert.strictEqual(r3.ok, false);
+  assert.match(r3.error, /no answer/i);
+});
