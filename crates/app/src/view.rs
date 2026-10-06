@@ -174,6 +174,17 @@ pub fn duration_label(secs: f64) -> String {
     if s >= 3600 { format!("{}:{:02}:{:02}", s / 3600, (s % 3600) / 60, s % 60) } else { format!("{}:{:02}", s / 60, s % 60) }
 }
 
+/// The line under the URL bar.
+pub fn url_hint(m: &Model) -> &'static str {
+    if m.probing {
+        "Reading video info…"
+    } else if m.settings.clipboard_watch {
+        "Copy any link and RDM offers to download it. Paste one here and press Enter."
+    } else {
+        "Paste a link and press Enter."
+    }
+}
+
 /// The tag in the URL bar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LinkTag {
@@ -632,7 +643,7 @@ mod tests {
         m.queue_drafts[1].start = "25:00".into();
         assert!(m.close_settings().is_err());
         assert_eq!(m.screen, Screen::Settings, "stays open to fix it");
-        assert!(m.notice.is_some());
+        assert!(m.settings_error.is_some());
     }
 
     #[test]
@@ -873,5 +884,61 @@ mod tests {
         assert!(m.notice.is_some(), "says why");
         m.refresh_typed(ItemId(4), "https://x/y".into());
         assert_eq!(m.take_refresh(ItemId(3)), None, "typed for another item");
+    }
+
+    #[test]
+    fn closing_the_popover_applies_a_keyboard_change() {
+        let mut m = model();
+        m.speed_open = true;
+        m.preview_speed(0.5);
+        assert_eq!(m.close_speed(), Some(slider_to_bps(0.5)), "arrow keys / wheel changed it without a release");
+        assert!(!m.speed_open);
+        m.speed_open = true;
+        assert_eq!(m.close_speed(), None, "nothing changed: nothing to apply");
+    }
+
+    #[test]
+    fn settings_errors_are_kept_apart_from_notices() {
+        let mut m = model();
+        m.queues[1].schedule = Some(Schedule { start: 23 * 60, stop: None, days: [true; 7] });
+        m.open_settings(crate::state::SettingsTab::Speed);
+        m.queue_drafts[1].name = "  ".into();
+        assert!(m.close_settings().is_err());
+        assert!(m.settings_error.is_some(), "shown with a warning icon");
+        m.queue_drafts[1].name = "Night".into();
+        let (saved, _) = m.close_settings().expect("valid now");
+        assert_eq!(m.settings_error, None);
+        assert_eq!(m.settings, saved, "applied at once: no flash of the old accent");
+    }
+
+    #[test]
+    fn deleted_queue_in_the_sidebar_falls_back_to_all() {
+        let mut m = model();
+        m.library = Library::Queue(1);
+        let main = m.queues[0].clone();
+        m.apply(Event::Queues(vec![main]));
+        assert_eq!(m.library, Library::All);
+    }
+
+    #[test]
+    fn hint_matches_clipboard_watch() {
+        let mut m = Model::default();
+        m.settings.clipboard_watch = true;
+        assert!(url_hint(&m).contains("Copy any link"));
+        m.settings.clipboard_watch = false;
+        assert!(!url_hint(&m).contains("Copy any link"));
+    }
+
+    #[test]
+    fn video_from_browser_waits_while_settings_are_open() {
+        let mut m = model();
+        m.queues[1].schedule = Some(Schedule { start: 23 * 60, stop: None, days: [true; 7] });
+        m.open_settings(crate::state::SettingsTab::General);
+        m.draft.download_dir = r"D:\x".into();
+        m.apply(Event::PickMedia { url: "https://youtu.be/x".into(), info: playlist(0), choice: 0 });
+        assert_eq!(m.screen, Screen::Settings, "the sheet with unsaved edits stays");
+        assert_eq!(m.draft.download_dir, r"D:\x");
+        m.close_settings().expect("valid");
+        assert_eq!(m.screen, Screen::Picker, "then the quality choice shows");
     }
 }

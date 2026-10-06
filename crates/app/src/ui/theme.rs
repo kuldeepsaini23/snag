@@ -58,10 +58,11 @@ pub fn parse_hex(s: &str) -> Option<Color> {
     Some(Color::from_rgb8(r, g, b))
 }
 
-/// Dark text on light accents, white on dark ones (perceived brightness above 0.6 counts as light).
+/// Dark text on light accents, white on dark ones (perceived brightness above 0.56 counts as
+/// light: orange, green, mint and white get dark text; blue, purple and pink white).
 pub fn on_accent(accent: Color) -> Color {
     let brightness = 0.299 * accent.r + 0.587 * accent.g + 0.114 * accent.b;
-    if brightness > 0.6 { Color::from_rgb8(0x1a, 0x18, 0x16) } else { Color::WHITE }
+    if brightness > 0.56 { Color::from_rgb8(0x1a, 0x18, 0x16) } else { Color::WHITE }
 }
 
 /// The full token set for an accent; an invalid accent falls back to the default orange.
@@ -118,6 +119,8 @@ mod tests {
         assert_eq!(on_accent(parse_hex("#ff9f0a").unwrap()), dark);
         assert_eq!(on_accent(parse_hex("#0a84ff").unwrap()), Color::WHITE);
         assert_eq!(on_accent(parse_hex("#bf5af2").unwrap()), Color::WHITE);
+        assert_ne!(on_accent(parse_hex("#32d74b").unwrap()), Color::WHITE, "white on green is too faint");
+        assert_eq!(on_accent(parse_hex("#ff375f").unwrap()), Color::WHITE);
     }
 
     #[test]

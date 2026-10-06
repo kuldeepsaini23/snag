@@ -51,11 +51,10 @@ pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
         SettingsTab::Tools => tools(m, c),
     };
     let mut content = column![head, scrollable(container(body).padding(iced::Padding { right: 10.0, ..Default::default() })).style(style::scroll(c)).height(Fill)].spacing(14);
-    if let Some(n) = &m.notice {
-        let failed = n.contains("must") || n.contains("can't") || n.contains("pick") || n.contains("failed");
-        content = content.push(row![icon(if failed { Icon::WarningCircle } else { Icon::CheckCircle }, 14), text(n).size(12.5)]
-            .spacing(8)
-            .align_y(Alignment::Center));
+    if let Some(e) = &m.settings_error {
+        content = content.push(row![icon(Icon::WarningCircle, 14).color(c.danger), text(e).size(12.5)].spacing(8).align_y(Alignment::Center));
+    } else if let Some(n) = &m.notice {
+        content = content.push(row![icon(Icon::CheckCircle, 14).color(c.success), text(n).size(12.5)].spacing(8).align_y(Alignment::Center));
     }
     let content = container(content).width(Fill).height(Fill).padding([18, 22]);
     container(row![nav, content]).width(820).height(584).style(style::sheet(c)).into()

@@ -35,6 +35,8 @@ const DEFAULT_LIMIT: u64 = 2 * 1024 * 1024;
 pub enum Message {
     UrlChanged(String),
     Add,
+    /// Adds this link (from the URL bar or the clipboard toast).
+    AddLink(String),
     /// Toolbar / empty-state "Add URL": submit the link, or focus the empty URL bar.
     AddUrl,
     Added(ItemId),
@@ -221,11 +223,16 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             if url.is_empty() {
                 return Task::none();
             }
+            if url.starts_with("http://") || url.starts_with("https://") {
+                model.url.clear();
+            }
+            return update(app, Message::AddLink(url));
+        }
+        Message::AddLink(url) => {
             if !(url.starts_with("http://") || url.starts_with("https://")) {
                 model.notice = Some("Paste a link that starts with http:// or https://".into());
                 return Task::none();
             }
-            model.url.clear();
             model.notice = None;
             let m = app.manager.clone();
             if rdm_media::gallery::is_gallery_url(&url) {
@@ -338,7 +345,9 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             if model.confirm_quit {
                 model.keep_downloading();
             } else if model.speed_open {
-                model.speed_open = false;
+                if let Some(bps) = model.close_speed() {
+                    return set_limit(app, bps);
+                }
             } else if model.screen == Screen::Settings {
                 return update(app, Message::CloseSettings);
             } else if model.screen == Screen::Picker {
@@ -348,8 +357,14 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             }
         }
         Message::ToggleSpeed => {
-            model.speed_open = !model.speed_open;
-            model.speed_preview = None;
+            if model.speed_open {
+                if let Some(bps) = model.close_speed() {
+                    return set_limit(app, bps);
+                }
+            } else {
+                model.speed_open = true;
+                model.speed_preview = None;
+            }
         }
         Message::SpeedOn(on) => {
             let bps = if on { model.speed_preview.unwrap_or(DEFAULT_LIMIT) } else { 0 };
@@ -478,9 +493,9 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::ClipboardTick => return iced::clipboard::read().map(Message::ClipboardText),
         Message::ClipboardText(text) => model.clipboard_seen(text),
         Message::ToastDownload => {
+            // Straight from the toast: whatever is typed in the URL bar stays.
             if let Some(link) = model.toast.take() {
-                model.url = link;
-                return update(app, Message::Add);
+                return update(app, Message::AddLink(link));
             }
         }
         Message::ToastClose => model.toast = None,

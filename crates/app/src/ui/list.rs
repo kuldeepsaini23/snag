@@ -15,8 +15,7 @@ use rdm_core::{Category, Item, Kind, MediaFormat, Status};
 
 pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
     let mut page = column![url_bar(m, c)].spacing(10);
-    let hint = if m.probing { "Reading video info…" } else { "Copy any link and it appears here automatically. Press Enter to pick quality." };
-    page = page.push(container(text(hint).size(12).color(c.text3)).padding([0, 2]));
+    page = page.push(container(text(view::url_hint(m)).size(12).color(c.text3)).padding([0, 2]));
 
     if m.items.is_empty() {
         page = page.push(empty_state(c));
@@ -150,7 +149,7 @@ fn item_row<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
             format::speed(i.speed_bps),
             i.total.and_then(|t| format::eta(t.saturating_sub(i.downloaded), i.speed_bps)).map(|e| format!("{e} left")).unwrap_or_default(),
         ),
-        Status::Failed(_) => ("Error".into(), if missing { String::new() } else { "retry".into() }),
+        Status::Failed(_) => ("Error".into(), "retry".into()),
         Status::Paused => ("—".into(), "paused".into()),
         Status::Queued if waiting => ("Scheduled".into(), String::new()),
         Status::Queued => ("—".into(), "queued".into()),

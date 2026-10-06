@@ -283,6 +283,8 @@ pub struct Model {
     pub thumb_pending: HashSet<String>,
     /// "Refresh link": the item and the new link typed for it.
     pub refresh: Option<(ItemId, String)>,
+    /// Why the settings sheet couldn't be saved (shown in it with a warning icon).
+    pub settings_error: Option<String>,
 }
 
 impl Default for Model {
@@ -319,6 +321,7 @@ impl Default for Model {
             thumbs: HashMap::new(),
             thumb_pending: HashSet::new(),
             refresh: None,
+            settings_error: None,
         }
     }
 }
@@ -365,11 +368,21 @@ impl Model {
             Event::PickMedia { url, info, choice } => {
                 self.notice = None;
                 self.picker = Some(Picker::new(url, info, choice, 0));
-                self.screen = Screen::Picker;
+                // An open settings sheet keeps its unsaved edits; the picker shows once it closes.
+                if self.screen != Screen::Settings {
+                    self.screen = Screen::Picker;
+                }
             }
             Event::Notice(text) => self.notice = Some(text),
             Event::Focus | Event::Quit => {}
-            Event::Queues(queues) => self.queues = queues,
+            Event::Queues(queues) => {
+                if let crate::view::Library::Queue(id) = self.library
+                    && !queues.iter().any(|q| q.id == id)
+                {
+                    self.library = crate::view::Library::All;
+                }
+                self.queues = queues;
+            }
             Event::Settings(s) => {
                 if self.screen != Screen::Settings {
                     self.draft = Draft::from_settings(&s);
@@ -403,6 +416,12 @@ impl Model {
         self.speed_preview.take()
     }
 
+    /// Closes the popover: a change made without a release (arrow keys, wheel) is applied now.
+    pub fn close_speed(&mut self) -> Option<u64> {
+        self.speed_open = false;
+        self.speed_preview.take()
+    }
+
     /// The limit the popover shows (bytes/s, 0 = none).
     pub fn shown_limit(&self) -> u64 {
         self.speed_preview.unwrap_or(self.settings.speed_limit_bps)
@@ -430,6 +449,7 @@ impl Model {
         self.queue_drafts = self.queues.iter().map(QueueDraft::from_queue).collect();
         self.settings_tab = tab;
         self.notice = None;
+        self.settings_error = None;
         self.speed_open = false;
         self.screen = Screen::Settings;
     }
@@ -483,11 +503,13 @@ impl Model {
     pub fn close_settings(&mut self) -> Result<(Settings, Vec<Queue>), String> {
         let result = self.draft.to_settings(&self.settings).and_then(|s| Ok((s, drafts_to_queues(&self.queue_drafts)?)));
         match &result {
-            Ok(_) => {
-                self.notice = None;
-                self.screen = Screen::Downloads;
+            Ok((settings, _)) => {
+                self.settings_error = None;
+                // Applied at once (the manager's echo follows), so the accent doesn't flash back.
+                self.settings = settings.clone();
+                self.screen = if self.picker.is_some() { Screen::Picker } else { Screen::Downloads };
             }
-            Err(e) => self.notice = Some(e.clone()),
+            Err(e) => self.settings_error = Some(e.clone()),
         }
         result
     }

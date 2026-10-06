@@ -58,6 +58,10 @@ pub enum Icon {
 }
 
 impl Icon {
+    /// Every icon (the font test checks each one).
+    #[cfg(test)]
+    pub const ALL: [Icon; 40] = [Icon::AppWindow, Icon::ArrowClockwise, Icon::ArrowRight, Icon::Browser, Icon::CheckCircle, Icon::ClipboardText, Icon::Clock, Icon::Copy, Icon::Download, Icon::File, Icon::FilePdf, Icon::FileText, Icon::FileZip, Icon::FilmStrip, Icon::FolderOpen, Icon::Folder, Icon::Gauge, Icon::Gear, Icon::Image, Icon::Lightning, Icon::Link, Icon::ListNumbers, Icon::MagnifyingGlass, Icon::Minus, Icon::MusicNote, Icon::MusicNotes, Icon::Palette, Icon::Pause, Icon::Play, Icon::PlayFill, Icon::Plug, Icon::Plus, Icon::Queue, Icon::Sidebar, Icon::Square, Icon::Trash, Icon::TrayDown, Icon::WarningCircle, Icon::Wrench, Icon::X];
+
     pub fn ch(self) -> char {
         let code = match self {
             Self::AppWindow => 0xe5da,
@@ -119,8 +123,7 @@ mod tests {
     /// Every glyph we use exists in the bundled font (its cmap maps the code point).
     #[test]
     fn icons_exist_in_font() {
-        let all = [Icon::AppWindow, Icon::Gauge, Icon::Pause, Icon::PlayFill, Icon::Sidebar, Icon::Queue, Icon::Plug, Icon::Wrench, Icon::X, Icon::FileZip];
-        for i in all {
+        for i in Icon::ALL {
             let font = if i == Icon::PlayFill { PHOSPHOR_FILL } else { PHOSPHOR };
             assert!(maps(font, i.ch() as u32), "{i:?} missing");
         }

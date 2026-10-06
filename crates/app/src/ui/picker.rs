@@ -43,6 +43,7 @@ pub fn view<'a>(m: &'a Model, p: &'a Picker, c: Colors) -> Element<'a, Message> 
     let folder = view::save_dir(&m.settings, category).display().to_string();
     let save_to = container(row![text(view::ellipsize_left(&folder, 60)).size(12.5).width(Fill), icon(Icon::FolderOpen, 14).color(c.text3)].align_y(Alignment::Center))
         .padding([8, 10])
+        .clip(true)
         .style(move |t| {
             let mut s = style::card(c)(t);
             s.background = Some(c.canvas.into());
@@ -157,7 +158,9 @@ fn options<'a>(p: &'a Picker, c: Colors) -> Element<'a, Message> {
         let row = row![label, Space::new().width(Fill), small(what, c.text3), text(size).size(12).font(style::MONO).color(c.text2)].spacing(12).align_y(Alignment::Center);
         col.push(button(row).width(Fill).padding([9, 12]).style(style::option(c, chosen)).on_press(Message::PickOption(i)))
     });
-    scrollable(list).height(Length::Shrink).style(style::scroll(c)).into()
+    // Many qualities (8K…144p) would push the buttons off a short window: cap the list.
+    let height = if p.visible_options().len() > 5 { Length::Fixed(5.0 * 46.0) } else { Length::Shrink };
+    scrollable(list).height(height).style(style::scroll(c)).into()
 }
 
 fn playlist_list<'a>(p: &'a Picker, c: Colors) -> Element<'a, Message> {
