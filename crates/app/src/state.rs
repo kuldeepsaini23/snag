@@ -328,6 +328,8 @@ pub struct Model {
     pub thumbs: HashMap<String, PathBuf>,
     /// Thumbnails being downloaded.
     pub thumb_pending: HashSet<String>,
+    /// Thumbnails that couldn't be fetched: (failures so far, when to try again).
+    pub thumb_failures: HashMap<String, (u32, std::time::Instant)>,
     /// "Refresh link": the item and the new link typed for it.
     pub refresh: Option<(ItemId, String)>,
     /// Why the settings sheet couldn't be saved (shown in it with a warning icon).
@@ -382,6 +384,7 @@ impl Default for Model {
             notes_since: None,
             thumbs: HashMap::new(),
             thumb_pending: HashSet::new(),
+            thumb_failures: HashMap::new(),
             refresh: None,
             settings_error: None,
             watches: Vec::new(),

@@ -105,6 +105,8 @@ pub enum Message {
     RefreshUrl(ItemId),
     /// A thumbnail finished downloading (None: it couldn't be fetched).
     ThumbReady(String, Option<PathBuf>),
+    /// A failed thumbnail may be due again (every update fetches the ones due).
+    RetryThumbs,
     // List
     SetFilter(Filter),
     SetLibrary(Library),
@@ -287,7 +289,7 @@ fn sync_phone(app: &mut App) {
 }
 
 fn fetch_thumbs(app: &mut App) -> Task<Message> {
-    let wanted = app.model.missing_thumbs();
+    let wanted = app.model.missing_thumbs(Instant::now());
     if wanted.is_empty() {
         return Task::none();
     }
@@ -469,13 +471,9 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
                 return fire(&app.manager, move |m| async move { m.refresh_url(id, url).await });
             }
         }
-        Message::ThumbReady(url, path) => {
-            // A failed fetch stays "pending" so it isn't retried every update.
-            if let Some(path) = path {
-                model.thumb_pending.remove(&url);
-                model.thumbs.insert(url, path);
-            }
-        }
+        // A failure is tried again later, a few times (see `view::thumb_backoff`).
+        Message::ThumbReady(url, path) => model.thumb_ready(url, path, Instant::now()),
+        Message::RetryThumbs => {}
         Message::PauseAll => {
             let ids = model.pause_all_ids();
             return fire(&app.manager, move |m| async move {
@@ -748,6 +746,10 @@ pub fn subscription(app: &App) -> Subscription<Message> {
     // Notifications go out in batches, so a finished playlist is one toast.
     if !app.model.notes.is_empty() {
         subs.push(iced::time::every(std::time::Duration::from_secs(2)).map(|_| Message::FlushNotes));
+    }
+    // A thumbnail that failed waits to be tried again; something has to wake the window up for it.
+    if app.model.next_thumb_retry().is_some() {
+        subs.push(iced::time::every(std::time::Duration::from_secs(5)).map(|_| Message::RetryThumbs));
     }
     // Frames only while something moves: an idle window draws nothing.
     if app.motion.animating(Instant::now()) {

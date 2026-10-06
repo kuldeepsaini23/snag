@@ -53,7 +53,7 @@ pub fn view<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
     let table = interleave(table, c);
 
     let mut details = column![
-        tile(i, i.thumbnail.as_ref().and_then(|u| m.thumbs.get(u)).map(|p| p.as_path()), 252.0, 140.0, 34, c),
+        tile(i, view::thumb_url(i).and_then(|u| m.thumbs.get(&u)).map(|p| p.as_path()), 252.0, 140.0, 34, c),
         text(view::ellipsize(&i.name, 120)).size(14).font(style::SEMIBOLD).wrapping(text::Wrapping::WordOrGlyph),
         container(table).style(style::card(c)),
     ]
