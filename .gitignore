@@ -3,3 +3,4 @@
 *.rdmpart
 *.rdmstate
 extension/dist/
+.claude/worktrees/
