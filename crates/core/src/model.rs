@@ -108,6 +108,8 @@ pub struct Settings {
     pub subtitles: bool,
     /// Subtitle languages for yt-dlp (`en.*`, `en.*,hi`, `all`).
     pub subtitle_langs: String,
+    /// Retry downloads that failed for a temporary reason (timeouts, busy servers).
+    pub auto_retry: bool,
 }
 
 impl Default for Settings {
@@ -128,6 +130,7 @@ impl Default for Settings {
             notify: true,
             subtitles: false,
             subtitle_langs: "en.*".into(),
+            auto_retry: true,
         }
     }
 }

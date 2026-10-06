@@ -33,6 +33,17 @@ fn main() {
             println!("RDMP 1000 1000 NA 50");
             println!(r"RDMF C:\out\clip.mp4");
         }
+        "flaky" => {
+            // Fails once (like a server hiccup), then works.
+            let marker = args.windows(2).find(|w| w[0] == "-P" && !w[1].starts_with("temp:")).map(|w| std::path::Path::new(&w[1]).join("flaky-once"));
+            if let Some(marker) = marker.filter(|m| !m.exists()) {
+                let _ = std::fs::write(marker, b"");
+                eprintln!("ERROR: Unable to download webpage: HTTP Error 503: Service Unavailable");
+                std::process::exit(1);
+            }
+            println!("RDMP 1000 1000 NA 50");
+            println!(r"RDMF C:\out\clip.mp4");
+        }
         "fail" => {
             eprintln!("WARNING: something minor");
             eprintln!("ERROR: Unsupported URL: fake://fail");

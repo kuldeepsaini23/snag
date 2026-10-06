@@ -71,6 +71,7 @@ pub enum Message {
     FlushNotes,
     DraftNotify(bool),
     DraftSubtitles(bool),
+    DraftAutoRetry(bool),
     DraftSubtitleLangs(String),
     RefreshTyped(ItemId, String),
     /// Use the typed link for this item.
@@ -295,6 +296,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::DraftNotify(v) => model.draft.notify = v,
         Message::DraftSubtitles(v) => model.draft.subtitles = v,
+        Message::DraftAutoRetry(v) => model.draft.auto_retry = v,
         Message::DraftSubtitleLangs(v) => model.draft.subtitle_langs = v,
         Message::RefreshTyped(id, text) => model.refresh_typed(id, text),
         Message::RefreshUrl(id) => {

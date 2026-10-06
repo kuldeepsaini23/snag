@@ -711,3 +711,37 @@ async fn subtitle_setting_reaches_ytdlp() {
     assert!(args.contains("--sub-langs\nen.*,hi") && args.contains("--embed-subs"), "{args}");
     m.shutdown().await;
 }
+
+#[tokio::test]
+async fn temporary_failures_retry_by_themselves() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let m = Manager::start_with_retry(dir.path().join("state.json"), Duration::from_millis(50));
+    let mut s = m.snapshot().await.settings;
+    s.download_dir = dir.path().join("dl");
+    s.sort_into_folders = false;
+    m.update_settings(s).await;
+    let mut rx = m.subscribe();
+    let id = m.add_media("https://www.video.test/flaky".into(), "Clip".into(), MediaFormat::Video { max_height: 480 }).await;
+    let failed = wait_item(&mut rx, |i| i.id == id && matches!(i.status, Status::Failed(_))).await;
+    assert!(matches!(&failed.status, Status::Failed(e) if e.contains("retrying")), "{:?}", failed.status);
+    wait_item(&mut rx, has(id, Status::Done)).await;
+    m.shutdown().await;
+}
+
+#[tokio::test]
+async fn permanent_failures_and_retry_off_stay_failed() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let m = Manager::start_with_retry(dir.path().join("state.json"), Duration::from_millis(50));
+    let mut s = m.snapshot().await.settings;
+    s.download_dir = dir.path().join("dl");
+    m.update_settings(s).await;
+    let mut rx = m.subscribe();
+    let id = m.add_media("https://www.video.test/fail".into(), "Clip".into(), MediaFormat::AudioMp3).await;
+    let failed = wait_item(&mut rx, |i| i.id == id && matches!(i.status, Status::Failed(_))).await;
+    assert_eq!(failed.status, Status::Failed("Unsupported URL: fake://fail".into()), "no retry for an unsupported link");
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert!(matches!(m.snapshot().await.items[0].status, Status::Failed(_)));
+    m.shutdown().await;
+}

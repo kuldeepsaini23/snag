@@ -196,14 +196,27 @@ fn connections(m: &Model, c: Colors) -> Element<'_, Message> {
     let d = &m.draft;
     let per = view::segment_choices(&[1, 2, 4, 8, 16], d.connections.trim().parse().unwrap_or(8));
     let at_once = view::segment_choices(&[1, 2, 3, 4, 5], d.max_concurrent.trim().parse().unwrap_or(3));
-    column![section(
-        "Speed",
-        vec![
-            line("Connections per download", "More connections are faster, but some servers limit them", numbers(per, &d.connections, Message::DraftConnections, c), c),
-            line("Downloads at the same time", "The rest wait in their queue", numbers(at_once, &d.max_concurrent, Message::DraftMax, c), c),
-        ],
-        c,
-    )]
+    column![
+        section(
+            "Speed",
+            vec![
+                line("Connections per download", "More connections are faster, but some servers limit them", numbers(per, &d.connections, Message::DraftConnections, c), c),
+                line("Downloads at the same time", "The rest wait in their queue", numbers(at_once, &d.max_concurrent, Message::DraftMax, c), c),
+            ],
+            c,
+        ),
+        section(
+            "Reliability",
+            vec![line(
+                "Retry failed downloads",
+                "After a timeout or a busy server: tries again after 10 s, 30 s and 90 s",
+                switch(d.auto_retry, Message::DraftAutoRetry, c),
+                c,
+            )],
+            c,
+        ),
+    ]
+    .spacing(18)
     .into()
 }
 

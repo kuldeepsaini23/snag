@@ -144,6 +144,7 @@ pub struct Draft {
     pub notify: bool,
     pub subtitles: bool,
     pub subtitle_langs: String,
+    pub auto_retry: bool,
     /// "#rrggbb" as typed (Custom colour).
     pub accent: String,
 }
@@ -163,6 +164,7 @@ impl Draft {
             notify: s.notify,
             subtitles: s.subtitles,
             subtitle_langs: s.subtitle_langs.clone(),
+            auto_retry: s.auto_retry,
             accent: s.accent.clone(),
         }
     }
@@ -194,6 +196,7 @@ impl Draft {
             notify: self.notify,
             subtitles: self.subtitles,
             subtitle_langs: if self.subtitle_langs.trim().is_empty() { base.subtitle_langs.clone() } else { self.subtitle_langs.trim().to_string() },
+            auto_retry: self.auto_retry,
             accent: accent.to_string(),
             ..base.clone()
         })

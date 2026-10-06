@@ -144,6 +144,12 @@ enum Cmd {
 impl Manager {
     /// Loads `state_path` and spawns the manager on the current tokio runtime.
     pub fn start(state_path: PathBuf) -> Manager {
+        Self::start_with_retry(state_path, RETRY_BASE)
+    }
+
+    /// `start` with a shorter wait before automatic retries (tests).
+    #[doc(hidden)]
+    pub fn start_with_retry(state_path: PathBuf, retry_base: Duration) -> Manager {
         let (tx, rx) = mpsc::unbounded_channel();
         let (events, _) = broadcast::channel(1024);
         let tools = Tools {
@@ -155,7 +161,8 @@ impl Manager {
         let cookie_dir = state_path.parent().unwrap_or(Path::new(".")).join("cookies");
         // Cookie files left by a run that was killed or crashed: never leave sessions on disk.
         let _ = std::fs::remove_dir_all(&cookie_dir);
-        let actor = Actor::new(state_path, events.clone(), tools.clone(), jar.clone(), cookie_dir.clone());
+        let mut actor = Actor::new(state_path, events.clone(), tools.clone(), jar.clone(), cookie_dir.clone());
+        actor.retry_base = retry_base;
         tokio::spawn(actor.run(rx));
         Manager { tx, events, tools, jar, cookie_dir }
     }
@@ -359,6 +366,22 @@ enum Msg {
     /// Probe finished: the actor picks the final destination and replies with it.
     Resolve { id: ItemId, name: String, total: Option<u64>, reply: oneshot::Sender<PathBuf> },
     Finished { id: ItemId, result: Result<Outcome, String> },
+    /// An automatic retry's wait is over.
+    Retry(ItemId),
+}
+
+/// Automatic retries after a temporary failure: waits of base, 3×base, 9×base.
+const AUTO_RETRIES: u32 = 3;
+const RETRY_BASE: Duration = Duration::from_secs(10);
+
+/// A failure worth retrying by itself: network trouble or a busy server, not a refusal.
+fn is_transient(error: &str) -> bool {
+    let e = error.to_ascii_lowercase();
+    let busy = ["429", "500", "502", "503", "504"].iter().any(|code| e.contains(code));
+    let network = ["timed out", "timeout", "connection", "reset", "temporarily", "network", "dns error", "unreachable", "eof"]
+        .iter()
+        .any(|w| e.contains(w));
+    busy || network
 }
 
 struct Actor {
@@ -375,6 +398,9 @@ struct Actor {
     msg_rx: mpsc::UnboundedReceiver<Msg>,
     dirty: bool,
     last_save: Instant,
+    /// Automatic retries used per item since it last started by hand or finished.
+    retries: HashMap<ItemId, u32>,
+    retry_base: Duration,
 }
 
 impl Actor {
@@ -400,6 +426,8 @@ impl Actor {
             msg_rx,
             dirty: needs_token,
             last_save: Instant::now(),
+            retries: HashMap::new(),
+            retry_base: RETRY_BASE,
         }
     }
 
@@ -502,6 +530,7 @@ impl Actor {
                 }
                 if let Some(item) = self.state.item_mut(id).filter(|i| matches!(i.status, Status::Paused | Status::Failed(_))) {
                     item.status = Status::Queued;
+                    self.retries.remove(&id);
                     self.updated(id);
                     self.schedule();
                 }
@@ -858,6 +887,17 @@ impl Actor {
                 self.updated(id);
                 let _ = reply.send(dest);
             }
+            Msg::Retry(id) => {
+                // Still failed and not started by hand meanwhile: queue it again.
+                let waiting = self.state.item(id).is_some_and(|i| matches!(i.status, Status::Failed(_)));
+                if waiting && !self.running.contains_key(&id)
+                    && let Some(item) = self.state.item_mut(id)
+                {
+                    item.status = Status::Queued;
+                    self.updated(id);
+                    self.schedule();
+                }
+            }
             Msg::Finished { id, result } => {
                 let Some(r) = self.running.remove(&id) else { return };
                 if let Stop::Remove { delete_file } = r.stop {
@@ -866,6 +906,8 @@ impl Actor {
                     return;
                 }
                 let last = r.progress.borrow().clone();
+                let auto_retry = self.state.settings.auto_retry;
+                let used = self.retries.get(&id).copied().unwrap_or(0);
                 if let Some(item) = self.state.item_mut(id) {
                     item.speed_bps = 0;
                     item.downloaded = last.downloaded.max(item.downloaded);
@@ -885,8 +927,21 @@ impl Actor {
                         }
                         Ok(Outcome::Paused) if r.stop == Stop::Schedule => Status::Queued,
                         Ok(Outcome::Paused) => Status::Paused,
+                        Err(e) if auto_retry && used < AUTO_RETRIES && is_transient(&e) => {
+                            let wait = self.retry_base * 3u32.pow(used);
+                            self.retries.insert(id, used + 1);
+                            let msg_tx = self.msg_tx.clone();
+                            tokio::spawn(async move {
+                                tokio::time::sleep(wait).await;
+                                let _ = msg_tx.send(Msg::Retry(id));
+                            });
+                            Status::Failed(format!("{e} · retrying in {}s", wait.as_secs().max(1)))
+                        }
                         Err(e) => Status::Failed(e),
                     };
+                    if item.status == Status::Done {
+                        self.retries.remove(&id);
+                    }
                     if item.status == Status::Done
                         && let Some(dir) = item.work_dir.take()
                     {
@@ -989,5 +1044,20 @@ impl Actor {
             item.status = Status::Paused;
         }
         self.save();
+    }
+}
+
+#[cfg(test)]
+mod retry_tests {
+    use super::is_transient;
+
+    #[test]
+    fn transient_errors_are_recognised() {
+        for e in ["HTTP Error 503: Service Unavailable", "operation timed out", "connection reset by peer", "error sending request: connection closed", "HTTP Error 429: Too Many Requests", "server returned 502", "dns error: no such host is known"] {
+            assert!(is_transient(e), "{e}");
+        }
+        for e in ["HTTP Error 403: Forbidden", "HTTP Error 404: Not Found", "Unsupported URL: x", "There is no video in this post", "not enough space on the disk"] {
+            assert!(!is_transient(e), "{e}");
+        }
     }
 }
