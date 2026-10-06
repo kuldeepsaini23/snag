@@ -140,3 +140,16 @@ The app crate is split into `state.rs` / `update.rs` (logic, kept) and `ui/` (vi
 The Figma styling pass (https://www.figma.com/design/oe5r4M2xEWvmWfUCmT8Bsr, 14 screens) comes afterwards and replaces only `ui/` and the theme.
 
 **Reordered (2026-10-04, user):** the basic test UI moves up to step 3, right after `core`. Media (yt-dlp) is now step 4 and the bridge/extension step 5; both are wired into the existing basic UI as they land.
+
+## 8. Finish roadmap (2026-10-06, user)
+
+The user chose all four of the following, done in this order:
+1. **Fix + review.** Debug the "Done but file missing" X video: item 2 is Done with 230,279 bytes, but no file exists at its dest. Then run one fresh whole-branch review of steps 2–5 and fix the Critical and Important findings.
+2. **Missing features.**
+   - Queues and the scheduler in the UI.
+   - Speed-limit control.
+   - Login cookies from the browser, so yt-dlp can fetch private and age-restricted videos.
+   - A default-quality option.
+   - Cleaning up yt-dlp's partial files when an item is removed.
+3. **Figma look.** Replace `crates/app/src/ui` with the Figma design (https://www.figma.com/design/oe5r4M2xEWvmWfUCmT8Bsr, 14 screens), including the new feature screens. Accent colour picker.
+4. **Installer.** A Windows installer with a Start-menu shortcut and an optional "start with Windows" setting.
