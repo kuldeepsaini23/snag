@@ -1,4 +1,5 @@
 pub mod category;
+pub mod cookies;
 pub mod instance;
 pub mod manager;
 pub mod model;
@@ -7,6 +8,7 @@ pub mod schedule;
 pub mod store;
 
 pub use category::Category;
+pub use cookies::{Cookie, Jar};
 pub use manager::{Event, Manager};
 pub use model::{AppState, Item, ItemId, Kind, Queue, QueueId, Settings, Status, new_token};
 pub use rdm_media::{MediaFormat, MediaInfo, QualityOption};
