@@ -93,3 +93,22 @@ test("prefetch: a page is read once, then the answer is ready (and expires)", as
   await cache.get("https://v.x/1");
   assert.strictEqual(calls, 4, "old answers expire (links in them stop working)");
 });
+
+test("right-click: an image is the image itself (instant), not the post it links to", () => {
+  const { contextTarget } = require("../quality.js");
+  const page = "https://x.com/someone/status/1";
+  // A photo on X sits inside a link to its post.
+  const x = contextTarget({ mediaType: "image", srcUrl: "https://pbs.twimg.com/media/GxYz?format=jpg&name=small", linkUrl: "https://x.com/someone/status/1/photo/1", pageUrl: page });
+  assert.deepStrictEqual(x, { url: "https://pbs.twimg.com/media/GxYz.jpg?name=orig", kind: "file", referrer: page });
+  const png = contextTarget({ mediaType: "image", srcUrl: "https://pbs.twimg.com/media/Ab?format=png&name=900x900", pageUrl: page });
+  assert.strictEqual(png.url, "https://pbs.twimg.com/media/Ab.png?name=orig");
+  const plain = contextTarget({ mediaType: "image", srcUrl: "https://site.com/a.webp", linkUrl: "https://site.com/post/2", pageUrl: "https://site.com/" });
+  assert.deepStrictEqual(plain, { url: "https://site.com/a.webp", kind: "file", referrer: "https://site.com/" });
+  // A video element's own file is a file too; a blob: player isn't, so the page goes instead.
+  assert.strictEqual(contextTarget({ mediaType: "video", srcUrl: "https://cdn.x/v.mp4", pageUrl: page }).kind, "file");
+  assert.deepStrictEqual(contextTarget({ mediaType: "video", srcUrl: "blob:https://x.com/1", pageUrl: page }), { url: page, kind: "media", referrer: undefined });
+  // A plain link: Snag decides (video page, file, torrent…).
+  assert.deepStrictEqual(contextTarget({ linkUrl: "https://site.com/file.zip", pageUrl: page }), { url: "https://site.com/file.zip", kind: undefined, referrer: page });
+  // "Download this page".
+  assert.deepStrictEqual(contextTarget({ menuItemId: "rdm-page", pageUrl: page }), { url: page, kind: "media", referrer: undefined });
+});

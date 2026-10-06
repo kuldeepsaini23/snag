@@ -76,6 +76,35 @@ class ProbeCache {
   }
 }
 
+/** X serves a small preview by default; the same image at full size, with a real extension. */
+function fullSizeImage(url) {
+  try {
+    const u = new URL(url);
+    if (u.hostname !== "pbs.twimg.com" || !u.pathname.startsWith("/media/")) return url;
+    const ext = u.searchParams.get("format") || (u.pathname.match(/\.(\w+)$/) || [])[1] || "jpg";
+    const id = u.pathname.replace(/\.\w+$/, "");
+    return `${u.origin}${id}.${ext}?name=orig`;
+  } catch (_) {
+    return url;
+  }
+}
+
+/**
+ * What a right-click "Download with Snag" sends. An image or a video element's own file goes
+ * straight in as a file (instant, like IDM), even when it sits inside a link; a link is left for
+ * Snag to sort out; a player with no real file (blob:) sends its page instead.
+ */
+function contextTarget(info) {
+  const page = info.pageUrl;
+  if (info.menuItemId === "rdm-page") return { url: page, kind: "media", referrer: undefined };
+  const media = info.mediaType === "image" || info.mediaType === "video" || info.mediaType === "audio";
+  if (media) {
+    if (/^https?:/i.test(info.srcUrl || "")) return { url: fullSizeImage(info.srcUrl), kind: "file", referrer: page };
+    if (!info.linkUrl) return { url: page, kind: "media", referrer: undefined };
+  }
+  return { url: info.linkUrl || info.srcUrl || page, kind: undefined, referrer: page };
+}
+
 const RELOAD = "Snag's extension was updated: reload this page";
 
 /**
@@ -101,4 +130,4 @@ function makeAsk(runtime, timeoutMs) {
     });
 }
 
-if (typeof module !== "undefined") module.exports = { sizeLabel, qualityRows, sniffedRows, ProbeCache, safeAccent, makeAsk, DEFAULT_ACCENT };
+if (typeof module !== "undefined") module.exports = { sizeLabel, qualityRows, sniffedRows, ProbeCache, safeAccent, makeAsk, contextTarget, fullSizeImage, DEFAULT_ACCENT };

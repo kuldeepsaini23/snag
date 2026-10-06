@@ -134,6 +134,15 @@ async fn gallery_downloads_every_image_into_its_folder() {
 }
 
 #[tokio::test]
+async fn gallery_survives_output_that_is_not_utf8() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("X post");
+    let (tx, _rx) = watch::channel(MediaProgress::default());
+    let r = rdm_media::gallery::download(&fake(), "fake://codepage", &out, &MediaOptions::default(), CancellationToken::new(), &tx).await;
+    assert_eq!(r, Ok(MediaOutcome::Completed(out.clone())));
+}
+
+#[tokio::test]
 async fn gallery_reports_errors_and_empty_pages() {
     let dir = tempfile::tempdir().unwrap();
     let (tx, _rx) = watch::channel(MediaProgress::default());

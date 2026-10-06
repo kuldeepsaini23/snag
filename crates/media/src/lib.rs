@@ -304,6 +304,36 @@ pub fn parse_progress_line(line: &str) -> Option<MediaProgress> {
     Some(MediaProgress { downloaded, total: total.or(estimate), speed_bps })
 }
 
+/// A tool's output, line by line, tolerating text that isn't UTF-8: on Windows, file names and
+/// messages can come out in the console code page.
+pub(crate) struct ToolLines<R> {
+    reader: tokio::io::BufReader<R>,
+    buf: Vec<u8>,
+}
+
+impl<R: tokio::io::AsyncRead + Unpin> ToolLines<R> {
+    pub(crate) fn new(read: R) -> Self {
+        ToolLines { reader: tokio::io::BufReader::new(read), buf: Vec::new() }
+    }
+
+    pub(crate) async fn next_line(&mut self) -> std::io::Result<Option<String>> {
+        use tokio::io::AsyncBufReadExt;
+        self.buf.clear();
+        if self.reader.read_until(b'\n', &mut self.buf).await? == 0 {
+            return Ok(None);
+        }
+        Ok(Some(String::from_utf8_lossy(&self.buf).trim_end_matches(['\r', '\n']).to_string()))
+    }
+}
+
+/// All of a tool's error output as text (lossy, like `ToolLines`).
+pub(crate) async fn read_all_lossy(mut read: impl tokio::io::AsyncRead + Unpin) -> String {
+    use tokio::io::AsyncReadExt;
+    let mut bytes = Vec::new();
+    let _ = read.read_to_end(&mut bytes).await;
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
 fn command(program: &Path) -> tokio::process::Command {
     let mut cmd = tokio::process::Command::new(program);
     #[cfg(windows)]
@@ -376,7 +406,6 @@ pub async fn download(
     progress: &watch::Sender<MediaProgress>,
 ) -> Result<MediaOutcome, String> {
     use std::process::Stdio;
-    use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
     tokio::fs::create_dir_all(out_dir).await.map_err(|e| format!("can't create {}: {e}", out_dir.display()))?;
     let mut child = command(ytdlp)
@@ -386,12 +415,8 @@ pub async fn download(
         .spawn()
         .map_err(|e| format!("can't start yt-dlp: {e}"))?;
     let mut stderr = child.stderr.take().expect("stderr is piped");
-    let stderr_task = tokio::spawn(async move {
-        let mut text = String::new();
-        let _ = stderr.read_to_string(&mut text).await;
-        text
-    });
-    let mut lines = BufReader::new(child.stdout.take().expect("stdout is piped")).lines();
+    let stderr_task = tokio::spawn(async move { crate::read_all_lossy(&mut stderr).await });
+    let mut lines = crate::ToolLines::new(child.stdout.take().expect("stdout is piped"));
     let mut final_path = None;
     // A live recording's file, so stopping it can hand back what was recorded.
     let mut recording: Option<PathBuf> = None;

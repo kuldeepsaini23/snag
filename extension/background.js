@@ -188,7 +188,7 @@ async function addMediaInApp(choice) {
   const resp = await fetch(`http://127.0.0.1:${app.port}/add-media`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-RDM-Token": token },
-    body: JSON.stringify(choice),
+    body: JSON.stringify({ ...choice, cookies: await cookiesFor(choice.url) }),
   });
   const body = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error(body.error || `Snag answered ${resp.status}`);
@@ -239,9 +239,8 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.contextMenus.onClicked.addListener((info) => {
-  const page = info.menuItemId === "rdm-page";
-  const url = page ? info.pageUrl : info.linkUrl || info.srcUrl;
-  sendToApp(url, page ? "media" : undefined, page ? undefined : info.pageUrl)
+  const { url, kind, referrer } = contextTarget(info);
+  sendToApp(url, kind, referrer)
     .then(() => flash(true))
     .catch((e) => {
       console.warn("Snag:", e.message);

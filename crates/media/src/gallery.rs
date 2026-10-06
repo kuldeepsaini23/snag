@@ -75,7 +75,6 @@ pub async fn download(
     progress: &watch::Sender<MediaProgress>,
 ) -> Result<MediaOutcome, String> {
     use std::process::Stdio;
-    use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
     tokio::fs::create_dir_all(dir).await.map_err(|e| format!("can't create {}: {e}", dir.display()))?;
     let mut child = command(exe)
@@ -85,12 +84,8 @@ pub async fn download(
         .spawn()
         .map_err(|e| format!("can't start gallery-dl: {e}"))?;
     let mut stderr = child.stderr.take().expect("stderr is piped");
-    let stderr_task = tokio::spawn(async move {
-        let mut text = String::new();
-        let _ = stderr.read_to_string(&mut text).await;
-        text
-    });
-    let mut lines = BufReader::new(child.stdout.take().expect("stdout is piped")).lines();
+    let stderr_task = tokio::spawn(async move { crate::read_all_lossy(&mut stderr).await });
+    let mut lines = crate::ToolLines::new(child.stdout.take().expect("stdout is piped"));
     let (started, mut bytes) = (Instant::now(), 0u64);
     // A page can list the same image twice; count each file once.
     let mut seen = std::collections::HashSet::new();

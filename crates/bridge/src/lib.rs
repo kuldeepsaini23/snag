@@ -72,9 +72,14 @@ struct AddRequest {
     fallback: Option<String>,
 }
 
-async fn add(State(manager): State<Manager>, headers: HeaderMap, Json(req): Json<AddRequest>) -> (StatusCode, Json<Value>) {
+async fn add(State(manager): State<Manager>, headers: HeaderMap, Json(mut req): Json<AddRequest>) -> (StatusCode, Json<Value>) {
     if !authorized(&manager, &headers).await {
         return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "not paired: paste the pairing code from Snag settings" })));
+    }
+    // A GitHub repository's page: its code as a ZIP.
+    if let Some(zip) = rdm_core::route::github_zip(&req.url) {
+        req.url = zip;
+        req.kind = Some("file".into());
     }
     let torrent = rdm_core::is_torrent_link(&req.url);
     if !(req.url.starts_with("http://") || req.url.starts_with("https://") || torrent) {
@@ -202,12 +207,24 @@ struct AddMediaRequest {
     thumbnail: Option<String>,
     #[serde(default)]
     duration: Option<f64>,
+    /// The page (or embedded player) the video plays on: sent as Referer.
+    #[serde(default)]
+    referrer: Option<String>,
+    #[serde(default)]
+    cookies: Vec<Value>,
 }
 
 /// The quality the user picked in the extension: added straight away, no window in between.
 async fn add_media_choice(State(manager): State<Manager>, headers: HeaderMap, Json(req): Json<AddMediaRequest>) -> (StatusCode, Json<Value>) {
     if !authorized(&manager, &headers).await {
         return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "not paired" })));
+    }
+    let cookies: Vec<Cookie> = req.cookies.into_iter().filter_map(|c| serde_json::from_value(c).ok()).collect();
+    if !cookies.is_empty() {
+        manager.remember_cookies(cookies);
+    }
+    if let Some(page) = req.referrer.filter(|r| r.starts_with("http")) {
+        manager.remember_referrer(req.url.clone(), page);
     }
     let id = manager.add_media_meta(req.url, req.title, req.format, 0, req.thumbnail, req.duration).await;
     (StatusCode::OK, Json(json!({ "id": id.0 })))

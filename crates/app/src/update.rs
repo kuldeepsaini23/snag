@@ -338,6 +338,8 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             return update(app, Message::AddLink(url));
         }
         Message::AddLink(url) => {
+            // A GitHub repository's page: its code as a ZIP.
+            let url = rdm_core::route::github_zip(&url).unwrap_or(url);
             let torrent = rdm_core::is_torrent_link(&url);
             if !(url.starts_with("http://") || url.starts_with("https://") || torrent) {
                 model.notice = Some("Paste a web link (http:// or https://) or a magnet link".into());

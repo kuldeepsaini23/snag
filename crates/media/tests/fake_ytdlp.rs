@@ -129,6 +129,17 @@ fn gallery(what: &str, dir: &std::path::Path) {
             // Real gallery-dl reports an image again ("# …") when a page lists it twice.
             println!("# {}", dir.join("1.jpg").display());
         }
+        "codepage" => {
+            // A post whose text becomes the file name, printed in the Windows code page (not UTF-8).
+            let file = dir.join("1.jpg");
+            let _ = std::fs::write(&file, vec![1u8; 100]);
+            use std::io::Write;
+            let mut out = std::io::stdout();
+            let _ = out.write_all(b"C:\\out\\caf\xe9 \x93post\x94.jpg\n");
+            let _ = out.flush();
+            println!("{}", file.display());
+            let _ = std::io::stderr().write_all(b"[warning] caf\xe9\n");
+        }
         "empty" => {}
         "slow" => {
             let file = dir.join("1.jpg");

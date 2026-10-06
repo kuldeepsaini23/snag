@@ -136,7 +136,13 @@
         row.title = s.url;
         row.addEventListener("click", () => {
           note([el("span", "spinner"), "Starting…"]);
-          ask({ type: "send", url: s.url, kind: s.kind, referrer: s.referrer || location.href }).then((r) => done(r.ok ? "Downloading ✓" : r.error));
+          const referrer = s.referrer || location.href;
+          // A stream goes straight in at the best quality (no reading first, no picker), like IDM.
+          const msg =
+            s.kind === "media"
+              ? { type: "add-media", choice: { url: s.url, title: document.title || "Video", format: { Video: { max_height: 4320 } }, referrer } }
+              : { type: "send", url: s.url, kind: s.kind, referrer };
+          ask(msg).then((r) => done(r.ok ? "Downloading in Snag ✓" : r.error));
         });
         box.append(row);
       }

@@ -364,3 +364,35 @@ async fn extension_picks_the_quality_itself() {
     assert_eq!(status, 422);
     assert!(reply["error"].as_str().unwrap().contains("Unsupported URL"), "{reply}");
 }
+
+#[tokio::test]
+async fn a_caught_stream_starts_at_once_with_its_player_as_referer() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path()).await;
+    let b = start(m.clone(), 48241..=48250).await.unwrap();
+    // The extension's "NOW" row: no reading first, the best quality, the embedded player as Referer.
+    let choice = json!({
+        "url": "https://cdn.example/hls/master.m3u8?sig=1",
+        "title": "Some video",
+        "format": { "Video": { "max_height": 4320 } },
+        "referrer": "https://player.example/e/42",
+    });
+    let (status, reply) = post_to(b.port, "/add-media", choice, TOKEN).await;
+    assert_eq!(status, 200, "{reply}");
+    let items = m.snapshot().await.items;
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].name, "Some video");
+    assert_eq!(items[0].referrer.as_deref(), Some("https://player.example/e/42"));
+}
+
+#[tokio::test]
+async fn a_github_repo_page_downloads_its_code_as_zip() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path()).await;
+    let b = start(m.clone(), 48251..=48260).await.unwrap();
+    let (status, reply) = post(b.port, json!({ "url": "https://github.com/rust-lang/rustlings" }), TOKEN).await;
+    assert_eq!(status, 200, "{reply}");
+    let items = m.snapshot().await.items;
+    assert_eq!(items[0].url, "https://github.com/rust-lang/rustlings/archive/HEAD.zip");
+    assert_eq!(items[0].kind, rdm_core::Kind::Http);
+}
