@@ -242,6 +242,41 @@ impl Model {
             false
         }
     }
+
+    /// Cancel is two clicks too, and only for unfinished items (it throws away what's downloaded).
+    pub fn confirm_cancel(&mut self, id: ItemId) -> bool {
+        if !self.items.iter().any(|i| i.id == id && crate::view::can_cancel(i)) {
+            self.pending_cancel = None;
+            false
+        } else if self.pending_cancel == Some(id) {
+            self.pending_cancel = None;
+            true
+        } else {
+            self.pending_cancel = Some(id);
+            false
+        }
+    }
+
+    pub fn open_search(&mut self) {
+        self.search_open = true;
+    }
+
+    /// Focus moved: an empty search folds back into its magnifier once it isn't focused.
+    pub fn search_focus(&mut self, focused: bool) {
+        if !focused && self.search.trim().is_empty() {
+            self.search_open = false;
+        }
+    }
+
+    /// Escape on the list: dismiss the toast, else deselect (the inspector slides away).
+    pub fn escape_downloads(&mut self) {
+        if self.toast.is_some() {
+            self.toast = None;
+        } else {
+            self.selected = None;
+            self.pending_cancel = None;
+        }
+    }
 }
 
 /// Everything the window shows. Pure data: no iced, no manager.
@@ -301,6 +336,16 @@ pub struct Model {
     pub watches: Vec<rdm_core::watch::Watch>,
     /// A browser extension waits for "Allow / Don't allow".
     pub pair_request: Option<u64>,
+    /// The toolbar search is a field (else just its magnifier).
+    pub search_open: bool,
+    /// Item whose Cancel was clicked once and waits for confirmation.
+    pub pending_cancel: Option<ItemId>,
+    /// The row under the mouse (its buttons show).
+    pub hovered: Option<ItemId>,
+    /// The sidebar's "More" group (sources, watched channels) is expanded.
+    pub more_open: bool,
+    /// The filter tabs' measured widths, for the sliding underline.
+    pub tab_widths: Vec<f32>,
 }
 
 impl Default for Model {
@@ -341,6 +386,11 @@ impl Default for Model {
             settings_error: None,
             watches: Vec::new(),
             pair_request: None,
+            search_open: false,
+            pending_cancel: None,
+            hovered: None,
+            more_open: false,
+            tab_widths: Vec::new(),
         }
     }
 }
@@ -796,6 +846,48 @@ mod tests {
         assert_eq!(clipboard_link("ftp://x/y", None), None);
         let magnet = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=x";
         assert_eq!(clipboard_link(magnet, None).as_deref(), Some(magnet), "magnet links too");
+    }
+
+    #[test]
+    fn search_collapses_when_empty() {
+        let mut m = Model::default();
+        assert!(!m.search_open, "a magnifier at first");
+        m.open_search();
+        assert!(m.search_open);
+        m.search_focus(true);
+        assert!(m.search_open, "still typing");
+        m.search_focus(false);
+        assert!(!m.search_open, "empty and focus left: back to the magnifier");
+        m.open_search();
+        m.search = "ubuntu".into();
+        m.search_focus(false);
+        assert!(m.search_open, "a search that filters stays visible");
+        m.search = "  ".into();
+        m.search_focus(false);
+        assert!(!m.search_open, "blank counts as empty");
+    }
+
+    #[test]
+    fn cancel_needs_a_second_click_on_unfinished_items() {
+        let mut m = Model::default();
+        m.apply(Event::Added(item(1, Status::Paused, 0)));
+        m.apply(Event::Added(item(2, Status::Done, 0)));
+        assert!(!m.confirm_cancel(ItemId(1)), "first click only arms");
+        assert_eq!(m.pending_cancel, Some(ItemId(1)));
+        assert!(m.confirm_cancel(ItemId(1)), "second click cancels");
+        assert_eq!(m.pending_cancel, None);
+        assert!(!m.confirm_cancel(ItemId(2)) && !m.confirm_cancel(ItemId(2)), "a finished item is never cancelled");
+        assert_eq!(m.pending_cancel, None);
+    }
+
+    #[test]
+    fn escape_deselects() {
+        let mut m = Model { selected: Some(ItemId(3)), toast: Some("https://x/a.zip".into()), ..Model::default() };
+        m.escape_downloads();
+        assert_eq!(m.toast, None, "the toast goes first");
+        assert_eq!(m.selected, Some(ItemId(3)));
+        m.escape_downloads();
+        assert_eq!(m.selected, None);
     }
 
     #[test]

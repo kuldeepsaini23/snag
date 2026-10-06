@@ -41,6 +41,40 @@ pub struct Colors {
     pub on_accent: Color,
     /// A switch's knob when it's on: white, unless the accent itself is near-white.
     pub knob: Color,
+    /// How opaque everything drawn with these colours is (below 1 while a sheet fades in).
+    pub alpha: f32,
+}
+
+impl Colors {
+    /// Every token at `a` of its opacity: a sheet, popover or new row fading in.
+    pub fn faded(self, a: f32) -> Colors {
+        let f = |c: Color| Color { a: c.a * a, ..c };
+        Colors {
+            canvas: f(self.canvas),
+            panel: f(self.panel),
+            sidebar: f(self.sidebar),
+            surface: f(self.surface),
+            raised: f(self.raised),
+            hover: f(self.hover),
+            line: f(self.line),
+            line_strong: f(self.line_strong),
+            text: f(self.text),
+            text2: f(self.text2),
+            text3: f(self.text3),
+            success: f(self.success),
+            danger: f(self.danger),
+            accent: f(self.accent),
+            accent_soft: f(self.accent_soft),
+            on_accent: f(self.on_accent),
+            knob: f(self.knob),
+            alpha: self.alpha * a,
+        }
+    }
+
+    /// A fixed colour (white buttons, shadows) faded along with the tokens.
+    pub fn fixed(&self, c: Color) -> Color {
+        Color { a: c.a * self.alpha, ..c }
+    }
 }
 
 /// `#rgb` or `#rrggbb` (the `#` is optional, any case). Anything else is `None`.
@@ -88,6 +122,7 @@ pub fn colors(accent_hex: &str) -> Colors {
         accent_soft: Color { a: 0.2, ..accent },
         on_accent: on_accent(accent),
         knob: if accent.r.min(accent.g).min(accent.b) > 0.85 { Color::from_rgb8(0x1a, 0x18, 0x16) } else { Color::WHITE },
+        alpha: 1.0,
     }
 }
 
@@ -135,6 +170,16 @@ mod tests {
         assert_eq!(colors("#ff9f0a").knob, Color::WHITE);
         assert_eq!(colors("#0a84ff").knob, Color::WHITE);
         assert_ne!(colors("#f5f5f7").knob, Color::WHITE, "a white knob on a white track is invisible");
+    }
+
+    #[test]
+    fn faded_colors_scale_alpha_only() {
+        let c = colors(DEFAULT_ACCENT);
+        let half = c.faded(0.5);
+        assert_eq!(half.accent, Color { a: 0.5, ..c.accent });
+        assert_eq!(half.text.a, c.text.a * 0.5);
+        assert_eq!(half.fixed(Color::WHITE), Color { a: 0.5, ..Color::WHITE });
+        assert_eq!(c.faded(1.0), c, "fully in: unchanged");
     }
 
     #[test]
