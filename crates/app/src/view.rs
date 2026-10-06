@@ -290,6 +290,45 @@ pub fn main_action(item: &Item) -> Option<MainAction> {
     }
 }
 
+/// What the animations aim at right now.
+pub fn motion_targets(m: &Model) -> crate::motion::Targets {
+    crate::motion::Targets {
+        tab: FILTERS.iter().position(|f| *f == m.filter).unwrap_or(0),
+        sidebar: m.sidebar_open,
+        inspector: m.inspected().is_some(),
+        sheet: matches!(m.screen, crate::state::Screen::Picker | crate::state::Screen::Settings) || m.confirm_quit || m.pair_request.is_some(),
+        popover: m.speed_open,
+        toast: m.screen == crate::state::Screen::Downloads && (m.toast.is_some() || m.notice.is_some()),
+        search: m.search_open,
+    }
+}
+
+/// Every row's progress (0 … 1) and whether it finished, for the bar easing and finish pulse.
+pub fn row_targets(m: &Model) -> Vec<crate::motion::RowTarget> {
+    m.items
+        .iter()
+        .map(|i| {
+            let done = i.status == Status::Done;
+            let progress = match i.total {
+                _ if done => 1.0,
+                Some(t) if t > 0 => (i.downloaded as f32 / t as f32).min(1.0),
+                _ => 0.0,
+            };
+            crate::motion::RowTarget { id: i.id.0, progress, done }
+        })
+        .collect()
+}
+
+/// Cancel (stop, remove, throw away the partial data) is for downloads that haven't finished.
+pub fn can_cancel(item: &Item) -> bool {
+    item.status != Status::Done
+}
+
+/// A row's buttons show only while it is hovered or selected (quieter list).
+pub fn row_actions_visible(id: rdm_core::ItemId, hovered: Option<rdm_core::ItemId>, selected: Option<rdm_core::ItemId>) -> bool {
+    hovered == Some(id) || selected == Some(id)
+}
+
 /// "youtube.com" from "https://www.youtube.com/watch?…".
 pub fn host(url: &str) -> String {
     let rest = url.split_once("://").map_or(url, |(_, r)| r);
@@ -414,6 +453,24 @@ mod tests {
             duration: None,
             retry_at: None,
         }
+    }
+
+    #[test]
+    fn cancel_only_for_unfinished() {
+        let with = |status: Status| item(1, "a.zip", Category::Archive, status);
+        for status in [Status::Running, Status::Queued, Status::Paused, Status::Failed("403".into())] {
+            assert!(can_cancel(&with(status.clone())), "{status:?}");
+        }
+        assert!(!can_cancel(&with(Status::Done)), "finished: Remove from list instead");
+    }
+
+    #[test]
+    fn row_actions_show_on_hover_or_selected() {
+        let (a, b) = (ItemId(1), ItemId(2));
+        assert!(!row_actions_visible(a, None, None), "a quiet row shows no buttons");
+        assert!(row_actions_visible(a, Some(a), None), "hovered");
+        assert!(row_actions_visible(a, None, Some(a)), "selected");
+        assert!(!row_actions_visible(a, Some(b), Some(b)), "another row is busy");
     }
 
     fn never() -> Schedule {

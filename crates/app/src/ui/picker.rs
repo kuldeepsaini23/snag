@@ -110,7 +110,10 @@ fn title_card<'a>(m: &'a Model, p: &'a Picker, host: &str, c: Colors) -> Element
             .height(76)
             .align_x(Alignment::Center)
             .align_y(Alignment::Center)
-            .style(style::tile(Color::from_rgb8(0x8a, 0x55, 0x14), Color::from_rgb8(0x24, 0x1b, 0x12), c.line))
+            .style({
+                let (top, bottom) = super::theme::tile_gradient(&c);
+                style::tile(top, bottom, c.line)
+            })
             .into(),
     };
     let thumb = super::list::with_duration(thumb, p.info.duration, 136.0, 76.0);
@@ -202,7 +205,10 @@ fn playlist_list<'a>(p: &'a Picker, c: Colors) -> Element<'a, Message> {
             .height(32)
             .align_x(Alignment::Center)
             .align_y(Alignment::Center)
-            .style(style::tile(Color::from_rgb8(0x2c, 0x4a, 0x6e), Color::from_rgb8(0x1b, 0x22, 0x2e), c.line));
+            .style({
+                let (top, bottom) = super::theme::tile_gradient(&c);
+                style::tile(top, bottom, c.line)
+            });
         let line = row![
             checkbox(on).on_toggle(move |_| Message::PickEntry(i)).size(16).style(style::check(c)),
             number,

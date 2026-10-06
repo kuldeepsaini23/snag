@@ -1,81 +1,111 @@
 //! The 52 px toolbar: it is also the window's title bar (drag, double-click to maximise).
 
-use super::icon::{Icon, PHOSPHOR_FONT, icon};
+use super::icon::{Icon, bold};
 use super::style;
 use super::theme::Colors;
-use super::tiny;
+use super::{Anim, tiny};
 use crate::format;
+use crate::motion;
 use crate::state::{Model, SettingsTab};
 use crate::update::{Message, search_input};
 use crate::view::{FILTERS, Filter};
-use iced::widget::{Space, button, column, container, mouse_area, row, text, text_input};
-use iced::{Alignment, Element, Fill};
+use iced::widget::{Space, button, column, container, mouse_area, row, sensor, text, text_input};
+use iced::{Alignment, Element, Fill, Font};
 
-pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
+/// Gap between the filter tabs, and how far in from a tab's sides its underline starts.
+const TAB_GAP: f32 = 2.0;
+const TAB_INSET: f32 = 10.0;
+/// The search field's width once it is open.
+const SEARCH_WIDTH: f32 = 190.0;
+/// Windows 11's own caption glyphs (thin, sized for 46×32 buttons).
+const CAPTION_FONT: Font = Font::with_name("Segoe Fluent Icons");
+
+pub fn view(m: &Model, a: Anim, c: Colors) -> Element<'_, Message> {
     let (running, speed) = m.totals();
     let subtitle = if running == 0 { "Nothing downloading".to_string() } else { format!("{running} active · {}", format::speed(speed)) };
-    let logo = iced::widget::image(super::icon::logo()).width(28).height(28);
-    let square = |i: Icon, on: bool, msg: Message| button(container(icon(i, 15)).center(Fill)).width(30).height(28).padding(0).style(style::icon_button(c, on)).on_press(msg);
+    let logo = iced::widget::image(super::icon::logo(c.accent)).width(26).height(26);
     let title = column![text("Downloads").size(13).font(style::SEMIBOLD), tiny(subtitle, c.text3)].spacing(1);
 
-    let counts = m.counts();
-    let pills = FILTERS.iter().fold(row![].spacing(2), |r, &f| {
-        let (glyph, name) = match f {
-            Filter::All => (Icon::TrayDown, "All"),
-            Filter::Active => (Icon::Lightning, "Active"),
-            Filter::Done => (Icon::CheckCircle, "Done"),
-            Filter::Scheduled => (Icon::Clock, "Scheduled"),
-        };
-        let on = m.filter == f;
-        let label = row![
-            icon(glyph, 13),
-            text(name).size(12.5).font(if on { style::MEDIUM } else { style::INTER }),
-            tiny(counts.of(f).to_string(), c.text3),
-        ]
-        .spacing(6)
-        .align_y(Alignment::Center);
-        r.push(button(label).style(style::choice(c, on, 6.0)).padding([5, 10]).on_press(Message::SetFilter(f)))
-    });
-    let pills = container(pills).padding(3).style(style::segmented(c));
-
-    let search = text_input("Search", &m.search)
-        .id(search_input())
-        .on_input(Message::Search)
-        .icon(text_input::Icon { font: PHOSPHOR_FONT, code_point: Icon::MagnifyingGlass.ch(), size: Some(13.0.into()), spacing: 7.0, side: text_input::Side::Left })
-        .size(12)
-        .padding([6, 10])
-        .width(150)
-        .style(style::input(c));
-
-    let add = button(row![icon(Icon::Plus, 13), text("Add URL").size(12.5).font(style::SEMIBOLD)].spacing(6).align_y(Alignment::Center))
-        .style(style::primary(c))
-        .padding([7, 13])
-        .on_press(Message::AddUrl);
-
-    let win = |i: Icon, msg: Message, close: bool| {
-        let b = button(container(icon(i, 14)).center(Fill)).width(44).height(32).padding(0).on_press(msg);
-        if close { b.style(style::close_button(c)) } else { b.style(style::ghost(c)) }
-    };
-
-    // Title and filter pills give way first when the window is narrow, so the window buttons stay on screen.
-    let middle = container(row![title, Space::new().width(Fill), pills, Space::new().width(Fill)].spacing(10).align_y(Alignment::Center))
+    let middle = container(row![title, Space::new().width(Fill), tabs(m, a, c), Space::new().width(Fill)].spacing(10).align_y(Alignment::Center))
         .width(Fill)
         .clip(true);
+    let add = button(row![bold(Icon::Plus, 13), text("Add").size(12.5).font(style::SEMIBOLD)].spacing(5).align_y(Alignment::Center))
+        .style(style::pill(c))
+        .padding([7, 14])
+        .on_press(Message::AddUrl);
     let bar = row![
         logo,
-        square(Icon::Sidebar, false, Message::ToggleSidebar),
+        tool(Icon::Sidebar, false, Message::ToggleSidebar, c),
         middle,
-        search,
-        square(Icon::Gauge, m.speed_open, Message::ToggleSpeed),
-        square(Icon::Gear, false, Message::OpenSettings(SettingsTab::General)),
+        search(m, a, c),
+        tool(Icon::Gauge, m.speed_open, Message::ToggleSpeed, c),
+        tool(Icon::Gear, false, Message::OpenSettings(SettingsTab::General), c),
         add,
-        row![win(Icon::Minus, Message::WinMinimize, false), win(Icon::Square, Message::WinMaximize, false), win(Icon::X, Message::WinClose, true)].spacing(2),
     ]
-    .spacing(10)
+    .spacing(8)
     .align_y(Alignment::Center);
 
-    mouse_area(container(bar).height(52).padding([0, 12]).align_y(Alignment::Center))
+    let content = container(bar).height(52).width(Fill).padding(iced::Padding { left: 12.0, right: 12.0, ..Default::default() }).align_y(Alignment::Center);
+    mouse_area(row![content, captions(m, c)])
         .on_press(Message::WinDrag)
         .on_double_click(Message::WinMaximize)
         .into()
+}
+
+/// An 18 px Bold icon in a 32 px borderless hit area.
+fn tool<'a>(i: Icon, on: bool, msg: Message, c: Colors) -> Element<'a, Message> {
+    button(container(bold(i, 18)).center(Fill)).width(32).height(32).padding(0).style(style::tool(c, on)).on_press(msg).into()
+}
+
+/// Text tabs with a muted count; an accent line slides under the active one.
+fn tabs(m: &Model, a: Anim, c: Colors) -> Element<'_, Message> {
+    let counts = m.counts();
+    let labels = FILTERS.iter().enumerate().fold(row![].spacing(TAB_GAP), |r, (k, &f)| {
+        let name = match f {
+            Filter::All => "All",
+            Filter::Active => "Active",
+            Filter::Done => "Done",
+            Filter::Scheduled => "Scheduled",
+        };
+        let on = m.filter == f;
+        let label = row![text(name).size(13).font(if on { style::MEDIUM } else { style::INTER }), tiny(counts.of(f).to_string(), c.text3)]
+            .spacing(5)
+            .align_y(Alignment::Center);
+        let tab = button(label).style(style::tab(c, on)).padding([6, TAB_INSET as u16]).on_press(Message::SetFilter(f));
+        // The underline needs each tab's real width (fonts, counts): measured as drawn.
+        r.push(sensor(tab).on_resize(move |size| Message::TabMeasured(k, size.width)))
+    });
+    let targets = motion::tab_indicator_targets(&m.tab_widths, TAB_GAP, TAB_INSET);
+    let (x, w) = motion::indicator_at(&targets, a.tab);
+    let line = row![Space::new().width(x), container(Space::new()).width(w).height(2).style(style::indicator(c))];
+    column![labels, line].spacing(2).into()
+}
+
+/// A magnifier that opens into the search field (click or Ctrl+K); empty, it folds back.
+fn search(m: &Model, a: Anim, c: Colors) -> Element<'_, Message> {
+    if !m.search_open && a.search == 0.0 {
+        return tool(Icon::MagnifyingGlass, false, Message::FocusSearch, c);
+    }
+    let field = text_input("Search downloads", &m.search)
+        .id(search_input())
+        .on_input(Message::Search)
+        .icon(text_input::Icon { font: super::icon::BOLD_FONT, code_point: Icon::MagnifyingGlass.ch(), size: Some(14.0.into()), spacing: 8.0, side: text_input::Side::Left })
+        .size(12.5)
+        .padding([7, 10])
+        .style(style::search(c));
+    // Grows from the magnifier's 32 px to the full field.
+    container(field).width(32.0 + (SEARCH_WIDTH - 32.0) * a.search).clip(true).into()
+}
+
+/// Minimise, maximise/restore and close, flush with the window's top-right corner.
+fn captions(m: &Model, c: Colors) -> Element<'_, Message> {
+    let glyph = |code: char| text(code.to_string()).font(CAPTION_FONT).size(10).line_height(1.0);
+    let win = |code: char, msg: Message| button(container(glyph(code)).center(Fill)).width(46).height(32).padding(0).on_press(msg);
+    let max = if m.maximized { '\u{E923}' } else { '\u{E922}' };
+    let buttons = row![
+        win('\u{E921}', Message::WinMinimize).style(style::caption(c)),
+        win(max, Message::WinMaximize).style(style::caption(c)),
+        win('\u{E8BB}', Message::WinClose).style(style::close_button(c)),
+    ];
+    column![buttons].height(52).into()
 }

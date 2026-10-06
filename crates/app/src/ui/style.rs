@@ -45,14 +45,15 @@ pub fn sheet(c: Colors) -> impl Fn(&Theme) -> container::Style {
     move |_| container::Style {
         background: bg(c.panel),
         border: border(c.line_strong, 1.0, 14.0),
-        shadow: Shadow { color: Color::from_rgba(0.0, 0.0, 0.0, 0.55), offset: Vector::new(0.0, 18.0), blur_radius: 48.0 },
+        shadow: Shadow { color: c.fixed(Color::from_rgba(0.0, 0.0, 0.0, 0.55)), offset: Vector::new(0.0, 18.0), blur_radius: 48.0 },
         text_color: Some(c.text),
         ..Default::default()
     }
 }
 
-pub fn scrim(_: &Theme) -> container::Style {
-    container::Style { background: bg(Color::from_rgba(0.0, 0.0, 0.0, 0.5)), ..Default::default() }
+/// The dim behind a sheet (`a`: 0 … 1 as it fades in).
+pub fn scrim(a: f32) -> impl Fn(&Theme) -> container::Style {
+    move |_| container::Style { background: bg(Color::from_rgba(0.0, 0.0, 0.0, 0.5 * a)), ..Default::default() }
 }
 
 /// A small coloured tag ("Video detected", "4K").
@@ -103,9 +104,9 @@ fn button_style(background: Option<Color>, text: Color, line: Color, radius: f32
 pub fn primary(c: Colors) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |_, s| {
         let fill = match s {
-            button::Status::Hovered => Color::from_rgb8(0xe8, 0xe6, 0xe3),
+            button::Status::Hovered => c.fixed(Color::from_rgb8(0xe8, 0xe6, 0xe3)),
             button::Status::Disabled => c.raised,
-            _ => Color::WHITE,
+            _ => c.fixed(Color::WHITE),
         };
         let text = if s == button::Status::Disabled { c.text3 } else { c.canvas };
         button_style(Some(fill), text, Color::TRANSPARENT, 8.0)
@@ -148,19 +149,59 @@ pub fn ghost(c: Colors) -> impl Fn(&Theme, button::Status) -> button::Style {
     }
 }
 
-/// Square toolbar icon button with a hairline border; `on` = accent outline (popover open).
-pub fn icon_button(c: Colors, on: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+/// Borderless toolbar icon with a soft hover; `on` = its popover is open (accent).
+pub fn tool(c: Colors, on: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |_, s| {
-        let fill = if on { Some(c.accent_soft) } else { (s == button::Status::Hovered).then_some(c.hover) };
-        button_style(fill, if on { c.accent } else { c.text2 }, if on { c.accent } else { c.line_strong }, 7.0)
+        let hot = matches!(s, button::Status::Hovered | button::Status::Pressed);
+        let fill = if on { Some(c.accent_soft) } else { hot.then_some(Color { a: 0.07, ..Color::WHITE }) };
+        let text = if on { c.accent } else if hot { c.text } else { c.text2 };
+        button_style(fill, text, Color::TRANSPARENT, 8.0)
+    }
+}
+
+/// A filter tab: text only, brighter when active or hovered (the underline marks the active one).
+pub fn tab(c: Colors, on: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |_, s| {
+        let text = if on || matches!(s, button::Status::Hovered | button::Status::Pressed) { c.text } else { c.text2 };
+        button_style(None, text, Color::TRANSPARENT, 6.0)
+    }
+}
+
+/// The toolbar's "+ Add": one accent pill.
+pub fn pill(c: Colors) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |t, s| {
+        let mut b = accent(c)(t, s);
+        b.border.radius = 16.0.into();
+        b
+    }
+}
+
+/// Minimise / maximise: Windows 11 caption buttons (square, a faint hover).
+pub fn caption(c: Colors) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |_, s| {
+        let fill = match s {
+            button::Status::Hovered => Some(Color { a: 0.06, ..Color::WHITE }),
+            button::Status::Pressed => Some(Color { a: 0.04, ..Color::WHITE }),
+            _ => None,
+        };
+        button_style(fill, if fill.is_some() { c.text } else { c.text2 }, Color::TRANSPARENT, 0.0)
     }
 }
 
 pub fn close_button(c: Colors) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |_, s| {
-        let hot = matches!(s, button::Status::Hovered | button::Status::Pressed);
-        button_style(hot.then_some(Color::from_rgb8(0xe8, 0x11, 0x23)), if hot { Color::WHITE } else { c.text2 }, Color::TRANSPARENT, 0.0)
+        let fill = match s {
+            button::Status::Hovered => Some(Color::from_rgb8(0xc4, 0x2b, 0x1c)),
+            button::Status::Pressed => Some(Color::from_rgb8(0xb2, 0x27, 0x1a)),
+            _ => None,
+        };
+        button_style(fill, if fill.is_some() { Color::WHITE } else { c.text2 }, Color::TRANSPARENT, 0.0)
     }
+}
+
+/// The accent line under the active filter tab.
+pub fn indicator(c: Colors) -> impl Fn(&Theme) -> container::Style {
+    move |_| container::Style { background: bg(c.accent), border: border(Color::TRANSPARENT, 0.0, 1.5), ..Default::default() }
 }
 
 pub fn danger(c: Colors) -> impl Fn(&Theme, button::Status) -> button::Style {
@@ -178,15 +219,20 @@ pub fn choice(c: Colors, selected: bool, radius: f32) -> impl Fn(&Theme, button:
     }
 }
 
-/// A download row; selected rows get the raised surface and a hairline.
-pub fn row(c: Colors, selected: bool, failed: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+/// A download row; selected rows get the raised surface and a hairline. `glow` (1 → 0) tints it
+/// with the accent just after it finished.
+pub fn row(c: Colors, selected: bool, failed: bool, glow: f32) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |_, s| {
-        let fill = if selected { Some(c.surface) } else { (s == button::Status::Hovered).then_some(Color { a: 0.03, ..Color::WHITE }) };
-        let line = match (selected, failed) {
+        let mut fill = if selected { Some(c.surface) } else { (s == button::Status::Hovered).then_some(Color { a: 0.03, ..Color::WHITE }) };
+        let mut line = match (selected, failed) {
             (true, true) => Color { a: 0.45, ..c.danger },
             (true, false) => c.line_strong,
             _ => Color::TRANSPARENT,
         };
+        if glow > 0.0 {
+            fill = Some(over(fill.map_or(c.panel, |f| over(c.panel, f)), Color { a: 0.2 * glow, ..c.accent }));
+            line = Color { a: 0.7 * glow, ..c.accent };
+        }
         button_style(fill, c.text, line, 10.0)
     }
 }
@@ -217,6 +263,21 @@ pub fn input(c: Colors) -> impl Fn(&Theme, text_input::Status) -> text_input::St
         placeholder: c.text3,
         value: c.text,
         selection: Color { a: 0.35, ..c.accent },
+    }
+}
+
+/// The toolbar search: a soft filled field, accent edge while typing.
+pub fn search(c: Colors) -> impl Fn(&Theme, text_input::Status) -> text_input::Style {
+    move |_, s| {
+        let focused = matches!(s, text_input::Status::Focused { .. });
+        text_input::Style {
+            background: Background::Color(Color { a: 0.06, ..Color::WHITE }),
+            border: border(if focused { Color { a: 0.7, ..c.accent } } else { Color::TRANSPARENT }, 1.0, 8.0),
+            icon: c.text2,
+            placeholder: c.text3,
+            value: c.text,
+            selection: Color { a: 0.35, ..c.accent },
+        }
     }
 }
 

@@ -12,58 +12,113 @@ pub mod theme;
 mod toolbar;
 
 use crate::format;
+use crate::motion::Motion;
 use crate::state::{Model, Screen};
 use crate::update::{App, Message};
 use crate::view;
 use icon::{Icon, icon};
-use iced::widget::{Space, button, column, container, mouse_area, opaque, row, stack, text};
+use iced::widget::{Space, button, column, container, float, mouse_area, opaque, row, scrollable, stack, text};
 use iced::window::Direction;
-use iced::{Alignment, Color, Element, Fill, Length, Padding, mouse};
+use iced::{Alignment, Color, Element, Fill, Length, Padding, Vector, mouse};
+use std::time::Instant;
 use theme::Colors;
+
+/// The sidebar's and inspector's full widths (they slide between 0 and these).
+const SIDEBAR_WIDTH: f32 = 208.0;
+const INSPECTOR_WIDTH: f32 = 290.0;
+const GAP: f32 = 8.0;
+
+/// Where each animation is at the instant being drawn (0 = closed … 1 = open).
+#[derive(Clone, Copy, Debug)]
+pub struct Anim {
+    /// The tab underline, in tab units.
+    pub tab: f32,
+    pub sidebar: f32,
+    pub inspector: f32,
+    pub sheet: f32,
+    pub popover: f32,
+    pub toast: f32,
+    pub search: f32,
+}
+
+impl Anim {
+    fn at(m: &Motion, now: Instant) -> Self {
+        Anim {
+            tab: m.tab_at(now),
+            sidebar: m.open(&m.sidebar, now),
+            inspector: m.open(&m.inspector, now),
+            sheet: m.open(&m.sheet, now),
+            popover: m.open(&m.popover, now),
+            toast: m.open(&m.toast, now),
+            search: m.open(&m.search, now),
+        }
+    }
+}
 
 pub fn view(app: &App) -> Element<'_, Message> {
     let m = &app.model;
     let c = theme::colors(m.accent_hex());
+    let a = Anim::at(&app.motion, app.now);
 
-    let mut body = row![].spacing(8).padding(Padding { top: 0.0, right: 8.0, bottom: 0.0, left: 8.0 }).height(Fill);
-    if m.sidebar_open {
-        body = body.push(sidebar::view(m, c));
+    let mut body = row![].padding(Padding { top: 0.0, right: GAP, bottom: 0.0, left: GAP }).height(Fill);
+    if a.sidebar > 0.0 {
+        // Slides in from the left edge: the panel keeps its size, the strip showing it grows.
+        let panel = row![sidebar::view(m, c), Space::new().width(GAP)];
+        body = body.push(slide(panel.into(), (SIDEBAR_WIDTH + GAP) * a.sidebar, true));
     }
-    body = body.push(list::view(m, c));
-    if let Some(item) = m.inspected() {
-        body = body.push(inspector::view(m, item, c));
+    body = body.push(list::view(m, &app.motion, app.now, c));
+    // Kept on screen while it slides closed (the selection is already gone by then).
+    let inspected = m.inspected().or_else(|| app.inspector_item.and_then(|id| m.items.iter().find(|i| i.id == id)));
+    if let Some(item) = inspected.filter(|_| a.inspector > 0.0) {
+        let panel = row![Space::new().width(GAP), inspector::view(m, item, c)];
+        body = body.push(slide(panel.into(), (INSPECTOR_WIDTH + GAP) * a.inspector, false));
     }
-    let base = container(column![toolbar::view(m, c), body, footer(m, c)]).style(style::window(c)).width(Fill).height(Fill);
+    let base = container(column![toolbar::view(m, a, c), body, footer(m, c)]).style(style::window(c)).width(Fill).height(Fill);
 
     let mut layers = stack![base].width(Fill).height(Fill);
     if m.speed_open {
         // A click anywhere else closes the popover.
         layers = layers.push(mouse_area(Space::new().width(Fill).height(Fill)).on_press(Message::ToggleSpeed));
-        layers = layers.push(
-            container(opaque(popover::view(m, c)))
-                .width(Fill)
-                .height(Fill)
-                .align_x(Alignment::End)
-                .padding(Padding { top: 46.0, right: 214.0, bottom: 0.0, left: 0.0 }),
-        );
+        // Drops down from the gauge button.
+        let pop = float(popover::view(m, c.faded(a.popover))).translate(move |_, _| Vector::new(0.0, -8.0 * (1.0 - a.popover)));
+        layers = layers.push(container(opaque(pop)).width(Fill).height(Fill).align_x(Alignment::End).padding(Padding {
+            top: 46.0,
+            right: 228.0,
+            bottom: 0.0,
+            left: 0.0,
+        }));
     }
+    let sheet_c = c.faded(a.sheet);
     match (m.screen, &m.picker) {
-        (Screen::Picker, Some(p)) => layers = layers.push(modal(picker::view(m, p, c), Message::CancelPick)),
-        (Screen::Settings, _) => layers = layers.push(modal(settings::view(m, app.phone.as_ref().map(|(_, link, qr)| (link.as_str(), qr)), c), Message::CloseSettings)),
+        (Screen::Picker, Some(p)) => layers = layers.push(modal(picker::view(m, p, sheet_c), a.sheet, Message::CancelPick)),
+        (Screen::Settings, _) => {
+            let phone = app.phone.as_ref().map(|(_, link, qr)| (link.as_str(), qr));
+            layers = layers.push(modal(settings::view(m, phone, sheet_c), a.sheet, Message::CloseSettings));
+        }
         _ => {}
     }
     if m.confirm_quit {
-        layers = layers.push(modal(confirm_quit(m, c), Message::KeepDownloading));
+        layers = layers.push(modal(confirm_quit(m, sheet_c), a.sheet, Message::KeepDownloading));
     }
     if m.pair_request.is_some() {
-        layers = layers.push(modal(confirm_pair(c), Message::AnswerPair(false)));
+        layers = layers.push(modal(confirm_pair(sheet_c), a.sheet, Message::AnswerPair(false)));
     }
     if m.screen == Screen::Downloads
-        && let Some(t) = toast(m, c)
+        && let Some(t) = toast(m, c.faded(a.toast))
     {
+        // Rises into place from the bottom edge.
+        let t = float(t).translate(move |_, _| Vector::new(0.0, 14.0 * (1.0 - a.toast)));
         layers = layers.push(container(opaque(t)).width(Fill).height(Fill).align_x(Alignment::End).align_y(Alignment::End).padding([40, 20]));
     }
     if m.maximized { layers.into() } else { layers.push(resize_grips()).into() }
+}
+
+/// Shows `width` of a panel laid out at its full size: from its right edge (`from_left`: the
+/// panel slides in from the window's left edge) or from its left edge (slides in from the right).
+/// A horizontal scrollable is what lets the panel overflow without being squeezed.
+fn slide(panel: Element<'_, Message>, width: f32, from_left: bool) -> Element<'_, Message> {
+    let strip = scrollable(panel).direction(scrollable::Direction::Horizontal(scrollable::Scrollbar::hidden())).width(width).height(Fill);
+    if from_left { strip.anchor_right().into() } else { strip.into() }
 }
 
 /// Thin strips along the edges and corners that resize the frameless window.
@@ -148,9 +203,11 @@ fn confirm_quit(m: &Model, c: Colors) -> Element<'_, Message> {
     container(content).width(440).padding(20).style(style::sheet(c)).into()
 }
 
-/// A sheet over a dimmed window; clicking the dim area sends `on_blur`.
-fn modal<'a>(content: Element<'a, Message>, on_blur: Message) -> Element<'a, Message> {
-    opaque(mouse_area(container(opaque(content)).width(Fill).height(Fill).center(Fill).style(style::scrim)).on_press(on_blur))
+/// A sheet over a dimmed window; clicking the dim area sends `on_blur`. While `t` goes 0 → 1
+/// the dim fades in and the sheet scales up from 97% and rises a few pixels.
+fn modal<'a>(content: Element<'a, Message>, t: f32, on_blur: Message) -> Element<'a, Message> {
+    let sheet = float(opaque(content)).scale(0.97 + 0.03 * t).translate(move |_, _| Vector::new(0.0, 10.0 * (1.0 - t)));
+    opaque(mouse_area(container(sheet).width(Fill).height(Fill).center(Fill).style(style::scrim(t))).on_press(on_blur))
 }
 
 fn footer(m: &Model, c: Colors) -> Element<'_, Message> {

@@ -68,20 +68,23 @@ pub fn view<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
     let details = container(details).padding(iced::Padding { right: 8.0, ..Default::default() });
     let mut panel = column![scrollable(details).height(Fill).style(style::scroll(c))].spacing(12);
 
-    // Remove keeps the file; Delete sits apart, is red and needs a second click.
-    let armed = m.pending_delete == Some(i.id);
-    let delete_label = if armed { "Click again to delete" } else { "Delete file" };
-    let manage = row![
-        button(row![icon(Icon::X, 12), text("Remove from list").size(12)].spacing(6).align_y(Alignment::Center))
-            .style(style::ghost(c))
-            .padding([6, 8])
-            .on_press(Message::Remove(i.id)),
-        Space::new().width(Fill),
-        button(row![icon(Icon::Trash, 12), text(delete_label).size(12)].spacing(6).align_y(Alignment::Center))
+    let small_button = |glyph: Icon, label: &'a str, armed: bool, msg: Message| {
+        button(row![icon(glyph, 12), text(label).size(12)].spacing(6).align_y(Alignment::Center))
             .style(move |t, s| if armed { style::danger(c)(t, s) } else { style::ghost(c)(t, s) })
             .padding([6, 8])
-            .on_press(Message::Delete(i.id)),
-    ];
+            .on_press(msg)
+    };
+    let manage = if view::can_cancel(i) {
+        // Unfinished: Cancel stops it and throws away what's downloaded (second click confirms).
+        let armed = m.pending_cancel == Some(i.id);
+        let label = if armed { "Click again to cancel" } else { "Cancel download" };
+        row![small_button(Icon::X, label, armed, Message::Cancel(i.id))]
+    } else {
+        // Remove keeps the file; Delete sits apart, is red and needs a second click.
+        let armed = m.pending_delete == Some(i.id);
+        let label = if armed { "Click again to delete" } else { "Delete file" };
+        row![small_button(Icon::X, "Remove from list", false, Message::Remove(i.id)), Space::new().width(Fill), small_button(Icon::Trash, label, armed, Message::Delete(i.id))]
+    };
     panel = panel.push(manage);
 
     let live = matches!(i.kind, Kind::Media(MediaFormat::Live { .. }));
