@@ -1,5 +1,7 @@
 // RDM extension service worker: finds the desktop app on 127.0.0.1 and hands it links.
 
+importScripts("catch-rules.js");
+
 const PORTS = [47321, 47322, 47323, 47324, 47325, 47326];
 const DEFAULTS = { token: "", catchDownloads: true, minSizeMB: 1 };
 // Downloads we gave back to Chrome because RDM couldn't take them: don't catch them again.
@@ -56,11 +58,7 @@ chrome.downloads.onCreated.addListener(async (item) => {
     handBack.delete(url);
     return;
   }
-  const s = await settings();
-  if (!s.catchDownloads || !s.token || !/^https?:\/\//.test(url) || item.byExtensionId) return;
-  if ((item.mime || "").startsWith("image/")) return;
-  const size = item.fileSize > 0 ? item.fileSize : item.totalBytes;
-  if (size > 0 && size < s.minSizeMB * 1024 * 1024) return;
+  if (!shouldCatch(item, await settings(), Date.now())) return;
 
   try {
     await chrome.downloads.cancel(item.id);
