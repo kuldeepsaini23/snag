@@ -90,6 +90,8 @@ pub struct MediaOptions {
     pub temp_dir: Option<PathBuf>,
     /// Videos: subtitle languages to fetch and embed (yt-dlp `--sub-langs`, e.g. "en.*").
     pub subtitles: Option<String>,
+    /// The page the media was found on (`--referer`): many stream hosts refuse without it.
+    pub referer: Option<String>,
 }
 
 impl MediaInfo {
@@ -235,6 +237,9 @@ pub fn build_args(format: &MediaFormat, out_dir: &Path, url: &str, opts: &MediaO
     if let Some(cookies) = &opts.cookies {
         args.extend(["--cookies".into(), cookies.display().to_string()]);
     }
+    if let Some(referer) = &opts.referer {
+        args.extend(["--referer".into(), referer.clone()]);
+    }
     if opts.limit_bps > 0 {
         args.extend(["--limit-rate".into(), opts.limit_bps.to_string()]);
     }
@@ -278,7 +283,7 @@ fn error_from(stderr: &str) -> Option<String> {
 
 /// Arguments for reading a link. A link to one video inside a playlist (`watch?v=…&list=…`)
 /// is read as that one video.
-pub fn probe_args(url: &str, cookies: Option<&Path>) -> Vec<String> {
+pub fn probe_args(url: &str, cookies: Option<&Path>, referer: Option<&str>) -> Vec<String> {
     let query = url.split_once('?').map_or("", |(_, q)| q);
     let one_video = query.split('&').any(|kv| kv.starts_with("v="));
     let mut args: Vec<String> = ["-J", "--flat-playlist", "--no-warnings"].map(String::from).to_vec();
@@ -288,13 +293,16 @@ pub fn probe_args(url: &str, cookies: Option<&Path>) -> Vec<String> {
     if let Some(cookies) = cookies {
         args.extend(["--cookies".into(), cookies.display().to_string()]);
     }
+    if let Some(referer) = referer {
+        args.extend(["--referer".into(), referer.to_string()]);
+    }
     args.push(url.to_string());
     args
 }
 
-pub async fn probe(ytdlp: &Path, url: &str, cookies: Option<&Path>) -> Result<MediaInfo, String> {
+pub async fn probe(ytdlp: &Path, url: &str, cookies: Option<&Path>, referer: Option<&str>) -> Result<MediaInfo, String> {
     let out = command(ytdlp)
-        .args(probe_args(url, cookies))
+        .args(probe_args(url, cookies, referer))
         .output()
         .await
         .map_err(|e| format!("can't start yt-dlp: {e}"))?;
@@ -502,11 +510,21 @@ mod tests {
 
     #[test]
     fn probe_args_keep_a_single_video_from_a_playlist_link() {
-        let single = probe_args("https://www.youtube.com/watch?v=abc&list=PL1", None);
+        let single = probe_args("https://www.youtube.com/watch?v=abc&list=PL1", None, None);
         assert!(single.contains(&"--no-playlist".to_string()), "{single:?}");
-        let list = probe_args("https://www.youtube.com/playlist?list=PL1", None);
+        let list = probe_args("https://www.youtube.com/playlist?list=PL1", None, None);
         assert!(!list.contains(&"--no-playlist".to_string()), "{list:?}");
         assert_eq!(list.last().unwrap(), "https://www.youtube.com/playlist?list=PL1");
+    }
+
+    #[test]
+    fn referer_is_sent_to_ytdlp() {
+        let opts = MediaOptions { referer: Some("https://site.tv/watch/1".into()), ..Default::default() };
+        let args = build_args(&MediaFormat::Video { max_height: 720 }, Path::new("out"), "https://cdn.tv/master.m3u8", &opts);
+        assert!(window(&args, ["--referer", "https://site.tv/watch/1"]), "{args:?}");
+        let probe = probe_args("https://cdn.tv/master.m3u8", None, Some("https://site.tv/watch/1"));
+        assert!(window(&probe, ["--referer", "https://site.tv/watch/1"]), "{probe:?}");
+        assert!(!probe_args("u", None, None).iter().any(|a| a == "--referer"));
     }
 
     #[test]
@@ -550,10 +568,10 @@ mod tests {
 
     #[test]
     fn probe_args_carry_cookies() {
-        let args = probe_args("https://www.youtube.com/watch?v=abc", Some(Path::new(r"C:\c.txt")));
+        let args = probe_args("https://www.youtube.com/watch?v=abc", Some(Path::new(r"C:\c.txt")), None);
         assert!(window(&args, ["--cookies", r"C:\c.txt"]), "{args:?}");
         assert_eq!(args.last().unwrap(), "https://www.youtube.com/watch?v=abc");
-        assert!(!probe_args("https://youtu.be/a", None).iter().any(|a| a == "--cookies"));
+        assert!(!probe_args("https://youtu.be/a", None, None).iter().any(|a| a == "--cookies"));
     }
 
     fn heights(info: &MediaInfo) -> Vec<String> {

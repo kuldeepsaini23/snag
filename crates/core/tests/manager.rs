@@ -811,3 +811,18 @@ fn gallery_folders_never_collide() {
     assert!(long.chars().count() <= 80, "{}", long.len());
     assert!(!gallery_name("https://imgur.com/a/b:c*d").contains([':', '*']));
 }
+
+#[tokio::test]
+async fn media_link_from_a_page_keeps_its_referer() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let m = manager(dir.path(), |_| {}).await;
+    let mut rx = m.subscribe();
+    m.remember_referrer("https://cdn.tv/v/ok".into(), "https://site.tv/watch/1".into());
+    let id = m.add_media("https://cdn.tv/v/ok".into(), "Stream".into(), MediaFormat::Video { max_height: 480 }).await;
+    let done = wait_item(&mut rx, has(id, Status::Done)).await;
+    assert_eq!(done.referrer.as_deref(), Some("https://site.tv/watch/1"));
+    let args = std::fs::read_to_string(dir.path().join("dl").join("fake-args.txt")).unwrap();
+    assert!(args.contains("--referer\nhttps://site.tv/watch/1"), "{args}");
+    m.shutdown().await;
+}

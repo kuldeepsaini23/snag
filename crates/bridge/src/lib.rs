@@ -83,6 +83,10 @@ async fn add(State(manager): State<Manager>, headers: HeaderMap, Json(req): Json
         _ => rdm_media::is_media_url(&req.url),
     };
     if media {
+        // A stream found on a page (the extension's media sniffer) needs that page as Referer.
+        if let Some(page) = req.referrer.clone().filter(|r| r.starts_with("http")) {
+            manager.remember_referrer(req.url.clone(), page);
+        }
         // Reading a video page takes a few seconds; answer now, add when ready.
         tokio::spawn(add_media(manager, req.url));
         return (StatusCode::ACCEPTED, Json(json!({ "queued": true })));

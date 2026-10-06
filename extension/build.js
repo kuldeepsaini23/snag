@@ -6,12 +6,12 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const FILES = ["background.js", "catch-rules.js", "content.js", "popup.html", "popup.js"];
+const FILES = ["background.js", "catch-rules.js", "sniffer.js", "content.js", "popup.html", "popup.js"];
 
 /** Firefox runs MV3 backgrounds as plain scripts (no service worker, no importScripts). */
 function firefoxManifest(base) {
   const ff = structuredClone(base);
-  ff.background = { scripts: ["catch-rules.js", "background.js"] };
+  ff.background = { scripts: ["catch-rules.js", "sniffer.js", "background.js"] };
   ff.browser_specific_settings = {
     gecko: {
       id: "snag@download-manager",

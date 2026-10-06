@@ -44,7 +44,7 @@ async fn cancel_kills_process_and_pauses() {
 
 #[tokio::test]
 async fn probe_parses_tool_output() {
-    let info = probe(&fake(), "fake://probe", None).await.unwrap();
+    let info = probe(&fake(), "fake://probe", None, None).await.unwrap();
     assert_eq!(info.title, "Fake clip");
     assert_eq!(info.options[0].label, "480p");
 }

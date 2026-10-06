@@ -1,7 +1,7 @@
 // Snag extension background: finds the desktop app on 127.0.0.1 and hands it links.
 // Chrome runs it as a service worker; Firefox loads catch-rules.js before it (see build.js).
 
-if (typeof importScripts === "function") importScripts("catch-rules.js");
+if (typeof importScripts === "function") importScripts("catch-rules.js", "sniffer.js");
 
 const PORTS = [47321, 47322, 47323, 47324, 47325, 47326];
 const DEFAULTS = { token: "", catchDownloads: true, minSizeMB: 1 };
@@ -38,6 +38,50 @@ async function cookiesFor(url) {
     return [];
   }
 }
+
+// ---------- media sniffer: media playing on any page ----------
+
+/** tabId -> MediaList of what the page fetched (cleared when the tab navigates). */
+const tabMedia = new Map();
+
+function header(headers, name) {
+  const h = (headers || []).find((x) => x.name.toLowerCase() === name);
+  return h ? h.value : "";
+}
+
+function showCount(tabId) {
+  const n = tabMedia.get(tabId)?.items.length || 0;
+  chrome.action.setBadgeBackgroundColor({ tabId, color: "#ff9f0a" });
+  chrome.action.setBadgeText({ tabId, text: n ? String(n) : "" });
+}
+
+chrome.webRequest.onResponseStarted.addListener(
+  (d) => {
+    if (d.tabId < 0) return;
+    const size = Number(header(d.responseHeaders, "content-length")) || 0;
+    const found = classifyMedia({
+      url: d.url,
+      contentType: header(d.responseHeaders, "content-type"),
+      size,
+      status: d.statusCode,
+      contentRange: header(d.responseHeaders, "content-range"),
+    });
+    if (!found) return;
+    let list = tabMedia.get(d.tabId);
+    if (!list) tabMedia.set(d.tabId, (list = new MediaList(50)));
+    if (list.add({ ...found, size: found.size || size })) showCount(d.tabId);
+  },
+  { urls: ["<all_urls>"] },
+  ["responseHeaders"],
+);
+
+chrome.tabs.onUpdated.addListener((tabId, change) => {
+  if (change.status === "loading" && change.url) {
+    tabMedia.delete(tabId);
+    showCount(tabId);
+  }
+});
+chrome.tabs.onRemoved.addListener((tabId) => tabMedia.delete(tabId));
 
 async function sendToApp(url, kind, referrer) {
   const { token } = await settings();
@@ -110,8 +154,12 @@ chrome.contextMenus.onClicked.addListener((info) => {
 
 // Popup and in-page button.
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+  if (msg.type === "media-list") {
+    reply({ items: tabMedia.get(msg.tabId)?.items || [] });
+    return false;
+  }
   if (msg.type === "send") {
-    sendToApp(msg.url, msg.kind)
+    sendToApp(msg.url, msg.kind, msg.referrer)
       .then((result) => {
         flash(true);
         reply({ ok: true, result });

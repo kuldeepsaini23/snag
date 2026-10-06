@@ -52,7 +52,11 @@ pub struct Manager {
     /// Browser cookies, shared with the actor. Memory only.
     jar: Arc<Mutex<Jar>>,
     cookie_dir: PathBuf,
+    /// Media link → the page it was found on (sent as Referer to yt-dlp). Memory only.
+    referrers: Referrers,
 }
+
+type Referrers = Arc<Mutex<HashMap<String, String>>>;
 
 /// Total size of the files directly in `dir`.
 fn dir_size(dir: &Path) -> Option<u64> {
@@ -161,10 +165,12 @@ impl Manager {
         let cookie_dir = state_path.parent().unwrap_or(Path::new(".")).join("cookies");
         // Cookie files left by a run that was killed or crashed: never leave sessions on disk.
         let _ = std::fs::remove_dir_all(&cookie_dir);
+        let referrers = Referrers::default();
         let mut actor = Actor::new(state_path, events.clone(), tools.clone(), jar.clone(), cookie_dir.clone());
         actor.retry_base = retry_base;
+        actor.referrers = referrers.clone();
         tokio::spawn(actor.run(rx));
-        Manager { tx, events, tools, jar, cookie_dir }
+        Manager { tx, events, tools, jar, cookie_dir, referrers }
     }
 
     /// Reads a video/audio page (title, qualities, playlist entries). Fetches yt-dlp
@@ -174,7 +180,8 @@ impl Manager {
         static PROBES: AtomicU64 = AtomicU64::new(0);
         let key = format!("probe-{}", PROBES.fetch_add(1, Ordering::Relaxed));
         let cookies = cookie_file(&self.jar, &self.cookie_dir, &key, &url);
-        let result = rdm_media::probe(&ytdlp, &url, cookies.as_deref()).await;
+        let referer = self.referrers.lock().ok().and_then(|r| r.get(&url).cloned());
+        let result = rdm_media::probe(&ytdlp, &url, cookies.as_deref(), referer.as_deref()).await;
         if let Some(file) = cookies {
             let _ = std::fs::remove_file(file);
         }
@@ -253,6 +260,14 @@ impl Manager {
     }
 
     /// Browser cookies for later downloads (memory only).
+    /// The page a media link was found on (the browser's media sniffer): yt-dlp sends it as
+    /// Referer, which many stream hosts require.
+    pub fn remember_referrer(&self, url: String, page: String) {
+        if let Ok(mut map) = self.referrers.lock() {
+            map.insert(url, page);
+        }
+    }
+
     pub fn remember_cookies(&self, cookies: Vec<Cookie>) {
         if let Ok(mut jar) = self.jar.lock() {
             jar.add(cookies);
@@ -400,6 +415,7 @@ struct Actor {
     last_save: Instant,
     /// Automatic retries used per item since it last started by hand or finished.
     retries: HashMap<ItemId, u32>,
+    referrers: Referrers,
     /// The current retry timer of each item; anything the user does cancels it.
     retry_gen: HashMap<ItemId, u64>,
     next_gen: u64,
@@ -430,6 +446,7 @@ impl Actor {
             dirty: needs_token,
             last_save: Instant::now(),
             retries: HashMap::new(),
+            referrers: Referrers::default(),
             retry_gen: HashMap::new(),
             next_gen: 0,
             retry_base: RETRY_BASE,
@@ -587,7 +604,8 @@ impl Actor {
     fn push_media(&mut self, url: String, title: String, format: MediaFormat, queue: QueueId) -> ItemId {
         let category = if format == MediaFormat::AudioMp3 { Category::Music } else { Category::Video };
         let queue = if self.state.queue(queue).is_some() { queue } else { 0 };
-        self.push_item(url, title, category, Kind::Media(format), None, queue)
+        let referrer = self.referrers.lock().ok().and_then(|r| r.get(&url).cloned());
+        self.push_item(url, title, category, Kind::Media(format), referrer, queue)
     }
 
     fn set_meta(&mut self, id: ItemId, thumbnail: Option<String>, duration: Option<f64>) {
@@ -816,7 +834,8 @@ impl Actor {
         let dir = media_dir(settings, &format);
         let cookies = cookie_file(&self.jar, &self.cookie_dir, &id.0.to_string(), &url);
         let subtitles = (settings.subtitles && !settings.subtitle_langs.trim().is_empty()).then(|| settings.subtitle_langs.trim().to_string());
-        let opts = MediaOptions { cookies: cookies.clone(), limit_bps, temp_dir: work_dir, subtitles };
+        let referer = self.state.item(id).and_then(|i| i.referrer.clone());
+        let opts = MediaOptions { cookies: cookies.clone(), limit_bps, temp_dir: work_dir, subtitles, referer };
         let (tools, msg_tx) = (self.tools.clone(), self.msg_tx.clone());
         tokio::spawn(async move {
             let result = async {
