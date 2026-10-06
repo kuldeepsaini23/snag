@@ -4,7 +4,7 @@ use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use rdm_core::Manager;
+use rdm_core::{Cookie, Manager};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::ops::RangeInclusive;
@@ -51,6 +51,13 @@ struct AddRequest {
     /// "file" or "media"; guessed from the URL when absent.
     #[serde(default)]
     kind: Option<String>,
+    /// The page the link was found on (sent as Referer).
+    #[serde(default)]
+    referrer: Option<String>,
+    /// The browser's cookies for the link (`chrome.cookies.getAll`), for logged-in downloads.
+    /// Entries that don't parse are skipped rather than failing the whole request.
+    #[serde(default)]
+    cookies: Vec<Value>,
 }
 
 async fn add(State(manager): State<Manager>, headers: HeaderMap, Json(req): Json<AddRequest>) -> (StatusCode, Json<Value>) {
@@ -59,6 +66,10 @@ async fn add(State(manager): State<Manager>, headers: HeaderMap, Json(req): Json
     }
     if !(req.url.starts_with("http://") || req.url.starts_with("https://")) {
         return (StatusCode::BAD_REQUEST, Json(json!({ "error": "only http(s) links can be downloaded" })));
+    }
+    let cookies: Vec<Cookie> = req.cookies.into_iter().filter_map(|c| serde_json::from_value(c).ok()).collect();
+    if !cookies.is_empty() {
+        manager.remember_cookies(cookies);
     }
     let media = match req.kind.as_deref() {
         Some("media") => true,
@@ -70,7 +81,7 @@ async fn add(State(manager): State<Manager>, headers: HeaderMap, Json(req): Json
         tokio::spawn(add_media(manager, req.url));
         return (StatusCode::ACCEPTED, Json(json!({ "queued": true })));
     }
-    let id = manager.add(req.url).await;
+    let id = manager.add_with(req.url, req.referrer.filter(|r| r.starts_with("http"))).await;
     (StatusCode::OK, Json(json!({ "id": id.0 })))
 }
 

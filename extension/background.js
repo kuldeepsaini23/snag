@@ -29,7 +29,16 @@ async function findApp(token) {
   return null;
 }
 
-async function sendToApp(url, kind) {
+/** The browser's cookies for `url`, so logged-in and age-restricted downloads work in RDM. */
+async function cookiesFor(url) {
+  try {
+    return await chrome.cookies.getAll({ url });
+  } catch (_) {
+    return [];
+  }
+}
+
+async function sendToApp(url, kind, referrer) {
   const { token } = await settings();
   const app = await findApp(token);
   if (!app) throw new Error("RDM isn't running");
@@ -37,7 +46,7 @@ async function sendToApp(url, kind) {
   const resp = await fetch(`http://127.0.0.1:${app.port}/add`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-RDM-Token": token },
-    body: JSON.stringify(kind ? { url, kind } : { url }),
+    body: JSON.stringify({ url, kind, referrer: referrer || undefined, cookies: await cookiesFor(url) }),
   });
   const body = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error(body.error || `RDM answered ${resp.status}`);
@@ -71,7 +80,7 @@ chrome.downloads.onCreated.addListener(async (item) => {
     // Already finished or gone: nothing to cancel.
   }
   try {
-    await sendToApp(url, "file");
+    await sendToApp(url, "file", item.referrer);
     flash(true);
   } catch (e) {
     // RDM unavailable: let Chrome download it after all.
@@ -90,7 +99,7 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.contextMenus.onClicked.addListener((info) => {
   const page = info.menuItemId === "rdm-page";
   const url = page ? info.pageUrl : info.linkUrl || info.srcUrl;
-  sendToApp(url, page ? "media" : undefined)
+  sendToApp(url, page ? "media" : undefined, page ? undefined : info.pageUrl)
     .then(() => flash(true))
     .catch((e) => {
       console.warn("RDM:", e.message);

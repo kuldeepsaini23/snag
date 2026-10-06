@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "RDM — Download Manager",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Sends downloads and videos to the RDM desktop app.",
-  "permissions": ["downloads", "storage", "contextMenus"],
-  "host_permissions": ["http://127.0.0.1/*"],
+  "permissions": ["downloads", "storage", "contextMenus", "cookies"],
+  "host_permissions": ["http://127.0.0.1/*", "<all_urls>"],
   "background": { "service_worker": "background.js" },
   "action": { "default_popup": "popup.html", "default_title": "RDM" },
   "content_scripts": [

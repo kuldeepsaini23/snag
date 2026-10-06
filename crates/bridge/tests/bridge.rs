@@ -51,6 +51,25 @@ async fn ping_reports_pairing() {
 }
 
 #[tokio::test]
+async fn add_with_cookies_and_referrer_reaches_item() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path()).await;
+    let b = start(m.clone(), 48171..=48180).await.unwrap();
+    // Exactly what chrome.cookies.getAll returns (extra fields included), plus one broken entry.
+    let cookies = json!([
+        {"domain": ".site.test", "hostOnly": false, "path": "/", "secure": true, "httpOnly": true, "sameSite": "lax",
+         "session": false, "storeId": "0", "expirationDate": 4000000000.5, "name": "sid", "value": "abc"},
+        {"domain": 42}
+    ]);
+    let body = json!({"url": "https://dl.site.test/private.zip", "kind": "file", "referrer": "https://site.test/page", "cookies": cookies});
+    let (status, reply) = post(b.port, body, TOKEN).await;
+    assert_eq!(status, 200, "{reply}");
+    let items = m.snapshot().await.items;
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].referrer.as_deref(), Some("https://site.test/page"));
+}
+
+#[tokio::test]
 async fn add_requires_valid_token() {
     let dir = tempfile::tempdir().unwrap();
     let m = manager(dir.path()).await;
