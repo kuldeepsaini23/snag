@@ -34,7 +34,12 @@ pub fn view<'a>(m: &'a Model, motion: &Motion, now: Instant, c: Colors) -> Eleme
         }
         if !recent.is_empty() {
             let size: u64 = recent.iter().map(|i| i.total.unwrap_or(i.downloaded)).sum();
-            groups = groups.push(group_title("Recent", format!("{} completed · {}", recent.len(), format::size(size)), c));
+            // Clears the history only: the downloaded files stay where they are.
+            let clear = button(text("Clear list").size(12).color(c.text3)).style(style::ghost(c)).padding([3, 8]).on_press(Message::ClearFinished);
+            let title = row![group_title("Recent", format!("{} completed · {}", recent.len(), format::size(size)), c), Space::new().width(Fill), clear]
+                .align_y(Alignment::Center)
+                .padding(iced::Padding { right: 12.0, ..Default::default() });
+            groups = groups.push(title);
             groups = recent.into_iter().fold(groups, |g, i| g.push(item_row(m, i, c)));
         }
         if nothing {
@@ -197,7 +202,10 @@ fn item_row<'a>(m: &'a Model, i: &'a Item, pose: Option<RowPose>, c: Colors) -> 
     let mut actions = row![].spacing(4);
     if view::row_actions_visible(i.id, m.hovered, m.selected) || armed {
         actions = actions.push(small_button(glyph).style(style::ghost(c)).on_press_maybe(action));
-        if view::can_cancel(i) {
+        if i.status == Status::Done {
+            // Off the list (history only); the file stays.
+            actions = actions.push(small_button(Icon::X).style(style::ghost(c)).on_press(Message::Remove(i.id)));
+        } else if view::can_cancel(i) {
             let cancel = small_button(Icon::X).on_press(Message::Cancel(i.id));
             actions = actions.push(if armed { cancel.style(style::danger(c)) } else { cancel.style(style::ghost(c)) });
         }
