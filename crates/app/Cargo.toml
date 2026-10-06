@@ -14,6 +14,7 @@ rdm-bridge = { path = "../bridge" }
 iced = { version = "0.14", features = ["tokio"] }
 tokio.workspace = true
 futures-util.workspace = true
+chrono.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -9,7 +9,7 @@ pub const INTER_SEMIBOLD: &[u8] = include_bytes!("../../assets/fonts/Inter-SemiB
 pub const PHOSPHOR: &[u8] = include_bytes!("../../assets/fonts/Phosphor.ttf");
 pub const PHOSPHOR_FILL: &[u8] = include_bytes!("../../assets/fonts/Phosphor-Fill.ttf");
 
-const REGULAR: Font = Font::with_name("Phosphor");
+pub const PHOSPHOR_FONT: Font = Font::with_name("Phosphor");
 const FILL: Font = Font::with_name("Phosphor-Fill");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -18,8 +18,6 @@ pub enum Icon {
     ArrowClockwise,
     ArrowRight,
     Browser,
-    CaretDown,
-    Check,
     CheckCircle,
     ClipboardText,
     Clock,
@@ -52,7 +50,6 @@ pub enum Icon {
     Square,
     Trash,
     TrayDown,
-    VideoCamera,
     WarningCircle,
     Wrench,
     X,
@@ -65,8 +62,6 @@ impl Icon {
             Self::ArrowClockwise => 0xe036,
             Self::ArrowRight => 0xe06c,
             Self::Browser => 0xe0f4,
-            Self::CaretDown => 0xe136,
-            Self::Check => 0xe182,
             Self::CheckCircle => 0xe184,
             Self::ClipboardText => 0xe198,
             Self::Clock => 0xe19a,
@@ -98,7 +93,6 @@ impl Icon {
             Self::Square => 0xe45e,
             Self::Trash => 0xe4a6,
             Self::TrayDown => 0xe010,
-            Self::VideoCamera => 0xe4da,
             Self::WarningCircle => 0xe4e2,
             Self::Wrench => 0xe5d4,
             Self::X => 0xe4f6,
@@ -107,12 +101,12 @@ impl Icon {
     }
 
     fn font(self) -> Font {
-        if self == Self::PlayFill { FILL } else { REGULAR }
+        if self == Self::PlayFill { FILL } else { PHOSPHOR_FONT }
     }
 }
 
-pub fn icon<'a>(i: Icon, size: f32) -> Text<'a> {
-    text(i.ch().to_string()).font(i.font()).size(size).line_height(1.0)
+pub fn icon<'a>(i: Icon, size: u16) -> Text<'a> {
+    text(i.ch().to_string()).font(i.font()).size(size as f32).line_height(1.0)
 }
 
 #[cfg(test)]

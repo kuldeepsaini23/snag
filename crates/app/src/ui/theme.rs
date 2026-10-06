@@ -36,6 +36,8 @@ pub struct Colors {
     pub accent_soft: Color,
     /// Text drawn on top of the accent.
     pub on_accent: Color,
+    /// A switch's knob when it's on: white, unless the accent itself is near-white.
+    pub knob: Color,
 }
 
 /// `#rgb` or `#rrggbb` (the `#` is optional, any case). Anything else is `None`.
@@ -80,6 +82,7 @@ pub fn colors(accent_hex: &str) -> Colors {
         accent,
         accent_soft: Color { a: 0.2, ..accent },
         on_accent: on_accent(accent),
+        knob: if accent.r.min(accent.g).min(accent.b) > 0.85 { Color::from_rgb8(0x1a, 0x18, 0x16) } else { Color::WHITE },
     }
 }
 
@@ -118,6 +121,13 @@ mod tests {
         assert_eq!(colors("nope"), colors(DEFAULT_ACCENT));
         assert_eq!(colors("#0a84ff").accent, Color::from_rgb8(0x0a, 0x84, 0xff));
         assert_eq!(colors("#0a84ff").accent_soft.a, 0.2);
+    }
+
+    #[test]
+    fn knob_contrasts_with_light_accent() {
+        assert_eq!(colors("#ff9f0a").knob, Color::WHITE);
+        assert_eq!(colors("#0a84ff").knob, Color::WHITE);
+        assert_ne!(colors("#f5f5f7").knob, Color::WHITE, "a white knob on a white track is invisible");
     }
 
     #[test]

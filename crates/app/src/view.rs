@@ -4,8 +4,6 @@ use crate::format;
 use crate::state::Model;
 use rdm_core::{Category, Item, Kind, MediaFormat, Now, Queue, QueueId, Status};
 
-pub use crate::state::MediaTab;
-
 /// The toolbar's filter pills.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Filter {
@@ -232,10 +230,55 @@ pub fn segment_choices(base: &[usize], current: usize) -> Vec<usize> {
     list
 }
 
+/// At most `max` characters, with "…" at the end when cut.
+pub fn ellipsize(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let mut cut: String = s.chars().take(max.saturating_sub(1)).collect();
+    cut.push('…');
+    cut
+}
+
+/// At most `max` characters, keeping the end ("…ads\\RDM\\Videos"): for paths.
+pub fn ellipsize_left(s: &str, max: usize) -> String {
+    let n = s.chars().count();
+    if n <= max {
+        return s.to_string();
+    }
+    let keep = max.saturating_sub(1);
+    std::iter::once('…').chain(s.chars().skip(n - keep)).collect()
+}
+
+/// Where a new download of `category` is saved.
+pub fn save_dir(settings: &rdm_core::Settings, category: Category) -> std::path::PathBuf {
+    if settings.sort_into_folders { settings.download_dir.join(category.folder()) } else { settings.download_dir.clone() }
+}
+
+/// ("2.0", "MB/s") for the popover's big number; 0 = ("Unlimited", "").
+pub fn speed_parts(bps: u64) -> (String, String) {
+    if bps == 0 {
+        return ("Unlimited".into(), String::new());
+    }
+    let s = format::speed(bps);
+    match s.split_once(' ') {
+        Some((n, unit)) => (n.to_string(), unit.to_string()),
+        None => (s, String::new()),
+    }
+}
+
+/// ("Today", "14:02") or ("Sep 30", "09:05") for a unix time, in local time.
+pub fn when_label(unix: i64, now: chrono::DateTime<chrono::Local>) -> (String, String) {
+    use chrono::TimeZone;
+    let Some(t) = chrono::Local.timestamp_opt(unix, 0).single() else { return (String::new(), "--:--".into()) };
+    let day = if t.date_naive() == now.date_naive() { "Today".to_string() } else { t.format("%b %-d").to_string() };
+    (day, t.format("%H:%M").to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{Model, Picker, Screen};
+    use crate::state::{MediaTab, Model, Picker, Screen};
     use rdm_core::{Category, Event, Item, ItemId, Kind, MediaFormat, MediaInfo, Now, Queue, Schedule, Status};
     use rdm_media::{Entry, QualityOption};
 
@@ -495,5 +538,49 @@ mod tests {
         assert!(m.close_settings().is_err());
         assert_eq!(m.screen, Screen::Settings, "stays open to fix it");
         assert!(m.notice.is_some());
+    }
+
+    #[test]
+    fn ellipsize_cuts_long_text_on_char_boundaries() {
+        assert_eq!(ellipsize("short.zip", 20), "short.zip");
+        let long = "😳".repeat(300);
+        let cut = ellipsize(&long, 40);
+        assert_eq!(cut.chars().count(), 40);
+        assert!(cut.ends_with('…'));
+    }
+
+    #[test]
+    fn ellipsize_left_keeps_the_end_of_paths() {
+        assert_eq!(ellipsize_left(r"C:\dl", 20), r"C:\dl");
+        let cut = ellipsize_left(r"C:\Users\someone\Downloads\RDM\Videos", 16);
+        assert_eq!(cut.chars().count(), 16);
+        assert_eq!(cut, r"…oads\RDM\Videos");
+    }
+
+    #[test]
+    fn save_dir_follows_category_sorting() {
+        let mut s = rdm_core::Settings { download_dir: std::path::PathBuf::from(r"C:\dl"), ..Default::default() };
+        s.sort_into_folders = true;
+        assert_eq!(save_dir(&s, Category::Video), std::path::PathBuf::from(r"C:\dl\Videos"));
+        s.sort_into_folders = false;
+        assert_eq!(save_dir(&s, Category::Music), std::path::PathBuf::from(r"C:\dl"));
+    }
+
+    #[test]
+    fn speed_parts_split_number_and_unit() {
+        assert_eq!(speed_parts(2 * 1024 * 1024), ("2.0".to_string(), "MB/s".to_string()));
+        assert_eq!(speed_parts(512 * 1024), ("512.0".to_string(), "KB/s".to_string()));
+        assert_eq!(speed_parts(0), ("Unlimited".to_string(), String::new()));
+    }
+
+    #[test]
+    fn when_label_today_or_date() {
+        use chrono::TimeZone;
+        let now = chrono::Local.with_ymd_and_hms(2026, 10, 7, 18, 0, 0).unwrap();
+        let today = chrono::Local.with_ymd_and_hms(2026, 10, 7, 14, 2, 0).unwrap().timestamp();
+        let earlier = chrono::Local.with_ymd_and_hms(2026, 9, 30, 9, 5, 0).unwrap().timestamp();
+        assert_eq!(when_label(today, now), ("Today".to_string(), "14:02".to_string()));
+        assert_eq!(when_label(earlier, now), ("Sep 30".to_string(), "09:05".to_string()));
+        assert_eq!(when_label(0, now).1.len(), 5, "any timestamp gives a time");
     }
 }

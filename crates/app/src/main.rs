@@ -1,6 +1,8 @@
 mod choices;
 mod format;
 mod queues;
+#[cfg(debug_assertions)]
+mod snap;
 mod state;
 mod ui;
 mod update;
@@ -30,11 +32,25 @@ fn main() -> iced::Result {
 
     let boot_manager = manager.clone();
     let boot_dir = data_dir.clone();
+    let window = iced::window::Settings {
+        size: iced::Size::new(1280.0, 800.0),
+        min_size: Some(iced::Size::new(960.0, 600.0)),
+        // The toolbar is the title bar (spec §2.5).
+        decorations: false,
+        ..Default::default()
+    };
     let result = iced::application(move || update::boot(boot_manager.clone(), bridge_status.clone(), boot_dir.clone()), update::update, ui::view)
         .title("RDM")
         .subscription(update::subscription)
-        .theme(iced::Theme::Dark)
-        .window_size((1000.0, 700.0))
+        .theme(|app: &update::App| ui::theme::theme(&ui::theme::colors(app.model.accent_hex())))
+        .font(ui::icon::INTER_REGULAR)
+        .font(ui::icon::INTER_MEDIUM)
+        .font(ui::icon::INTER_SEMIBOLD)
+        .font(ui::icon::PHOSPHOR)
+        .font(ui::icon::PHOSPHOR_FILL)
+        .default_font(ui::style::INTER)
+        .window(window)
+        .centered()
         .run();
 
     // Window closed: pause running downloads and save before exiting.

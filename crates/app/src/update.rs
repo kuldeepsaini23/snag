@@ -51,6 +51,8 @@ pub enum Message {
     WinMinimize,
     WinMaximize,
     WinClose,
+    /// Pressed on a window edge: resize from there (the window has no native frame).
+    WinResize(window::Direction),
     // List
     SetFilter(Filter),
     SetLibrary(Library),
@@ -111,6 +113,11 @@ pub enum Message {
     ToastDownload,
     ToastClose,
     DismissNotice,
+    /// Debug builds: render the window to a file (see `snap.rs`).
+    #[cfg(debug_assertions)]
+    Snap,
+    #[cfg(debug_assertions)]
+    Snapped(window::Screenshot),
     Done,
 }
 
@@ -194,6 +201,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::WinMinimize => return window::latest().and_then(|id| window::minimize(id, true)),
         Message::WinMaximize => return on_window(window::toggle_maximize),
         Message::WinClose => return on_window(window::close),
+        Message::WinResize(edge) => return window::latest().and_then(move |id| window::drag_resize(id, edge)),
         Message::SetFilter(f) => model.filter = f,
         Message::SetLibrary(l) => model.library = l,
         Message::Search(s) => model.search = s,
@@ -341,6 +349,10 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::ToastClose => model.toast = None,
         Message::DismissNotice => model.notice = None,
+        #[cfg(debug_assertions)]
+        Message::Snap => return crate::snap::take(model),
+        #[cfg(debug_assertions)]
+        Message::Snapped(shot) => crate::snap::save(&shot),
         Message::Done => {}
     }
     Task::none()
@@ -391,6 +403,8 @@ impl Hash for Feed {
 
 pub fn subscription(app: &App) -> Subscription<Message> {
     let mut subs = vec![core_events(app), keyboard::listen().filter_map(on_key)];
+    #[cfg(debug_assertions)]
+    subs.push(crate::snap::subscription());
     if app.model.settings.clipboard_watch {
         subs.push(iced::time::every(std::time::Duration::from_millis(700)).map(|_| Message::ClipboardTick));
     }
