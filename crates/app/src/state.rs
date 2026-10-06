@@ -1,13 +1,43 @@
-use crate::queues::QueueDraft;
-use rdm_core::{AppState, Event, Item, ItemId, MediaFormat, MediaInfo, Queue, Settings, Status};
+use crate::queues::{QueueDraft, drafts_to_queues};
+use crate::view::{Filter, Library};
+use rdm_core::{AppState, Event, Item, ItemId, MediaFormat, MediaInfo, Queue, QueueId, Settings, Status};
+use rdm_media::QualityOption;
 use std::path::PathBuf;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Screen {
     Downloads,
+    /// The settings sheet (its tab is `Model::settings_tab`).
     Settings,
     Picker,
-    Queues,
+}
+
+/// The settings sheet's sections, in nav order.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SettingsTab {
+    #[default]
+    General,
+    Appearance,
+    Connections,
+    Speed,
+    Extension,
+    Tools,
+}
+
+pub const SETTINGS_TABS: [SettingsTab; 6] =
+    [SettingsTab::General, SettingsTab::Appearance, SettingsTab::Connections, SettingsTab::Speed, SettingsTab::Extension, SettingsTab::Tools];
+
+/// The picker's Video ⇄ Audio switch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MediaTab {
+    Video,
+    Audio,
+}
+
+impl MediaTab {
+    fn of(format: &MediaFormat) -> Self {
+        if *format == MediaFormat::AudioMp3 { Self::Audio } else { Self::Video }
+    }
 }
 
 /// Quality choice for a video/audio link (or a whole playlist).
@@ -17,12 +47,59 @@ pub struct Picker {
     pub info: MediaInfo,
     /// Index into `info.options`.
     pub choice: usize,
+    pub tab: MediaTab,
+    /// Playlists: which entries to download (one per entry).
+    pub selected: Vec<bool>,
+    /// Where the downloads go.
+    pub queue: QueueId,
 }
 
 impl Picker {
-    /// What to add: (url, title, format), one per video.
+    pub fn new(url: String, info: MediaInfo, choice: usize, queue: QueueId) -> Self {
+        let tab = info.options.get(choice).map_or(MediaTab::Video, |o| MediaTab::of(&o.format));
+        let selected = vec![true; info.entries.len()];
+        Self { url, info, choice, tab, selected, queue }
+    }
+
+    /// The options on the current tab, with their index into `info.options`.
+    pub fn visible_options(&self) -> Vec<(usize, &QualityOption)> {
+        self.info.options.iter().enumerate().filter(|(_, o)| MediaTab::of(&o.format) == self.tab).collect()
+    }
+
+    pub fn has_both_tabs(&self) -> bool {
+        let audio = self.info.options.iter().filter(|o| MediaTab::of(&o.format) == MediaTab::Audio).count();
+        audio > 0 && audio < self.info.options.len()
+    }
+
+    /// Switches the tab and selects its first option.
+    pub fn set_tab(&mut self, tab: MediaTab) {
+        self.tab = tab;
+        if let Some(i) = self.info.options.iter().position(|o| MediaTab::of(&o.format) == tab) {
+            self.choice = i;
+        }
+    }
+
+    pub fn toggle_entry(&mut self, i: usize) {
+        if let Some(on) = self.selected.get_mut(i) {
+            *on = !*on;
+        }
+    }
+
+    pub fn select_all(&mut self, on: bool) {
+        self.selected.iter_mut().for_each(|s| *s = on);
+    }
+
+    pub fn selected_count(&self) -> usize {
+        self.selected.iter().filter(|s| **s).count()
+    }
+
+    /// What to add: (url, title, format), one per video (only the selected playlist entries).
     pub fn requests(&self) -> Vec<(String, String, MediaFormat)> {
-        self.info.requests(&self.url, self.choice)
+        let all = self.info.requests(&self.url, self.choice);
+        if self.info.entries.is_empty() {
+            return all;
+        }
+        all.into_iter().zip(&self.selected).filter(|(_, on)| **on).map(|(r, _)| r).collect()
     }
 }
 
@@ -39,6 +116,8 @@ pub struct Draft {
     pub clipboard_watch: bool,
     pub ask_quality: bool,
     pub preferred_quality: Option<MediaFormat>,
+    /// "#rrggbb" as typed (Custom colour).
+    pub accent: String,
 }
 
 impl Draft {
@@ -53,6 +132,7 @@ impl Draft {
             clipboard_watch: s.clipboard_watch,
             ask_quality: s.ask_quality,
             preferred_quality: s.preferred_quality.clone(),
+            accent: s.accent.clone(),
         }
     }
 
@@ -61,6 +141,10 @@ impl Draft {
         fn number(field: &str, value: &str, range: std::ops::RangeInclusive<u64>) -> Result<u64, String> {
             let n: u64 = value.trim().parse().map_err(|_| format!("{field} must be a whole number"))?;
             if range.contains(&n) { Ok(n) } else { Err(format!("{field} must be between {} and {}", range.start(), range.end())) }
+        }
+        let accent = self.accent.trim();
+        if crate::ui::theme::parse_hex(accent).is_none() {
+            return Err("Custom colour must be a hex value like #ff9f0a".into());
         }
         let dir = self.download_dir.trim();
         if dir.is_empty() {
@@ -76,6 +160,7 @@ impl Draft {
             clipboard_watch: self.clipboard_watch,
             ask_quality: self.ask_quality,
             preferred_quality: self.preferred_quality.clone(),
+            accent: accent.to_string(),
             ..base.clone()
         })
     }
@@ -138,6 +223,17 @@ pub struct Model {
     pub queue_drafts: Vec<QueueDraft>,
     /// "Update yt-dlp" is running.
     pub updating_ytdlp: bool,
+    pub filter: Filter,
+    pub library: Library,
+    pub search: String,
+    pub sidebar_open: bool,
+    /// The speed-limit popover is open.
+    pub speed_open: bool,
+    /// The speed slider is being dragged: the value it shows (applied on release).
+    pub speed_preview: Option<u64>,
+    pub settings_tab: SettingsTab,
+    /// A link seen on the clipboard, offered in a toast.
+    pub toast: Option<String>,
 }
 
 impl Default for Model {
@@ -160,6 +256,14 @@ impl Default for Model {
             queues: AppState::default().queues,
             queue_drafts: Vec::new(),
             updating_ytdlp: false,
+            filter: Filter::All,
+            library: Library::All,
+            search: String::new(),
+            sidebar_open: true,
+            speed_open: false,
+            speed_preview: None,
+            settings_tab: SettingsTab::General,
+            toast: None,
         }
     }
 }
@@ -191,7 +295,7 @@ impl Model {
             }
             Event::PickMedia { url, info, choice } => {
                 self.notice = None;
-                self.picker = Some(Picker { url, info, choice });
+                self.picker = Some(Picker::new(url, info, choice, 0));
                 self.screen = Screen::Picker;
             }
             Event::Notice(text) => self.notice = Some(text),
@@ -216,6 +320,60 @@ impl Model {
     pub fn waiting_for_schedule(&self, item: &Item) -> bool {
         let schedule = self.queues.iter().find(|q| q.id == item.queue).and_then(|q| q.schedule.as_ref());
         item.status == Status::Queued && schedule.is_some_and(|s| !s.is_active(rdm_core::Now::local()))
+    }
+
+    /// The slider is being dragged: show `v`, apply nothing yet.
+    pub fn preview_speed(&mut self, v: f32) {
+        self.speed_preview = Some(crate::view::slider_to_bps(v));
+    }
+
+    /// The slider was let go: the limit to apply, if it was dragged.
+    pub fn release_speed(&mut self) -> Option<u64> {
+        self.speed_preview.take()
+    }
+
+    /// The limit the popover shows (bytes/s, 0 = none).
+    pub fn shown_limit(&self) -> u64 {
+        self.speed_preview.unwrap_or(self.settings.speed_limit_bps)
+    }
+
+    /// The accent to draw with: the typed one while Settings is open and it's valid, else the saved one.
+    pub fn accent_hex(&self) -> &str {
+        let draft = self.draft.accent.trim();
+        if self.screen == Screen::Settings && crate::ui::theme::parse_hex(draft).is_some() { draft } else { &self.settings.accent }
+    }
+
+    /// A clipboard read: a new link becomes a toast (the first read only records what's there).
+    pub fn clipboard_seen(&mut self, text: Option<String>) {
+        if let Some(link) = text.and_then(|t| clipboard_link(&t, self.last_clipboard.as_deref())) {
+            self.last_clipboard = Some(link.clone());
+            if self.clipboard_primed {
+                self.toast = Some(link);
+            }
+        }
+        self.clipboard_primed = true;
+    }
+
+    pub fn open_settings(&mut self, tab: SettingsTab) {
+        self.draft = Draft::from_settings(&self.settings);
+        self.queue_drafts = self.queues.iter().map(QueueDraft::from_queue).collect();
+        self.settings_tab = tab;
+        self.notice = None;
+        self.speed_open = false;
+        self.screen = Screen::Settings;
+    }
+
+    /// Closing the sheet saves it: the settings and queues to send, or it stays open with the error.
+    pub fn close_settings(&mut self) -> Result<(Settings, Vec<Queue>), String> {
+        let result = self.draft.to_settings(&self.settings).and_then(|s| Ok((s, drafts_to_queues(&self.queue_drafts)?)));
+        match &result {
+            Ok(_) => {
+                self.notice = None;
+                self.screen = Screen::Downloads;
+            }
+            Err(e) => self.notice = Some(e.clone()),
+        }
+        result
     }
 
     pub fn dest_of(&self, id: ItemId) -> Option<PathBuf> {
@@ -371,14 +529,14 @@ mod tests {
 
     #[test]
     fn picker_single_video_makes_one_request() {
-        let p = Picker { url: "https://youtu.be/x".into(), info: info(vec![]), choice: 1 };
+        let p = Picker::new("https://youtu.be/x".into(), info(vec![]), 1, 0);
         assert_eq!(p.requests(), vec![("https://youtu.be/x".to_string(), "Clip".to_string(), MediaFormat::AudioMp3)]);
     }
 
     #[test]
     fn picker_playlist_makes_one_request_per_entry() {
         let entries = vec![Entry { url: "https://y/1".into(), title: "One".into() }, Entry { url: "https://y/2".into(), title: "Two".into() }];
-        let p = Picker { url: "https://y/list".into(), info: info(entries), choice: 0 };
+        let p = Picker::new("https://y/list".into(), info(entries), 0, 0);
         let reqs = p.requests();
         assert_eq!(reqs.len(), 2);
         assert_eq!(reqs[1], ("https://y/2".to_string(), "Two".to_string(), MediaFormat::Video { max_height: 720 }));

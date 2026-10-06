@@ -1,0 +1,499 @@
+//! What the Figma screens show, computed from the model: filters, counts, groups, labels.
+
+use crate::format;
+use crate::state::Model;
+use rdm_core::{Category, Item, Kind, MediaFormat, Now, Queue, QueueId, Status};
+
+pub use crate::state::MediaTab;
+
+/// The toolbar's filter pills.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Filter {
+    #[default]
+    All,
+    /// Running, queued, paused or failed (but not waiting for a schedule).
+    Active,
+    Done,
+    /// Queued in a queue whose schedule doesn't allow it right now.
+    Scheduled,
+}
+
+pub const FILTERS: [Filter; 4] = [Filter::All, Filter::Active, Filter::Done, Filter::Scheduled];
+
+/// The sidebar's selection.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Library {
+    #[default]
+    All,
+    Category(Category),
+    Queue(QueueId),
+}
+
+/// The sidebar's categories, in order.
+pub const CATEGORIES: [Category; 5] = [Category::Video, Category::Music, Category::Archive, Category::Document, Category::Program];
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Counts {
+    pub all: usize,
+    pub active: usize,
+    pub done: usize,
+    pub scheduled: usize,
+    categories: Vec<(Category, usize)>,
+    queues: Vec<(QueueId, usize)>,
+}
+
+impl Counts {
+    pub fn category(&self, c: Category) -> usize {
+        self.categories.iter().find(|(k, _)| *k == c).map_or(0, |(_, n)| *n)
+    }
+
+    pub fn queue(&self, q: QueueId) -> usize {
+        self.queues.iter().find(|(k, _)| *k == q).map_or(0, |(_, n)| *n)
+    }
+
+    pub fn of(&self, f: Filter) -> usize {
+        match f {
+            Filter::All => self.all,
+            Filter::Active => self.active,
+            Filter::Done => self.done,
+            Filter::Scheduled => self.scheduled,
+        }
+    }
+}
+
+fn bump<K: PartialEq>(list: &mut Vec<(K, usize)>, key: K) {
+    match list.iter_mut().find(|(k, _)| *k == key) {
+        Some((_, n)) => *n += 1,
+        None => list.push((key, 1)),
+    }
+}
+
+impl Model {
+    fn passes(&self, item: &Item, filter: Filter) -> bool {
+        let waiting = self.waiting_for_schedule(item);
+        match filter {
+            Filter::All => true,
+            Filter::Done => item.status == Status::Done,
+            Filter::Scheduled => waiting,
+            Filter::Active => item.status != Status::Done && !waiting,
+        }
+    }
+
+    pub fn counts(&self) -> Counts {
+        let mut c = Counts { all: self.items.len(), ..Counts::default() };
+        for i in &self.items {
+            c.active += self.passes(i, Filter::Active) as usize;
+            c.done += (i.status == Status::Done) as usize;
+            c.scheduled += self.passes(i, Filter::Scheduled) as usize;
+            bump(&mut c.categories, i.category);
+            bump(&mut c.queues, i.queue);
+        }
+        c
+    }
+
+    fn shown(&self, item: &Item) -> bool {
+        let in_library = match self.library {
+            Library::All => true,
+            Library::Category(c) => item.category == c,
+            Library::Queue(q) => item.queue == q,
+        };
+        let needle = self.search.trim().to_lowercase();
+        in_library && self.passes(item, self.filter) && (needle.is_empty() || item.name.to_lowercase().contains(&needle))
+    }
+
+    /// (downloading, recent): what the list shows, newest first.
+    pub fn visible(&self) -> (Vec<&Item>, Vec<&Item>) {
+        self.items.iter().rev().filter(|i| self.shown(i)).partition(|i| i.status != Status::Done)
+    }
+
+    /// The selected item, if the list currently shows it.
+    pub fn inspected(&self) -> Option<&Item> {
+        let id = self.selected?;
+        self.items.iter().find(|i| i.id == id).filter(|i| self.shown(i))
+    }
+}
+
+/// The tag in the URL bar.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LinkTag {
+    Video,
+    Playlist,
+    File,
+}
+
+impl LinkTag {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Video => "Video detected",
+            Self::Playlist => "Playlist detected",
+            Self::File => "File link",
+        }
+    }
+}
+
+pub fn link_tag(url: &str) -> Option<LinkTag> {
+    let url = url.trim();
+    let web = (url.starts_with("http://") || url.starts_with("https://")) && !url.contains(char::is_whitespace);
+    if !web {
+        return None;
+    }
+    if url.contains("list=") || url.contains("/playlist") {
+        Some(LinkTag::Playlist)
+    } else if rdm_media::is_media_url(url) {
+        Some(LinkTag::Video)
+    } else {
+        Some(LinkTag::File)
+    }
+}
+
+/// "1080p · MP4", "Audio · MP3", or the file extension ("ZIP"); empty if unknown.
+pub fn kind_label(item: &Item) -> String {
+    match &item.kind {
+        Kind::Media(MediaFormat::Video { max_height }) => format!("{max_height}p · MP4"),
+        Kind::Media(MediaFormat::AudioMp3) => "Audio · MP3".into(),
+        Kind::Http => item
+            .name
+            .rsplit_once('.')
+            .map(|(_, e)| e.to_ascii_uppercase())
+            .filter(|e| !e.is_empty() && e.len() <= 5)
+            .unwrap_or_default(),
+    }
+}
+
+/// The second line of a row.
+pub fn row_meta(item: &Item) -> String {
+    let size = match (item.downloaded, item.total) {
+        (d, Some(t)) if item.status != Status::Done => format!("{} of {}", format::bytes(d), format::bytes(t)),
+        (_, Some(t)) => format::bytes(t),
+        (0, None) => String::new(),
+        (d, None) => format::bytes(d),
+    };
+    let lead = match &item.status {
+        Status::Failed(e) if e.is_empty() => return "Failed".into(),
+        Status::Failed(e) => return e.clone(),
+        Status::Running => None,
+        Status::Queued => Some("Queued"),
+        Status::Paused => Some("Paused"),
+        Status::Done => Some("Completed"),
+    };
+    let parts: Vec<String> = [lead.map(str::to_string), Some(kind_label(item)), Some(size)].into_iter().flatten().filter(|p| !p.is_empty()).collect();
+    if parts.is_empty() { format::status_label(&item.status) } else { parts.join(" · ") }
+}
+
+/// "youtube.com" from "https://www.youtube.com/watch?…".
+pub fn host(url: &str) -> String {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    let host = host.split(':').next().unwrap_or(host);
+    host.strip_prefix("www.").unwrap_or(host).to_string()
+}
+
+/// When the next scheduled queue starts ("23:00"), or None.
+pub fn next_queue_start(queues: &[Queue], now: Now) -> Option<String> {
+    let mut best: Option<(u32, u16)> = None;
+    for s in queues.iter().filter_map(|q| q.schedule.as_ref()) {
+        for d in 0..8u32 {
+            let day = (now.weekday as u32 + d) % 7;
+            if s.days[day as usize] && (d > 0 || s.start > now.minute) {
+                let wait = d * 1440 + s.start as u32 - now.minute as u32;
+                if best.is_none_or(|(w, _)| wait < w) {
+                    best = Some((wait, s.start));
+                }
+                break;
+            }
+        }
+    }
+    best.map(|(_, start)| crate::queues::fmt_hhmm(start))
+}
+
+const SLIDER_MIN: f64 = 64.0 * 1024.0;
+const SLIDER_MAX: f64 = 50.0 * 1024.0 * 1024.0;
+const SLIDER_STEP: u64 = 64 * 1024;
+
+/// The speed slider is logarithmic from 64 KB/s to 50 MB/s, in 64 KB/s steps.
+pub fn slider_to_bps(v: f32) -> u64 {
+    let v = (v as f64).clamp(0.0, 1.0);
+    let bps = SLIDER_MIN * (SLIDER_MAX / SLIDER_MIN).powf(v);
+    ((bps / SLIDER_STEP as f64).round() as u64).max(1) * SLIDER_STEP
+}
+
+pub fn bps_to_slider(bps: u64) -> f32 {
+    let bps = (bps as f64).clamp(SLIDER_MIN, SLIDER_MAX);
+    ((bps / SLIDER_MIN).ln() / (SLIDER_MAX / SLIDER_MIN).ln()) as f32
+}
+
+/// A segmented control's values: the usual ones plus the current value if it's unusual.
+pub fn segment_choices(base: &[usize], current: usize) -> Vec<usize> {
+    let mut list = base.to_vec();
+    list.push(current);
+    list.sort();
+    list.dedup();
+    list
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::{Model, Picker, Screen};
+    use rdm_core::{Category, Event, Item, ItemId, Kind, MediaFormat, MediaInfo, Now, Queue, Schedule, Status};
+    use rdm_media::{Entry, QualityOption};
+
+    fn item(id: u64, name: &str, category: Category, status: Status) -> Item {
+        Item {
+            id: ItemId(id),
+            url: format!("https://www.example.com/{name}"),
+            name: name.into(),
+            category,
+            status,
+            dest: None,
+            downloaded: 0,
+            total: None,
+            speed_bps: 0,
+            queue: 0,
+            added: id as i64,
+            kind: Kind::Http,
+            referrer: None,
+            work_dir: None,
+        }
+    }
+
+    fn never() -> Schedule {
+        Schedule { start: 23 * 60, stop: None, days: [false; 7] }
+    }
+
+    /// 1 running video, 2 done zip, 3 queued-but-scheduled pdf, 4 failed iso, 5 done mp3 in queue 1.
+    fn model() -> Model {
+        let mut m = Model::default();
+        m.queues.push(Queue { id: 1, name: "Tonight".into(), max_concurrent: 1, schedule: Some(never()) });
+        m.apply(Event::Added(item(1, "Rust Async.mp4", Category::Video, Status::Running)));
+        m.apply(Event::Added(item(2, "notes.zip", Category::Archive, Status::Done)));
+        m.apply(Event::Added(Item { queue: 1, ..item(3, "paper.pdf", Category::Document, Status::Queued) }));
+        m.apply(Event::Added(item(4, "ubuntu.iso", Category::Archive, Status::Failed("HTTP 403".into()))));
+        m.apply(Event::Added(Item { queue: 1, ..item(5, "Lofi.mp3", Category::Music, Status::Done) }));
+        m
+    }
+
+    fn ids(items: &[&Item]) -> Vec<u64> {
+        items.iter().map(|i| i.id.0).collect()
+    }
+
+    #[test]
+    fn filter_counts() {
+        let c = model().counts();
+        assert_eq!((c.all, c.active, c.done, c.scheduled), (5, 2, 2, 1));
+        assert_eq!(c.category(Category::Archive), 2);
+        assert_eq!(c.category(Category::Program), 0);
+        assert_eq!(c.queue(0), 3);
+        assert_eq!(c.queue(1), 2);
+    }
+
+    #[test]
+    fn visible_splits_and_filters() {
+        let mut m = model();
+        let (down, recent) = m.visible();
+        assert_eq!(ids(&down), vec![4, 3, 1], "newest first");
+        assert_eq!(ids(&recent), vec![5, 2]);
+        m.filter = Filter::Active;
+        assert_eq!(ids(&m.visible().0), vec![4, 1]);
+        assert!(m.visible().1.is_empty());
+        m.filter = Filter::Scheduled;
+        assert_eq!(ids(&m.visible().0), vec![3]);
+        m.filter = Filter::All;
+        m.library = Library::Category(Category::Archive);
+        assert_eq!((ids(&m.visible().0), ids(&m.visible().1)), (vec![4], vec![2]));
+        m.library = Library::Queue(1);
+        assert_eq!((ids(&m.visible().0), ids(&m.visible().1)), (vec![3], vec![5]));
+        m.library = Library::All;
+        m.search = "  RUST ".into();
+        assert_eq!(ids(&m.visible().0), vec![1], "case-insensitive, trimmed");
+        assert!(m.visible().1.is_empty());
+    }
+
+    #[test]
+    fn inspector_item_respects_filters() {
+        let mut m = model();
+        m.selected = Some(ItemId(2));
+        assert_eq!(m.inspected().map(|i| i.id.0), Some(2));
+        m.filter = Filter::Active;
+        assert_eq!(m.inspected(), None, "a hidden item isn't inspected");
+        m.filter = Filter::All;
+        m.apply(Event::Removed(ItemId(2)));
+        assert_eq!(m.inspected(), None);
+    }
+
+    #[test]
+    fn link_tag_cases() {
+        assert_eq!(link_tag("https://www.youtube.com/watch?v=abc"), Some(LinkTag::Video));
+        assert_eq!(link_tag("https://www.youtube.com/playlist?list=PL1"), Some(LinkTag::Playlist));
+        assert_eq!(link_tag("https://www.youtube.com/watch?v=a&list=PL1"), Some(LinkTag::Playlist));
+        assert_eq!(link_tag(" https://files.example.com/file.zip "), Some(LinkTag::File));
+        assert_eq!(link_tag(""), None);
+        assert_eq!(link_tag("ftp://x/y"), None);
+        assert_eq!(link_tag("hello"), None);
+        assert_eq!(LinkTag::Video.label(), "Video detected");
+    }
+
+    #[test]
+    fn row_meta_never_empty() {
+        let mut running = item(1, "a.mp4", Category::Video, Status::Running);
+        running.kind = Kind::Media(MediaFormat::Video { max_height: 1080 });
+        running.downloaded = 642 * 1024 * 1024;
+        running.total = Some(1229 * 1024 * 1024);
+        assert_eq!(row_meta(&running), "1080p · MP4 · 642.0 MB of 1.2 GB");
+        let mut paused = item(2, "u.iso", Category::Archive, Status::Paused);
+        paused.downloaded = 2048;
+        assert_eq!(row_meta(&paused), "Paused · ISO · 2.0 KB");
+        let mut done = item(3, "n.pdf", Category::Document, Status::Done);
+        done.total = Some(12 * 1024 * 1024);
+        assert_eq!(row_meta(&done), "Completed · PDF · 12.0 MB");
+        let mp3 = Item { kind: Kind::Media(MediaFormat::AudioMp3), ..item(4, "x", Category::Music, Status::Queued) };
+        assert_eq!(row_meta(&mp3), "Queued · Audio · MP3");
+        assert_eq!(row_meta(&item(5, "noext", Category::Other, Status::Failed(String::new()))), "Failed");
+        assert_eq!(row_meta(&item(6, "f", Category::Other, Status::Failed("HTTP 403".into()))), "HTTP 403");
+    }
+
+    #[test]
+    fn host_strips_scheme_www_port_and_user() {
+        assert_eq!(host("https://www.youtube.com/watch?v=1"), "youtube.com");
+        assert_eq!(host("http://user@files.example.org:8080/a"), "files.example.org");
+        assert_eq!(host("nonsense"), "nonsense");
+    }
+
+    #[test]
+    fn next_queue_start_picks_soonest() {
+        let at = |start: u16, days: [bool; 7]| Queue { id: 1, name: "q".into(), max_concurrent: 1, schedule: Some(Schedule { start, stop: None, days }) };
+        let every = [true; 7];
+        let now = Now::at(0, 22, 0); // Monday 22:00
+        assert_eq!(next_queue_start(&[at(23 * 60, every)], now).as_deref(), Some("23:00"));
+        assert_eq!(next_queue_start(&[at(23 * 60, every), at(22 * 60 + 30, every)], now).as_deref(), Some("22:30"));
+        let mut tuesday_only = [false; 7];
+        tuesday_only[1] = true;
+        assert_eq!(next_queue_start(&[at(7 * 60, tuesday_only), at(23 * 60, every)], now).as_deref(), Some("23:00"));
+        assert_eq!(next_queue_start(&[at(21 * 60, [false; 7])], now), None, "no days: never starts");
+        assert_eq!(next_queue_start(&[Queue { schedule: None, ..at(0, every) }], now), None);
+    }
+
+    #[test]
+    fn slider_round_trip() {
+        const KB: u64 = 1024;
+        for bps in [64 * KB, 512 * KB, 1024 * KB, 2048 * KB, 5120 * KB, 50 * 1024 * KB] {
+            assert_eq!(slider_to_bps(bps_to_slider(bps)), bps, "{bps}");
+        }
+        assert_eq!(slider_to_bps(0.0), 64 * KB);
+        assert_eq!(slider_to_bps(1.0), 50 * 1024 * KB);
+        assert_eq!(bps_to_slider(0), 0.0);
+        assert_eq!(bps_to_slider(u64::MAX), 1.0);
+        assert_eq!(slider_to_bps(0.5) % (64 * KB), 0, "rounded to 64 KB steps");
+    }
+
+    #[test]
+    fn slider_preview_does_not_apply() {
+        let mut m = model();
+        m.preview_speed(0.5);
+        assert_eq!(m.settings.speed_limit_bps, 0, "dragging changes nothing yet");
+        assert_eq!(m.speed_preview, Some(slider_to_bps(0.5)));
+        assert_eq!(m.shown_limit(), slider_to_bps(0.5));
+        assert_eq!(m.release_speed(), Some(slider_to_bps(0.5)));
+        assert_eq!(m.speed_preview, None);
+        assert_eq!(m.release_speed(), None, "a release without a drag applies nothing");
+    }
+
+    #[test]
+    fn segment_choices_include_current() {
+        assert_eq!(segment_choices(&[1, 2, 4, 8, 16], 8), vec![1, 2, 4, 8, 16]);
+        assert_eq!(segment_choices(&[1, 2, 4, 8, 16], 6), vec![1, 2, 4, 6, 8, 16]);
+    }
+
+    fn options() -> Vec<QualityOption> {
+        let video = |h: u32| QualityOption { label: format!("{h}p"), format: MediaFormat::Video { max_height: h }, approx_size: None };
+        vec![video(1080), video(720), QualityOption { label: "MP3".into(), format: MediaFormat::AudioMp3, approx_size: None }]
+    }
+
+    fn playlist(n: usize) -> MediaInfo {
+        let entries = (1..=n).map(|i| Entry { url: format!("https://y/{i}"), title: format!("Video {i}") }).collect();
+        MediaInfo { title: "List".into(), duration: None, options: options(), entries }
+    }
+
+    #[test]
+    fn picker_tabs_split_options() {
+        let mut p = Picker::new("https://y/x".into(), MediaInfo { entries: vec![], ..playlist(0) }, 1, 0);
+        assert_eq!(p.tab, MediaTab::Video);
+        assert_eq!(p.visible_options().iter().map(|(i, _)| *i).collect::<Vec<_>>(), vec![0, 1]);
+        assert!(p.has_both_tabs());
+        p.set_tab(MediaTab::Audio);
+        assert_eq!(p.choice, 2, "switching tab picks that tab's first option");
+        assert_eq!(p.visible_options().iter().map(|(i, _)| *i).collect::<Vec<_>>(), vec![2]);
+        let audio_first = Picker::new("u".into(), playlist(0), 2, 0);
+        assert_eq!(audio_first.tab, MediaTab::Audio, "opens on the tab of the preferred choice");
+    }
+
+    #[test]
+    fn playlist_selection_filters_requests() {
+        let mut p = Picker::new("https://y/list".into(), playlist(3), 0, 1);
+        assert_eq!(p.queue, 1);
+        assert_eq!(p.selected_count(), 3, "everything is selected at first");
+        p.toggle_entry(1);
+        let urls: Vec<String> = p.requests().into_iter().map(|r| r.0).collect();
+        assert_eq!(urls, vec!["https://y/1", "https://y/3"]);
+        p.select_all(true);
+        assert_eq!(p.requests().len(), 3);
+        p.toggle_entry(99); // out of range: ignored
+        assert_eq!(p.selected_count(), 3);
+    }
+
+    #[test]
+    fn playlist_none_selected_adds_nothing() {
+        let mut p = Picker::new("https://y/list".into(), playlist(2), 0, 0);
+        p.select_all(false);
+        assert_eq!(p.selected_count(), 0);
+        assert!(p.requests().is_empty());
+        let single = Picker::new("https://y/x".into(), playlist(0), 0, 0);
+        assert_eq!(single.requests().len(), 1, "a single video is always one request");
+    }
+
+    #[test]
+    fn draft_accent_falls_back() {
+        let mut m = model();
+        m.settings.accent = "#0a84ff".into();
+        m.open_settings(crate::state::SettingsTab::Appearance);
+        m.draft.accent = "#ff".into();
+        assert_eq!(m.accent_hex(), "#0a84ff", "invalid draft: keep the saved accent");
+        m.draft.accent = "#32d74b".into();
+        assert_eq!(m.accent_hex(), "#32d74b", "valid draft previews live");
+        m.screen = Screen::Downloads;
+        assert_eq!(m.accent_hex(), "#0a84ff", "outside Settings the saved accent rules");
+        m.draft.accent = "orange".into();
+        assert!(m.draft.to_settings(&m.settings).is_err());
+    }
+
+    #[test]
+    fn clipboard_link_becomes_toast() {
+        let mut m = Model::default();
+        m.clipboard_seen(Some("https://old.example/a.zip".into()));
+        assert_eq!(m.toast, None, "the first read only records what's there");
+        m.clipboard_seen(Some("https://x.example/b.zip".into()));
+        assert_eq!(m.toast.as_deref(), Some("https://x.example/b.zip"));
+        assert_eq!(m.url, "", "the URL bar is left alone");
+        m.toast = None;
+        m.clipboard_seen(Some("https://x.example/b.zip".into()));
+        assert_eq!(m.toast, None, "the same link isn't suggested twice");
+    }
+
+    #[test]
+    fn closing_settings_saves_or_stays_open() {
+        let mut m = model();
+        m.queues[1].schedule = Some(Schedule { start: 23 * 60, stop: None, days: [true; 7] }); // a valid saved queue
+        m.open_settings(crate::state::SettingsTab::Connections);
+        m.draft.connections = "4".into();
+        let (settings, queues) = m.close_settings().expect("valid");
+        assert_eq!(settings.connections, 4);
+        assert_eq!(queues, m.queues);
+        assert_eq!(m.screen, Screen::Downloads);
+        m.open_settings(crate::state::SettingsTab::Speed);
+        m.queue_drafts[1].start = "25:00".into();
+        assert!(m.close_settings().is_err());
+        assert_eq!(m.screen, Screen::Settings, "stays open to fix it");
+        assert!(m.notice.is_some());
+    }
+}

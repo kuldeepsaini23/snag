@@ -4,6 +4,7 @@ mod queues;
 mod state;
 mod ui;
 mod update;
+mod view;
 
 use std::path::PathBuf;
 
@@ -28,7 +29,8 @@ fn main() -> iced::Result {
     };
 
     let boot_manager = manager.clone();
-    let result = iced::application(move || update::boot(boot_manager.clone(), bridge_status.clone()), update::update, ui::view)
+    let boot_dir = data_dir.clone();
+    let result = iced::application(move || update::boot(boot_manager.clone(), bridge_status.clone(), boot_dir.clone()), update::update, ui::view)
         .title("RDM")
         .subscription(update::subscription)
         .theme(iced::Theme::Dark)
