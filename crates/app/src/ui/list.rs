@@ -97,13 +97,13 @@ pub fn with_duration<'a>(tile: Element<'a, Message>, duration: Option<f64>, widt
 }
 
 fn plain_tile<'a>(item: &Item, width: f32, height: f32, glyph_size: u16, c: Colors) -> Element<'a, Message> {
+    // Videos, songs and pictures get the accent; files stay neutral.
+    let (accent_top, accent_bottom) = super::theme::tile_gradient(&c);
     let (top, bottom, glyph, fg) = match (&item.kind, item.category) {
-        (Kind::Media(MediaFormat::AudioMp3), _) | (_, Category::Music) => {
-            (Color::from_rgb8(0x6b, 0x3a, 0x8c), Color::from_rgb8(0x23, 0x18, 0x33), Icon::MusicNote, Color::WHITE)
-        }
-        (Kind::Media(_), _) | (_, Category::Video) => (Color::from_rgb8(0x8a, 0x55, 0x14), Color::from_rgb8(0x24, 0x1b, 0x12), Icon::PlayFill, Color::WHITE),
+        (Kind::Media(MediaFormat::AudioMp3), _) | (_, Category::Music) => (accent_top, accent_bottom, Icon::MusicNote, Color::WHITE),
+        (Kind::Media(_), _) | (_, Category::Video) => (accent_top, accent_bottom, Icon::PlayFill, Color::WHITE),
         (_, Category::Archive) => (c.raised, c.surface, Icon::FileZip, c.text2),
-        (_, Category::Image) => (Color::from_rgb8(0x1f, 0x5c, 0x55), Color::from_rgb8(0x16, 0x26, 0x24), Icon::Image, Color::WHITE),
+        (_, Category::Image) => (accent_top, accent_bottom, Icon::Image, Color::WHITE),
         (_, Category::Document) => (c.raised, c.surface, if item.name.to_lowercase().ends_with(".pdf") { Icon::FilePdf } else { Icon::FileText }, c.text2),
         (_, Category::Program) => (c.raised, c.surface, Icon::AppWindow, c.text2),
         _ => (c.raised, c.surface, Icon::File, c.text2),
@@ -113,7 +113,7 @@ fn plain_tile<'a>(item: &Item, width: f32, height: f32, glyph_size: u16, c: Colo
         .height(Length::Fixed(height))
         .align_x(Alignment::Center)
         .align_y(Alignment::Center)
-        .style(style::tile(c.fixed(top), c.fixed(bottom), c.line))
+        .style(style::tile(top, bottom, c.line))
         .into()
 }
 

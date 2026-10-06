@@ -23,7 +23,7 @@ const CAPTION_FONT: Font = Font::with_name("Segoe Fluent Icons");
 pub fn view(m: &Model, a: Anim, c: Colors) -> Element<'_, Message> {
     let (running, speed) = m.totals();
     let subtitle = if running == 0 { "Nothing downloading".to_string() } else { format!("{running} active · {}", format::speed(speed)) };
-    let logo = iced::widget::image(super::icon::logo()).width(26).height(26);
+    let logo = iced::widget::image(super::icon::logo(c.accent)).width(26).height(26);
     let title = column![text("Downloads").size(13).font(style::SEMIBOLD), tiny(subtitle, c.text3)].spacing(1);
 
     let middle = container(row![title, Space::new().width(Fill), tabs(m, a, c), Space::new().width(Fill)].spacing(10).align_y(Alignment::Center))

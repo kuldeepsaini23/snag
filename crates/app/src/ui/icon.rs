@@ -1,20 +1,49 @@
 //! Phosphor icons (MIT), drawn as glyphs from the bundled icon fonts.
 
-use iced::Font;
+use iced::widget::image::Handle;
 use iced::widget::{Text, text};
+use iced::{Color, Font};
+use std::sync::Mutex;
 
 pub const INTER_REGULAR: &[u8] = include_bytes!("../../assets/fonts/Inter-Regular.ttf");
 pub const INTER_MEDIUM: &[u8] = include_bytes!("../../assets/fonts/Inter-Medium.ttf");
 pub const INTER_SEMIBOLD: &[u8] = include_bytes!("../../assets/fonts/Inter-SemiBold.ttf");
 pub const JETBRAINS_MONO: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf");
-/// The Snag logo (Figma: Components → "Logo/Snag").
-const LOGO_64: &[u8] = include_bytes!("../../assets/logo/snag-64.png");
+/// The Snag logo (Figma: Components → "Logo/Snag"), 64×64 RGBA: a #ff9f0a tile, a #1a1816 "S".
+const LOGO_RGBA: &[u8] = crate::tray::ICON_64;
+const LOGO_TILE: [f32; 3] = [255.0, 159.0, 10.0];
+const LOGO_INK: [f32; 3] = [26.0, 24.0, 22.0];
 
-/// One handle for the whole run: iced loads images in the background and keys them by handle,
-/// so a handle made anew every frame would never finish loading.
-pub fn logo() -> iced::widget::image::Handle {
-    static LOGO: std::sync::LazyLock<iced::widget::image::Handle> = std::sync::LazyLock::new(|| iced::widget::image::Handle::from_bytes(LOGO_64));
-    LOGO.clone()
+/// The logo in the accent: the tile takes the accent, the "S" the text colour drawn on it.
+/// Each pixel is a blend of ink and tile (anti-aliased edges in between); the same blend of the
+/// new two colours replaces it. Transparency is kept.
+pub fn tint_logo(rgba: &[u8], accent: Color) -> Vec<u8> {
+    let ink = crate::ui::theme::on_accent(accent);
+    let (to_ink, to_tile) = ([ink.r, ink.g, ink.b].map(|v| v * 255.0), [accent.r, accent.g, accent.b].map(|v| v * 255.0));
+    let span: [f32; 3] = std::array::from_fn(|k| LOGO_TILE[k] - LOGO_INK[k]);
+    let span_len = span.iter().map(|v| v * v).sum::<f32>();
+    let mut out = rgba.to_vec();
+    for px in out.as_chunks_mut::<4>().0.iter_mut().filter(|px| px[3] > 0) {
+        let t = ((0..3).map(|k| (px[k] as f32 - LOGO_INK[k]) * span[k]).sum::<f32>() / span_len).clamp(0.0, 1.0);
+        for k in 0..3 {
+            px[k] = (to_ink[k] + (to_tile[k] - to_ink[k]) * t).round().clamp(0.0, 255.0) as u8;
+        }
+    }
+    out
+}
+
+/// The logo for an accent. One handle per accent for the whole run: iced loads images in the
+/// background and keys them by handle, so a handle made anew every frame would never show.
+pub fn logo(accent: Color) -> Handle {
+    static CACHE: Mutex<Vec<([u8; 4], Handle)>> = Mutex::new(Vec::new());
+    let key = accent.into_rgba8();
+    let Ok(mut cache) = CACHE.lock() else { return Handle::from_rgba(64, 64, tint_logo(LOGO_RGBA, accent)) };
+    if let Some((_, h)) = cache.iter().find(|(k, _)| *k == key) {
+        return h.clone();
+    }
+    let handle = Handle::from_rgba(64, 64, tint_logo(LOGO_RGBA, accent));
+    cache.push((key, handle.clone()));
+    handle
 }
 pub const PHOSPHOR: &[u8] = include_bytes!("../../assets/fonts/Phosphor.ttf");
 pub const PHOSPHOR_FILL: &[u8] = include_bytes!("../../assets/fonts/Phosphor-Fill.ttf");
@@ -154,6 +183,27 @@ mod tests {
             assert!(maps(PHOSPHOR_FILL, i.ch() as u32), "{i:?} missing in Fill");
         }
         assert!(!maps(PHOSPHOR, 0x41), "plain letters are not icons");
+    }
+
+    #[test]
+    fn logo_follows_the_accent() {
+        let px = |rgba: &[u8], i: usize| [rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2], rgba[i * 4 + 3]];
+        let ink = (0..64 * 64).find(|&i| px(LOGO_RGBA, i) == [0x1a, 0x18, 0x16, 255]).expect("the S");
+        let tile = (0..64 * 64).find(|&i| px(LOGO_RGBA, i) == [0xff, 0x9f, 0x0a, 255]).expect("the tile");
+        let corner = 0; // transparent outside the rounded square
+
+        let orange = tint_logo(LOGO_RGBA, crate::ui::theme::parse_hex("#ff9f0a").unwrap());
+        let worst = (0..64 * 64).max_by_key(|&i| (0..4).map(|k| orange[i * 4 + k].abs_diff(LOGO_RGBA[i * 4 + k])).max()).unwrap();
+        // Faint edge pixels stray a little from the ink–tile line; a few levels is invisible.
+        assert!(orange.iter().zip(LOGO_RGBA).all(|(a, b)| a.abs_diff(*b) <= 8), "the default accent is the logo as drawn: {:?} vs {:?}", px(&orange, worst), px(LOGO_RGBA, worst));
+
+        let blue = tint_logo(LOGO_RGBA, crate::ui::theme::parse_hex("#0a84ff").unwrap());
+        assert_eq!(px(&blue, tile), [0x0a, 0x84, 0xff, 255], "the tile takes the accent");
+        assert_eq!(px(&blue, ink), [255, 255, 255, 255], "the S takes the text colour for that accent (white on blue)");
+        assert_eq!(px(&blue, corner)[3], px(LOGO_RGBA, corner)[3], "transparency is kept");
+
+        let white = tint_logo(LOGO_RGBA, crate::ui::theme::parse_hex("#f5f5f7").unwrap());
+        assert_eq!(px(&white, ink), [0x1a, 0x18, 0x16, 255], "dark S on a white tile");
     }
 
     /// Minimal cmap (format 4) lookup, enough to prove the code points are real.

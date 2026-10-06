@@ -126,6 +126,16 @@ pub fn colors(accent_hex: &str) -> Colors {
     }
 }
 
+/// The placeholder tile behind a video, song or picture without a thumbnail: the accent, softened,
+/// fading into the panel.
+pub fn tile_gradient(c: &Colors) -> (Color, Color) {
+    let mix = |a: f32| {
+        let (p, t) = (c.panel, c.accent);
+        Color::from_rgba(p.r + (t.r - p.r) * a, p.g + (t.g - p.g) * a, p.b + (t.b - p.b) * a, c.alpha)
+    };
+    (mix(0.5), mix(0.06))
+}
+
 pub fn theme(c: &Colors) -> iced::Theme {
     iced::Theme::custom(
         "Snag",
@@ -180,6 +190,21 @@ mod tests {
         assert_eq!(half.text.a, c.text.a * 0.5);
         assert_eq!(half.fixed(Color::WHITE), Color { a: 0.5, ..Color::WHITE });
         assert_eq!(c.faded(1.0), c, "fully in: unchanged");
+    }
+
+    #[test]
+    fn tile_colors_follow_accent() {
+        let hue = |c: Color| {
+            let (max, min) = (c.r.max(c.g).max(c.b), c.r.min(c.g).min(c.b));
+            if c.b == max && max > min { "blue" } else if c.r == max && max > min { "warm" } else { "grey" }
+        };
+        let blue = colors("#0a84ff");
+        let (top, bottom) = tile_gradient(&blue);
+        assert_eq!(hue(top), "blue", "{top:?}");
+        assert_ne!(tile_gradient(&colors("#ff9f0a")).0, top, "another accent, another tile");
+        // It fades into the panel, so a tile never shouts.
+        assert!((bottom.r - blue.panel.r).abs() < 0.08 && (bottom.b - blue.panel.b).abs() < 0.12, "{bottom:?}");
+        assert!(top.r + top.g + top.b < blue.accent.r + blue.accent.g + blue.accent.b, "softer than the accent itself");
     }
 
     #[test]
