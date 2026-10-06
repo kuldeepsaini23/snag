@@ -97,7 +97,7 @@ impl Manager {
     /// on first use.
     pub async fn probe_media(&self, url: String) -> Result<MediaInfo, String> {
         let ytdlp = self.tools.ytdlp().await?;
-        rdm_media::probe(&ytdlp, &url).await
+        rdm_media::probe(&ytdlp, &url, None).await
     }
 
     pub async fn notify(&self, text: String) {
@@ -438,7 +438,7 @@ impl Actor {
                         progress_tx.send_replace(Progress { downloaded: p.downloaded, total: p.total, speed_bps: p.speed_bps, segments: Vec::new() });
                     }
                 });
-                let outcome = rdm_media::download(&ytdlp, &url, &format, &dir, cancel, &media_tx).await;
+                let outcome = rdm_media::download(&ytdlp, &url, &format, &dir, &Default::default(), cancel, &media_tx).await;
                 drop(media_tx);
                 let _ = forward.await;
                 Ok(match outcome? {

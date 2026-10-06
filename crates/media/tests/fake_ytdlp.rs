@@ -4,6 +4,11 @@ use std::time::Duration;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let url = args.last().cloned().unwrap_or_default();
+    if args.iter().any(|a| a == "-U") {
+        println!("Current version: fake");
+        println!("yt-dlp is up to date (fake)");
+        return;
+    }
     if args.iter().any(|a| a == "-J") {
         println!(
             r#"{{"_type":"video","title":"Fake clip","duration":3.0,"formats":[{{"vcodec":"avc1","acodec":"none","height":480,"filesize":300}},{{"vcodec":"none","acodec":"mp4a","filesize":100}}]}}"#

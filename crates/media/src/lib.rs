@@ -65,6 +65,50 @@ impl StreamProgress {
     }
 }
 
+/// Per-download extras for yt-dlp.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MediaOptions {
+    /// Netscape cookies.txt from the browser (`--cookies`).
+    pub cookies: Option<PathBuf>,
+    /// Bytes per second, 0 = unlimited (`--limit-rate`).
+    pub limit_bps: u64,
+    /// Where partial files live until the final file is moved into place (`-P temp:`).
+    pub temp_dir: Option<PathBuf>,
+}
+
+impl MediaInfo {
+    /// Index of the option that best matches `pref`: None = the best (first) option;
+    /// a video height = the highest option at or below it, else the lowest video; MP3 = the MP3 option.
+    pub fn preferred(&self, pref: Option<&MediaFormat>) -> usize {
+        let video_height = |o: &QualityOption| match o.format {
+            MediaFormat::Video { max_height } => Some(max_height),
+            MediaFormat::AudioMp3 => None,
+        };
+        let found = match pref {
+            None => None,
+            Some(MediaFormat::AudioMp3) => self.options.iter().position(|o| o.format == MediaFormat::AudioMp3),
+            Some(MediaFormat::Video { max_height }) => {
+                let videos = || self.options.iter().enumerate().filter_map(|(i, o)| video_height(o).map(|h| (i, h)));
+                videos()
+                    .filter(|(_, h)| h <= max_height)
+                    .max_by_key(|(_, h)| *h)
+                    .or_else(|| videos().min_by_key(|(_, h)| *h))
+                    .map(|(i, _)| i)
+            }
+        };
+        found.unwrap_or(0)
+    }
+
+    /// What to add for `choice`: (url, title, format), one item or one per playlist entry.
+    pub fn requests(&self, url: &str, choice: usize) -> Vec<(String, String, MediaFormat)> {
+        let Some(option) = self.options.get(choice) else { return Vec::new() };
+        if self.entries.is_empty() {
+            return vec![(url.to_string(), self.title.clone(), option.format.clone())];
+        }
+        self.entries.iter().map(|e| (e.url.clone(), e.title.clone(), option.format.clone())).collect()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum MediaOutcome {
     Completed(PathBuf),
@@ -132,7 +176,7 @@ pub fn parse_probe(json: &str) -> Result<MediaInfo, String> {
     Ok(MediaInfo { title, duration, options, entries: Vec::new() })
 }
 
-pub fn build_args(format: &MediaFormat, out_dir: &Path, url: &str) -> Vec<String> {
+pub fn build_args(format: &MediaFormat, out_dir: &Path, url: &str, opts: &MediaOptions) -> Vec<String> {
     let mut args: Vec<String> = [
         "--newline",
         "--encoding",
@@ -154,6 +198,16 @@ pub fn build_args(format: &MediaFormat, out_dir: &Path, url: &str) -> Vec<String
         MediaFormat::AudioMp3 => {
             args.extend(["-f", "ba/b", "-x", "--audio-format", "mp3", "--audio-quality", "0"].map(String::from));
         }
+    }
+    if let Some(cookies) = &opts.cookies {
+        args.extend(["--cookies".into(), cookies.display().to_string()]);
+    }
+    if opts.limit_bps > 0 {
+        args.extend(["--limit-rate".into(), opts.limit_bps.to_string()]);
+    }
+    if let Some(temp) = &opts.temp_dir {
+        // Partial files stay in the item's own folder, so removing the item can clean them up.
+        args.extend(["-P".into(), format!("temp:{}", temp.display())]);
     }
     // Title alone isn't unique: two videos (or one video twice) would share a file.
     args.extend(["-P".into(), out_dir.display().to_string(), "-o".into(), "%(title).150B [%(id)s].%(ext)s".into()]);
@@ -191,20 +245,23 @@ fn error_from(stderr: &str) -> Option<String> {
 
 /// Arguments for reading a link. A link to one video inside a playlist (`watch?v=…&list=…`)
 /// is read as that one video.
-pub fn probe_args(url: &str) -> Vec<String> {
+pub fn probe_args(url: &str, cookies: Option<&Path>) -> Vec<String> {
     let query = url.split_once('?').map_or("", |(_, q)| q);
     let one_video = query.split('&').any(|kv| kv.starts_with("v="));
     let mut args: Vec<String> = ["-J", "--flat-playlist", "--no-warnings"].map(String::from).to_vec();
     if one_video {
         args.push("--no-playlist".into());
     }
+    if let Some(cookies) = cookies {
+        args.extend(["--cookies".into(), cookies.display().to_string()]);
+    }
     args.push(url.to_string());
     args
 }
 
-pub async fn probe(ytdlp: &Path, url: &str) -> Result<MediaInfo, String> {
+pub async fn probe(ytdlp: &Path, url: &str, cookies: Option<&Path>) -> Result<MediaInfo, String> {
     let out = command(ytdlp)
-        .args(probe_args(url))
+        .args(probe_args(url, cookies))
         .output()
         .await
         .map_err(|e| format!("can't start yt-dlp: {e}"))?;
@@ -214,6 +271,18 @@ pub async fn probe(ytdlp: &Path, url: &str) -> Result<MediaInfo, String> {
     parse_probe(&String::from_utf8_lossy(&out.stdout))
 }
 
+/// `yt-dlp -U`: updates the standalone exe in place. Returns its last line
+/// ("Updated yt-dlp to …" or "yt-dlp is up to date …").
+pub async fn self_update(ytdlp: &Path) -> Result<String, String> {
+    let out = command(ytdlp).args(["-U", "--encoding", "utf-8"]).output().await.map_err(|e| format!("can't start yt-dlp: {e}"))?;
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let last = stdout.lines().map(str::trim).rfind(|l| !l.is_empty()).map(str::to_string);
+    if !out.status.success() {
+        return Err(error_from(&String::from_utf8_lossy(&out.stderr)).or(last).unwrap_or_else(|| format!("yt-dlp failed ({})", out.status)));
+    }
+    Ok(last.unwrap_or_else(|| "yt-dlp is up to date".into()))
+}
+
 /// Runs yt-dlp until it finishes or `cancel` fires (the process is killed; yt-dlp
 /// continues its `.part` files next time).
 pub async fn download(
@@ -221,6 +290,7 @@ pub async fn download(
     url: &str,
     format: &MediaFormat,
     out_dir: &Path,
+    opts: &MediaOptions,
     cancel: CancellationToken,
     progress: &watch::Sender<MediaProgress>,
 ) -> Result<MediaOutcome, String> {
@@ -229,7 +299,7 @@ pub async fn download(
 
     tokio::fs::create_dir_all(out_dir).await.map_err(|e| format!("can't create {}: {e}", out_dir.display()))?;
     let mut child = command(ytdlp)
-        .args(build_args(format, out_dir, url))
+        .args(build_args(format, out_dir, url, opts))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -348,7 +418,7 @@ mod tests {
 
     #[test]
     fn video_args() {
-        let args = build_args(&MediaFormat::Video { max_height: 720 }, Path::new(r"C:\dl\Videos"), "https://youtu.be/x");
+        let args = build_args(&MediaFormat::Video { max_height: 720 }, Path::new(r"C:\dl\Videos"), "https://youtu.be/x", &MediaOptions::default());
         assert!(window(&args, ["-f", "bv*[height<=720]+ba/b[height<=720]"]), "{args:?}");
         assert!(window(&args, ["--merge-output-format", "mp4"]));
         // Unique per video (title + id), written into the folder given with -P.
@@ -361,18 +431,93 @@ mod tests {
 
     #[test]
     fn audio_args() {
-        let args = build_args(&MediaFormat::AudioMp3, Path::new(r"C:\dl\Music"), "https://youtu.be/x");
+        let args = build_args(&MediaFormat::AudioMp3, Path::new(r"C:\dl\Music"), "https://youtu.be/x", &MediaOptions::default());
         assert!(args.contains(&"-x".to_string()));
         assert!(window(&args, ["--audio-format", "mp3"]));
     }
 
     #[test]
     fn probe_args_keep_a_single_video_from_a_playlist_link() {
-        let single = probe_args("https://www.youtube.com/watch?v=abc&list=PL1");
+        let single = probe_args("https://www.youtube.com/watch?v=abc&list=PL1", None);
         assert!(single.contains(&"--no-playlist".to_string()), "{single:?}");
-        let list = probe_args("https://www.youtube.com/playlist?list=PL1");
+        let list = probe_args("https://www.youtube.com/playlist?list=PL1", None);
         assert!(!list.contains(&"--no-playlist".to_string()), "{list:?}");
         assert_eq!(list.last().unwrap(), "https://www.youtube.com/playlist?list=PL1");
+    }
+
+    #[test]
+    fn args_carry_cookies_limit_and_temp_dir() {
+        let opts = MediaOptions {
+            cookies: Some(PathBuf::from(r"C:\rdm\cookies\7.txt")),
+            limit_bps: 512 * 1024,
+            temp_dir: Some(PathBuf::from(r"C:\dl\Videos\.rdm-parts\7")),
+        };
+        let args = build_args(&MediaFormat::Video { max_height: 720 }, Path::new(r"C:\dl\Videos"), "https://youtu.be/x", &opts);
+        assert!(window(&args, ["--cookies", r"C:\rdm\cookies\7.txt"]), "{args:?}");
+        assert!(window(&args, ["--limit-rate", "524288"]), "{args:?}");
+        assert!(window(&args, ["-P", r"temp:C:\dl\Videos\.rdm-parts\7"]), "{args:?}");
+        assert!(window(&args, ["-P", r"C:\dl\Videos"]), "home folder still given: {args:?}");
+        assert_eq!(args.last().unwrap(), "https://youtu.be/x");
+    }
+
+    #[test]
+    fn args_without_options_have_none_of_them() {
+        let args = build_args(&MediaFormat::AudioMp3, Path::new(r"C:\dl"), "https://youtu.be/x", &MediaOptions::default());
+        for flag in ["--cookies", "--limit-rate"] {
+            assert!(!args.iter().any(|a| a == flag), "{flag} in {args:?}");
+        }
+        assert!(!args.iter().any(|a| a.starts_with("temp:")), "{args:?}");
+    }
+
+    #[test]
+    fn probe_args_carry_cookies() {
+        let args = probe_args("https://www.youtube.com/watch?v=abc", Some(Path::new(r"C:\c.txt")));
+        assert!(window(&args, ["--cookies", r"C:\c.txt"]), "{args:?}");
+        assert_eq!(args.last().unwrap(), "https://www.youtube.com/watch?v=abc");
+        assert!(!probe_args("https://youtu.be/a", None).iter().any(|a| a == "--cookies"));
+    }
+
+    fn heights(info: &MediaInfo) -> Vec<String> {
+        info.options.iter().map(|o| o.label.clone()).collect()
+    }
+
+    #[test]
+    fn preferred_picks_highest_not_above() {
+        let info = parse_probe(SINGLE).unwrap(); // 1080p, 720p, 360p, MP3
+        assert_eq!(heights(&info).len(), 4);
+        assert_eq!(info.preferred(None), 0);
+        assert_eq!(info.preferred(Some(&MediaFormat::Video { max_height: 2160 })), 0);
+        assert_eq!(info.preferred(Some(&MediaFormat::Video { max_height: 1080 })), 0);
+        assert_eq!(info.preferred(Some(&MediaFormat::Video { max_height: 720 })), 1);
+        assert_eq!(info.preferred(Some(&MediaFormat::Video { max_height: 480 })), 2);
+    }
+
+    #[test]
+    fn preferred_falls_back_to_lowest_video() {
+        let info = parse_probe(SINGLE).unwrap();
+        assert_eq!(info.preferred(Some(&MediaFormat::Video { max_height: 240 })), 2, "360p is the lowest video");
+        let audio_only = parse_probe(r#"{"title":"Song","formats":[{"vcodec":"none","acodec":"opus","filesize":700}]}"#).unwrap();
+        assert_eq!(audio_only.preferred(Some(&MediaFormat::Video { max_height: 720 })), 0, "no video at all: the only option");
+    }
+
+    #[test]
+    fn preferred_mp3() {
+        let info = parse_probe(SINGLE).unwrap();
+        assert_eq!(info.preferred(Some(&MediaFormat::AudioMp3)), 3);
+    }
+
+    #[test]
+    fn requests_single_and_playlist() {
+        let single = parse_probe(SINGLE).unwrap();
+        assert_eq!(
+            single.requests("https://youtu.be/x", 3),
+            vec![("https://youtu.be/x".to_string(), "Test clip".to_string(), MediaFormat::AudioMp3)]
+        );
+        assert!(single.requests("https://youtu.be/x", 99).is_empty(), "out of range: nothing");
+        let list = parse_probe(r#"{"_type":"playlist","title":"L","entries":[{"url":"https://y/a","title":"A"},{"url":"https://y/b","title":"B"}]}"#).unwrap();
+        let reqs = list.requests("https://y/list", 1);
+        assert_eq!(reqs.len(), 2);
+        assert_eq!(reqs[1], ("https://y/b".to_string(), "B".to_string(), MediaFormat::Video { max_height: 720 }));
     }
 
     #[test]

@@ -20,11 +20,7 @@ pub struct Picker {
 impl Picker {
     /// What to add: (url, title, format), one per video.
     pub fn requests(&self) -> Vec<(String, String, MediaFormat)> {
-        let Some(option) = self.info.options.get(self.choice) else { return Vec::new() };
-        if self.info.entries.is_empty() {
-            return vec![(self.url.clone(), self.info.title.clone(), option.format.clone())];
-        }
-        self.info.entries.iter().map(|e| (e.url.clone(), e.title.clone(), option.format.clone())).collect()
+        self.info.requests(&self.url, self.choice)
     }
 }
 
