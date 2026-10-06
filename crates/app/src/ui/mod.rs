@@ -1,5 +1,8 @@
 //! Basic views with default iced widgets. The Figma pass replaces this module.
 
+pub mod icon;
+pub mod theme;
+
 use crate::choices::{Limit, Quality, QueueChoice, quality_choices, speed_presets};
 use crate::format;
 use crate::queues::DAY_LETTERS;
