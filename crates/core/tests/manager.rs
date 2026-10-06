@@ -610,3 +610,26 @@ async fn videos_together_stay_within_the_speed_limit() {
     assert!(settled.is_ok(), "three videos together exceed {limit} B/s: {:?}", video_limits(&dir.path().join("dl")));
     m.shutdown().await;
 }
+
+#[tokio::test]
+async fn add_media_to_scheduled_queue_waits() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let m = manager(dir.path(), |_| {}).await;
+    let mut rx = m.subscribe();
+    m.set_queues(vec![main_queue(), Queue { id: 1, name: "Never".into(), max_concurrent: 1, schedule: Some(never()) }]).await;
+    let id = m.add_media_to("https://v.test/1/ok".into(), "Clip".into(), MediaFormat::Video { max_height: 480 }, 1).await;
+    let item = wait_event(&mut rx, |e| match e {
+        Event::Added(i) if i.id == id => Some(i),
+        _ => None,
+    })
+    .await;
+    assert_eq!(item.queue, 1, "placed in its queue before it could start in Main");
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    let snap = m.snapshot().await;
+    assert_eq!(snap.items[0].status, Status::Queued, "held by the queue's schedule");
+    // Unknown queue: falls back to Main.
+    let other = m.add_media_to("https://v.test/2/ok".into(), "Clip 2".into(), MediaFormat::AudioMp3, 42).await;
+    assert_eq!(m.snapshot().await.item(other).unwrap().queue, 0);
+    m.shutdown().await;
+}

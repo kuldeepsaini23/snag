@@ -98,7 +98,7 @@ impl Tools {
 
 enum Cmd {
     Snapshot(oneshot::Sender<AppState>),
-    AddMedia(String, String, MediaFormat, oneshot::Sender<ItemId>),
+    AddMedia(String, String, MediaFormat, QueueId, oneshot::Sender<ItemId>),
     AddWith(String, Option<String>, oneshot::Sender<ItemId>),
     Offer(String, MediaInfo),
     SetQueues(Vec<Queue>),
@@ -159,8 +159,13 @@ impl Manager {
     }
 
     pub async fn add_media(&self, url: String, title: String, format: MediaFormat) -> ItemId {
+        self.add_media_to(url, title, format, 0).await
+    }
+
+    /// `add_media` straight into `queue` (an unknown queue means Main), so it never starts in Main first.
+    pub async fn add_media_to(&self, url: String, title: String, format: MediaFormat, queue: QueueId) -> ItemId {
         let (reply, rx) = oneshot::channel();
-        let _ = self.tx.send(Cmd::AddMedia(url, title, format, reply));
+        let _ = self.tx.send(Cmd::AddMedia(url, title, format, queue, reply));
         rx.await.unwrap_or(ItemId(0))
     }
 
@@ -388,10 +393,10 @@ impl Actor {
             Cmd::AddWith(url, referrer, reply) => {
                 let name = filename_from(None, &url);
                 let category = Category::from_name(&name);
-                let _ = reply.send(self.push_item(url, name, category, Kind::Http, referrer));
+                let _ = reply.send(self.push_item(url, name, category, Kind::Http, referrer, 0));
             }
-            Cmd::AddMedia(url, title, format, reply) => {
-                let _ = reply.send(self.push_media(url, title, format));
+            Cmd::AddMedia(url, title, format, queue, reply) => {
+                let _ = reply.send(self.push_media(url, title, format, queue));
             }
             Cmd::Offer(url, info) => self.offer(url, info),
             Cmd::SetQueues(queues) => self.set_queues(queues),
@@ -467,9 +472,10 @@ impl Actor {
         }
     }
 
-    fn push_media(&mut self, url: String, title: String, format: MediaFormat) -> ItemId {
+    fn push_media(&mut self, url: String, title: String, format: MediaFormat, queue: QueueId) -> ItemId {
         let category = if format == MediaFormat::AudioMp3 { Category::Music } else { Category::Video };
-        self.push_item(url, title, category, Kind::Media(format), None)
+        let queue = if self.state.queue(queue).is_some() { queue } else { 0 };
+        self.push_item(url, title, category, Kind::Media(format), None, queue)
     }
 
     /// Shows the picker with the preferred quality selected, or adds that quality right away.
@@ -487,7 +493,7 @@ impl Actor {
         let label = info.options.get(choice).map(|o| o.label.clone()).unwrap_or_default();
         let count = requests.len();
         for (url, title, format) in requests {
-            self.push_media(url, title, format);
+            self.push_media(url, title, format, 0);
         }
         let what = if count == 1 { format!("\u{201c}{}\u{201d}", info.title) } else { format!("{count} videos") };
         self.emit(Event::Notice(format!("Added {what} ({label})")));
@@ -522,7 +528,7 @@ impl Actor {
         }
     }
 
-    fn push_item(&mut self, url: String, name: String, category: Category, kind: Kind, referrer: Option<String>) -> ItemId {
+    fn push_item(&mut self, url: String, name: String, category: Category, kind: Kind, referrer: Option<String>, queue: QueueId) -> ItemId {
         let id = ItemId(self.state.next_id);
         self.state.next_id += 1;
         let item = Item {
@@ -535,7 +541,7 @@ impl Actor {
             downloaded: 0,
             total: None,
             speed_bps: 0,
-            queue: 0,
+            queue,
             added: chrono::Utc::now().timestamp(),
             kind,
             referrer,
