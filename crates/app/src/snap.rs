@@ -13,9 +13,25 @@ use iced::{Subscription, Task, window};
 use rdm_core::{Category, Item, ItemId, Kind, MediaFormat, MediaInfo, Status};
 use rdm_media::{Entry, QualityOption};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 /// (next scene index, scene being shown, captured yet)
 static STATE: Mutex<(usize, Option<String>, bool)> = Mutex::new((0, None, true));
+/// `mid-*` scenes: the instant the view draws at, so a capture shows an animation halfway.
+static FROZEN: Mutex<Option<Instant>> = Mutex::new(None);
+
+/// How far into its animation a `mid-*` scene is captured.
+const MID: Duration = Duration::from_millis(60);
+
+pub fn frozen() -> Option<Instant> {
+    FROZEN.lock().ok().and_then(|f| *f)
+}
+
+fn freeze(at: Option<Instant>) {
+    if let Ok(mut f) = FROZEN.lock() {
+        *f = at;
+    }
+}
 
 pub fn dir() -> Option<std::path::PathBuf> {
     std::env::var_os("RDM_SNAP_DIR").map(Into::into)
@@ -64,7 +80,56 @@ fn apply(m: &mut Model, scene: &str) {
     m.toast = None;
     m.notice = None;
     m.picker = None;
+    m.confirm_quit = false;
+    m.sidebar_open = true;
+    m.search_open = false;
+    m.hovered = None;
+    m.pending_cancel = None;
+    m.more_open = false;
+    freeze(scene.starts_with("mid-").then(|| Instant::now() + MID));
+    // The row that shows Pause/Resume and Cancel: the paused ISO.
+    let paused = m.items.iter().find(|i| i.status == Status::Paused).map(|i| i.id);
     match scene {
+        "hover" => m.hovered = paused,
+        "cancel" => {
+            m.selected = paused;
+            m.pending_cancel = paused;
+        }
+        "search" => {
+            m.search_open = true;
+            m.search = String::new();
+        }
+        "more" => m.more_open = true,
+        "no-sidebar" => {
+            m.sidebar_open = false;
+            m.selected = None;
+        }
+        // Halfway: the sidebar closing while the tab line slides from All to Done.
+        "mid-slide" => {
+            m.sidebar_open = false;
+            m.filter = if m.filter == crate::view::Filter::Done { crate::view::Filter::All } else { crate::view::Filter::Done };
+        }
+        "mid-inspector" => {
+            m.filter = crate::view::Filter::All;
+            m.selected = m.items.iter().rev().find(|i| i.status == Status::Running).map(|i| i.id);
+        }
+        // A download that just arrived fades in; one that just finished pulses.
+        "mid-new" => {
+            let mut fresh = m.items[0].clone();
+            (fresh.id, fresh.name, fresh.status) = (ItemId(3000), "Just added — release-notes.pdf".into(), Status::Queued);
+            m.items.push(fresh);
+        }
+        "mid-done" => {
+            if let Some(i) = m.items.iter_mut().find(|i| i.status == Status::Running) {
+                i.status = Status::Done;
+            }
+        }
+        "mid-picker" => open_picker(m, info(vec![]), 2),
+        "mid-toast" => m.toast = Some("https://vimeo.com/824123456".into()),
+        "all" => {
+            m.filter = crate::view::Filter::All;
+            m.selected = None;
+        }
         "demo" => m.items = demo_items(),
         "selected" => m.selected = m.items.iter().rev().find(|i| i.status == Status::Running).map(|i| i.id),
         "failed" => m.selected = m.items.iter().find(|i| matches!(i.status, Status::Failed(_))).map(|i| i.id),
