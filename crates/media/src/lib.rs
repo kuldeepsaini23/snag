@@ -243,14 +243,14 @@ pub fn build_args(format: &MediaFormat, out_dir: &Path, url: &str, opts: &MediaO
     .to_vec();
     match format {
         MediaFormat::Video { max_height: h } => {
-            args.extend(["-f".into(), format!("bv*[height<={h}]+ba/b[height<={h}]"), "--merge-output-format".into(), "mp4".into()]);
+            args.extend(["-f".into(), format!("bv*[height<=?{h}]+ba/b[height<=?{h}]/bv*+ba/b"), "--merge-output-format".into(), "mp4".into()]);
         }
         MediaFormat::AudioMp3 => {
             args.extend(["-f", "ba/b", "-x", "--audio-format", "mp3", "--audio-quality", "0"].map(String::from));
         }
         MediaFormat::Live { max_height: h } => {
             // MPEG-TS straight into the final file: whatever was recorded plays, however it stops.
-            args.extend(["-f".into(), format!("b[height<={h}]/b"), "--hls-use-mpegts".into(), "--no-part".into()]);
+            args.extend(["-f".into(), format!("b[height<=?{h}]/b"), "--hls-use-mpegts".into(), "--no-part".into()]);
         }
     }
     if let (MediaFormat::Video { .. }, Some(langs)) = (format, &opts.subtitles) {
@@ -523,7 +523,9 @@ mod tests {
     #[test]
     fn video_args() {
         let args = build_args(&MediaFormat::Video { max_height: 720 }, Path::new(r"C:\dl\Videos"), "https://youtu.be/x", &MediaOptions::default());
-        assert!(window(&args, ["-f", "bv*[height<=720]+ba/b[height<=720]"]), "{args:?}");
+        // Sites that don't say a video's height (generic HTML5 pages) still get their video: `<=?`
+        // accepts unknown heights, and the best available is the last resort.
+        assert!(window(&args, ["-f", "bv*[height<=?720]+ba/b[height<=?720]/bv*+ba/b"]), "{args:?}");
         assert!(window(&args, ["--merge-output-format", "mp4"]));
         // Unique per video (title + id), written into the folder given with -P.
         assert!(window(&args, ["-P", r"C:\dl\Videos"]), "{args:?}");

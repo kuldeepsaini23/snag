@@ -158,7 +158,18 @@ fn problem<'a>(i: &'a Item, c: Colors) -> Option<Element<'a, Message>> {
     let card = column![
         row![icon(Icon::WarningCircle, 15).color(c.danger), text(title).size(13).font(style::SEMIBOLD)].spacing(8).align_y(Alignment::Center),
         text(view::ellipsize(&body, 400)).size(12).color(c.text2).wrapping(text::Wrapping::WordOrGlyph),
-        button(text(label).size(12).font(style::SEMIBOLD)).style(style::primary(c)).padding([6, 12]).on_press(action),
+        row![
+            button(text(label).size(12).font(style::SEMIBOLD)).style(style::primary(c)).padding([6, 12]).on_press(action),
+            // Text in the window can't be selected: copy the whole error for a bug report.
+            button(row![icon(Icon::Copy, 12), text("Copy error").size(12)].spacing(6).align_y(Alignment::Center))
+                .style(style::ghost(c))
+                .padding([6, 10])
+                .on_press(Message::CopyText(format!("{}
+{}
+{}", i.name, i.url, body))),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center),
     ]
     .spacing(8);
     Some(container(card).padding(12).width(Fill).style(style::error_card(c)).into())
