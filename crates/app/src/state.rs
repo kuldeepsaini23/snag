@@ -95,6 +95,19 @@ pub fn file_missing(item: &Item) -> bool {
     item.status == Status::Done && item.dest.as_ref().is_none_or(|p| !p.exists())
 }
 
+impl Model {
+    /// Delete is two clicks: the first arms it for `id`, the second (same item) confirms.
+    pub fn confirm_delete(&mut self, id: ItemId) -> bool {
+        if self.pending_delete == Some(id) {
+            self.pending_delete = None;
+            true
+        } else {
+            self.pending_delete = Some(id);
+            false
+        }
+    }
+}
+
 /// Everything the window shows. Pure data: no iced, no manager.
 #[derive(Clone, Debug)]
 pub struct Model {
@@ -114,6 +127,8 @@ pub struct Model {
     pub clipboard_primed: bool,
     /// Where the browser extension can reach us, or why it can't.
     pub bridge_status: String,
+    /// Item whose Delete was clicked once and waits for confirmation.
+    pub pending_delete: Option<ItemId>,
 }
 
 impl Default for Model {
@@ -132,6 +147,7 @@ impl Default for Model {
             last_clipboard: None,
             clipboard_primed: false,
             bridge_status: String::new(),
+            pending_delete: None,
         }
     }
 }
@@ -342,6 +358,16 @@ mod tests {
         let mut running = item(2, Status::Running, 0);
         running.dest = Some(dir.path().join("gone.bin"));
         assert!(!file_missing(&running), "only finished items can be missing");
+    }
+
+    #[test]
+    fn delete_needs_a_second_click_on_the_same_item() {
+        let mut m = Model::default();
+        assert!(!m.confirm_delete(ItemId(1)), "first click only arms");
+        assert_eq!(m.pending_delete, Some(ItemId(1)));
+        assert!(!m.confirm_delete(ItemId(2)), "another item re-arms instead of deleting");
+        assert!(m.confirm_delete(ItemId(2)), "second click on the same item deletes");
+        assert_eq!(m.pending_delete, None);
     }
 
     #[test]

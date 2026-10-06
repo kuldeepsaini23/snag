@@ -168,6 +168,20 @@ async fn speed_limit_is_respected() {
 }
 
 #[tokio::test]
+async fn finish_never_overwrites_an_existing_file() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("clip.bin");
+    std::fs::write(&dest, b"someone else's file").unwrap();
+    let (r, _) = run(&s.url("/file/300000"), &dest, &opts(4), CancellationToken::new()).await;
+    let Ok(Outcome::Completed(path)) = r else { panic!("{r:?}") };
+    assert_ne!(path, dest, "must not replace an existing file");
+    assert_eq!(path, dir.path().join("clip (1).bin"));
+    assert_eq!(std::fs::read(&dest).unwrap(), b"someone else's file");
+    assert!(std::fs::read(&path).unwrap() == data(300_000), "content mismatch");
+}
+
+#[tokio::test]
 async fn completes_on_connection_limited_server() {
     let s = TestServer::start().await;
     let dir = tempfile::tempdir().unwrap();

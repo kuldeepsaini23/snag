@@ -155,8 +155,8 @@ pub fn build_args(format: &MediaFormat, out_dir: &Path, url: &str) -> Vec<String
             args.extend(["-f", "ba/b", "-x", "--audio-format", "mp3", "--audio-quality", "0"].map(String::from));
         }
     }
-    args.push("-o".into());
-    args.push(out_dir.join("%(title)s.%(ext)s").display().to_string());
+    // Title alone isn't unique: two videos (or one video twice) would share a file.
+    args.extend(["-P".into(), out_dir.display().to_string(), "-o".into(), "%(title).150B [%(id)s].%(ext)s".into()]);
     args.push(url.to_string());
     args
 }
@@ -189,9 +189,22 @@ fn error_from(stderr: &str) -> Option<String> {
     Some(line.trim_start_matches("ERROR:").trim().to_string())
 }
 
+/// Arguments for reading a link. A link to one video inside a playlist (`watch?v=…&list=…`)
+/// is read as that one video.
+pub fn probe_args(url: &str) -> Vec<String> {
+    let query = url.split_once('?').map_or("", |(_, q)| q);
+    let one_video = query.split('&').any(|kv| kv.starts_with("v="));
+    let mut args: Vec<String> = ["-J", "--flat-playlist", "--no-warnings"].map(String::from).to_vec();
+    if one_video {
+        args.push("--no-playlist".into());
+    }
+    args.push(url.to_string());
+    args
+}
+
 pub async fn probe(ytdlp: &Path, url: &str) -> Result<MediaInfo, String> {
     let out = command(ytdlp)
-        .args(["-J", "--flat-playlist", "--no-warnings", url])
+        .args(probe_args(url))
         .output()
         .await
         .map_err(|e| format!("can't start yt-dlp: {e}"))?;
@@ -338,7 +351,9 @@ mod tests {
         let args = build_args(&MediaFormat::Video { max_height: 720 }, Path::new(r"C:\dl\Videos"), "https://youtu.be/x");
         assert!(window(&args, ["-f", "bv*[height<=720]+ba/b[height<=720]"]), "{args:?}");
         assert!(window(&args, ["--merge-output-format", "mp4"]));
-        assert!(window(&args, ["-o", r"C:\dl\Videos\%(title)s.%(ext)s"]));
+        // Unique per video (title + id), written into the folder given with -P.
+        assert!(window(&args, ["-P", r"C:\dl\Videos"]), "{args:?}");
+        assert!(window(&args, ["-o", "%(title).150B [%(id)s].%(ext)s"]), "{args:?}");
         assert_eq!(args.last().unwrap(), "https://youtu.be/x");
         // Titles with emoji: yt-dlp must report the real file name, not a console-encoded one.
         assert!(window(&args, ["--encoding", "utf-8"]), "{args:?}");
@@ -349,6 +364,15 @@ mod tests {
         let args = build_args(&MediaFormat::AudioMp3, Path::new(r"C:\dl\Music"), "https://youtu.be/x");
         assert!(args.contains(&"-x".to_string()));
         assert!(window(&args, ["--audio-format", "mp3"]));
+    }
+
+    #[test]
+    fn probe_args_keep_a_single_video_from_a_playlist_link() {
+        let single = probe_args("https://www.youtube.com/watch?v=abc&list=PL1");
+        assert!(single.contains(&"--no-playlist".to_string()), "{single:?}");
+        let list = probe_args("https://www.youtube.com/playlist?list=PL1");
+        assert!(!list.contains(&"--no-playlist".to_string()), "{list:?}");
+        assert_eq!(list.last().unwrap(), "https://www.youtube.com/playlist?list=PL1");
     }
 
     #[test]

@@ -33,7 +33,7 @@ fn downloads(m: &Model) -> Element<'_, Message> {
     let list: Element<'_, Message> = if m.items.is_empty() {
         container(text("No downloads yet. Paste a link above.").size(14)).padding(24).into()
     } else {
-        scrollable(column(m.items.iter().rev().map(|i| item_row(i, m.selected == Some(i.id)))).spacing(8).padding([0, 12]))
+        scrollable(column(m.items.iter().rev().map(|i| item_row(i, m.selected == Some(i.id), m.pending_delete == Some(i.id)))).spacing(8).padding([0, 12]))
             .height(Fill)
             .into()
     };
@@ -53,7 +53,7 @@ fn downloads(m: &Model) -> Element<'_, Message> {
     page.push(list).push(footer).into()
 }
 
-fn item_row(i: &Item, selected: bool) -> Element<'_, Message> {
+fn item_row(i: &Item, selected: bool, confirming_delete: bool) -> Element<'_, Message> {
     let percent = match (i.total, &i.status) {
         (_, Status::Done) => 100.0,
         (Some(t), _) if t > 0 => i.downloaded as f32 * 100.0 / t as f32,
@@ -78,7 +78,12 @@ fn item_row(i: &Item, selected: bool) -> Element<'_, Message> {
         Status::Paused | Status::Failed(_) => actions.push(button("Resume").on_press(Message::Resume(i.id))),
         Status::Done => actions.push(button("Show in folder").on_press_maybe(i.dest.as_ref().map(|_| Message::ShowInFolder(i.id)))),
     };
-    actions = actions.push(button("Remove").on_press(Message::Remove(i.id))).push(button("Delete").on_press(Message::Delete(i.id)));
+    // Delete sits apart from Remove, is red, and needs a second click.
+    let delete = if confirming_delete { "Click again: delete file" } else { "Delete file" };
+    actions = actions
+        .push(button("Remove").on_press(Message::Remove(i.id)))
+        .push(space::horizontal().width(24))
+        .push(button(delete).style(button::danger).on_press(Message::Delete(i.id)));
 
     let body = column![
         row![

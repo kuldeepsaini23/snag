@@ -267,6 +267,9 @@ impl Actor {
             }
             Cmd::Pause(id) => {
                 if let Some(r) = self.running.get_mut(&id) {
+                    if matches!(r.stop, Stop::Remove { .. }) {
+                        return; // being removed: a pause must not bring it back
+                    }
                     r.stop = Stop::Pause;
                     r.cancel.cancel();
                 } else if let Some(item) = self.state.item_mut(id).filter(|i| i.status == Status::Queued) {
@@ -518,8 +521,10 @@ impl Actor {
         if let Some(dest) = &item.dest {
             let _ = std::fs::remove_file(part_path(dest));
             let _ = std::fs::remove_file(state_path(dest));
-            if delete_file {
-                let _ = std::fs::remove_file(dest);
+            let shared = self.state.items.iter().any(|other| other.dest.as_ref() == Some(dest));
+            if delete_file && !shared && dest.exists() {
+                // Recycle Bin, never a permanent delete: a misclick must be undoable.
+                let _ = trash::delete(dest);
             }
         }
         self.emit(Event::Removed(id));
@@ -560,7 +565,9 @@ impl Actor {
 
     async fn shutdown(&mut self) {
         for r in self.running.values_mut() {
-            r.stop = Stop::Shutdown;
+            if !matches!(r.stop, Stop::Remove { .. }) {
+                r.stop = Stop::Shutdown;
+            }
             r.cancel.cancel();
         }
         let deadline = Instant::now() + SHUTDOWN_GRACE;

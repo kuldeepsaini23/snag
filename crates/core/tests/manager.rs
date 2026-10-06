@@ -230,3 +230,50 @@ async fn redownload_restarts_a_finished_item() {
     let again = wait_item(&mut rx, has(id, Status::Done)).await;
     assert!(std::fs::read(again.dest.unwrap()).unwrap() == data(300_000), "content mismatch");
 }
+
+
+#[tokio::test]
+async fn delete_keeps_a_file_another_item_still_uses() {
+    let dir = tempfile::tempdir().unwrap();
+    let shared = dir.path().join("video.mp4");
+    std::fs::write(&shared, b"the only copy").unwrap();
+    let item = |id: u64| {
+        serde_json::json!({"id": id, "url": "https://youtu.be/x", "name": "video", "category": "Video", "status": "Done",
+            "dest": shared, "downloaded": 13, "total": 13, "queue": 0, "added": 0})
+    };
+    let state = serde_json::json!({"next_id": 3, "items": [item(1), item(2)]});
+    std::fs::write(dir.path().join("state.json"), state.to_string()).unwrap();
+    let m = Manager::start(dir.path().join("state.json"));
+    let mut rx = m.subscribe();
+    m.remove(ItemId(1), true).await;
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !matches!(rx.recv().await, Ok(Event::Removed(ItemId(1)))) {}
+    })
+    .await
+    .expect("removed");
+    assert!(shared.exists(), "item 2 still points at this file");
+}
+
+#[tokio::test]
+async fn pause_does_not_undo_a_pending_remove() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |_| {}).await;
+    let mut rx = m.subscribe();
+    let id = m.add(s.url("/slow/4194304")).await;
+    wait_item(&mut rx, |i| i.id == id && i.status == Status::Running && i.downloaded > 0).await;
+    m.remove(id, true).await;
+    m.pause(id).await;
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if let Ok(Event::Removed(r)) = rx.recv().await
+                && r == id
+            {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("still removed");
+    assert!(m.snapshot().await.items.is_empty());
+}

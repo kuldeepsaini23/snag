@@ -318,10 +318,15 @@ async fn sync_part(part: &Path) -> std::io::Result<()> {
 }
 
 async fn finish(job: &Job<'_>, total: Option<u64>, downloaded: u64) -> Result<Outcome, EngineError> {
-    tokio::fs::rename(&job.part, job.dest).await?;
+    // A file may have appeared at this name while we were paused: never replace it.
+    let target = match (job.dest.exists(), job.dest.parent(), job.dest.file_name()) {
+        (true, Some(dir), Some(name)) => crate::filename::unique_path(dir, &name.to_string_lossy()),
+        _ => job.dest.to_path_buf(),
+    };
+    tokio::fs::rename(&job.part, &target).await?;
     let _ = tokio::fs::remove_file(&job.state_path).await;
     job.progress.send_replace(Progress { downloaded, total, speed_bps: 0, segments: Vec::new() });
-    Ok(Outcome::Completed(job.dest.to_path_buf()))
+    Ok(Outcome::Completed(target))
 }
 
 fn spawn_worker(set: &mut WorkerSet, ctx: &WorkerCtx, idx: usize) {

@@ -90,7 +90,11 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::Resume(id) => return fire(&app.manager, move |m| async move { m.resume(id).await }),
         Message::Redownload(id) => return fire(&app.manager, move |m| async move { m.redownload(id).await }),
         Message::Remove(id) => return fire(&app.manager, move |m| async move { m.remove(id, false).await }),
-        Message::Delete(id) => return fire(&app.manager, move |m| async move { m.remove(id, true).await }),
+        Message::Delete(id) => {
+            if model.confirm_delete(id) {
+                return fire(&app.manager, move |m| async move { m.remove(id, true).await });
+            }
+        }
         Message::ShowInFolder(id) => {
             if let Some(path) = model.dest_of(id) {
                 reveal(&path);
