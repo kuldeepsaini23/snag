@@ -70,6 +70,8 @@ pub enum Message {
     /// Show the notifications collected since the last flush.
     FlushNotes,
     DraftNotify(bool),
+    /// A thumbnail finished downloading (None: it couldn't be fetched).
+    ThumbReady(String, Option<PathBuf>),
     // List
     SetFilter(Filter),
     SetLibrary(Library),
@@ -161,6 +163,43 @@ fn on_window<T: Send + 'static>(action: fn(window::Id) -> Task<T>) -> Task<T> {
 }
 
 pub fn update(app: &mut App, message: Message) -> Task<Message> {
+    let task = handle(app, message);
+    // Items and the picker may now show videos whose thumbnails aren't here yet.
+    let thumbs = fetch_thumbs(app);
+    Task::batch([task, thumbs])
+}
+
+fn fetch_thumbs(app: &mut App) -> Task<Message> {
+    let wanted = app.model.missing_thumbs();
+    if wanted.is_empty() {
+        return Task::none();
+    }
+    let dir = app.data_dir.join("thumbs");
+    Task::batch(wanted.into_iter().map(|url| {
+        app.model.thumb_pending.insert(url.clone());
+        let file = crate::view::thumb_file(&dir, &url);
+        Task::perform(fetch_thumb(url.clone(), file), move |path| Message::ThumbReady(url.clone(), path))
+    }))
+}
+
+/// Downloads a thumbnail once (it stays cached on disk across restarts).
+async fn fetch_thumb(url: String, base: PathBuf) -> Option<PathBuf> {
+    if let Some(cached) = ["jpg", "png", "webp"].iter().map(|e| base.with_extension(e)).find(|f| f.exists()) {
+        return Some(cached);
+    }
+    let get = rdm_engine::default_client().get(&url).timeout(std::time::Duration::from_secs(20)).send();
+    let bytes = get.await.ok()?.error_for_status().ok()?.bytes().await.ok()?;
+    // A thumbnail is small; anything huge isn't one.
+    if bytes.len() > 5 * 1024 * 1024 {
+        return None;
+    }
+    let file = base.with_extension(crate::view::image_ext(&bytes)?);
+    tokio::fs::create_dir_all(file.parent()?).await.ok()?;
+    tokio::fs::write(&file, &bytes).await.ok()?;
+    Some(file)
+}
+
+fn handle(app: &mut App, message: Message) -> Task<Message> {
     let model = &mut app.model;
     match message {
         Message::UrlChanged(url) => model.url = url,
@@ -250,6 +289,13 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             }
         }
         Message::DraftNotify(v) => model.draft.notify = v,
+        Message::ThumbReady(url, path) => {
+            // A failed fetch stays "pending" so it isn't retried every update.
+            if let Some(path) = path {
+                model.thumb_pending.remove(&url);
+                model.thumbs.insert(url, path);
+            }
+        }
         Message::PauseAll => {
             let ids = model.pause_all_ids();
             return fire(&app.manager, move |m| async move {
@@ -401,11 +447,11 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::PickQueue(q) => edit_picker(model, |p| p.queue = q),
         Message::DownloadPicked => {
             let Some(picker) = model.picker.take() else { return Task::none() };
-            let (requests, queue) = (picker.requests(), picker.queue);
+            let (requests, queue) = (picker.requests_with_meta(), picker.queue);
             model.screen = Screen::Downloads;
             return fire(&app.manager, move |m| async move {
-                for (url, title, format) in requests {
-                    m.add_media_to(url, title, format, queue).await;
+                for ((url, title, format), (thumbnail, duration)) in requests {
+                    m.add_media_meta(url, title, format, queue, thumbnail, duration).await;
                 }
             });
         }

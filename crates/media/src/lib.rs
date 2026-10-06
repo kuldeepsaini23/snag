@@ -28,6 +28,9 @@ pub struct QualityOption {
 pub struct Entry {
     pub url: String,
     pub title: String,
+    pub thumbnail: Option<String>,
+    /// Seconds.
+    pub duration: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -37,6 +40,15 @@ pub struct MediaInfo {
     pub options: Vec<QualityOption>,
     /// Non-empty for playlists and channels.
     pub entries: Vec<Entry>,
+    /// A small preview image (about 320 px wide when the site offers sizes).
+    pub thumbnail: Option<String>,
+}
+
+/// The smallest listed thumbnail that is still at least 320 px wide, else the main one.
+fn pick_thumbnail(v: &serde_json::Value) -> Option<String> {
+    let listed = v["thumbnails"].as_array().into_iter().flatten().filter_map(|t| Some((t["width"].as_u64()?, t["url"].as_str()?)));
+    let small = listed.filter(|(w, _)| *w >= 320).min_by_key(|(w, _)| *w).map(|(_, u)| u.to_string());
+    small.or_else(|| v["thumbnail"].as_str().map(str::to_string))
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -109,6 +121,14 @@ impl MediaInfo {
         }
         self.entries.iter().map(|e| (e.url.clone(), e.title.clone(), option.format.clone())).collect()
     }
+
+    /// (thumbnail, duration) for each of `requests`, in the same order.
+    pub fn request_meta(&self) -> Vec<(Option<String>, Option<f64>)> {
+        if self.entries.is_empty() {
+            return vec![(self.thumbnail.clone(), self.duration)];
+        }
+        self.entries.iter().map(|e| (e.thumbnail.clone(), e.duration)).collect()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -144,7 +164,12 @@ pub fn parse_probe(json: &str) -> Result<MediaInfo, String> {
             .flatten()
             .filter_map(|e| {
                 let url = e["url"].as_str().or_else(|| e["webpage_url"].as_str())?;
-                Some(Entry { url: url.to_string(), title: e["title"].as_str().unwrap_or(url).to_string() })
+                Some(Entry {
+                    url: url.to_string(),
+                    title: e["title"].as_str().unwrap_or(url).to_string(),
+                    thumbnail: pick_thumbnail(e),
+                    duration: e["duration"].as_f64(),
+                })
             })
             .collect();
         // A flat playlist doesn't list formats: offer the usual choices.
@@ -153,7 +178,7 @@ pub fn parse_probe(json: &str) -> Result<MediaInfo, String> {
             .map(|h| QualityOption { label: format!("{h}p"), format: MediaFormat::Video { max_height: h }, approx_size: None })
             .collect();
         options.push(audio_mp3(None));
-        return Ok(MediaInfo { title, duration, options, entries });
+        return Ok(MediaInfo { title, duration, options, entries, thumbnail: pick_thumbnail(&v) });
     }
 
     let formats = v["formats"].as_array().cloned().unwrap_or_default();
@@ -175,7 +200,7 @@ pub fn parse_probe(json: &str) -> Result<MediaInfo, String> {
         })
         .collect();
     options.push(audio_mp3(best_audio));
-    Ok(MediaInfo { title, duration, options, entries: Vec::new() })
+    Ok(MediaInfo { title, duration, options, entries: Vec::new(), thumbnail: pick_thumbnail(&v) })
 }
 
 pub fn build_args(format: &MediaFormat, out_dir: &Path, url: &str, opts: &MediaOptions) -> Vec<String> {
@@ -349,6 +374,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn probe_reads_a_small_thumbnail() {
+        let json = r#"{"title":"T","duration":2538.0,"thumbnail":"https://i.ytimg.com/vi/x/maxresdefault.webp",
+            "thumbnails":[{"url":"https://i.ytimg.com/vi/x/default.jpg","width":120},
+                          {"url":"https://i.ytimg.com/vi/x/mqdefault.jpg","width":320},
+                          {"url":"https://i.ytimg.com/vi/x/maxresdefault.jpg","width":1280},
+                          {"url":"https://i.ytimg.com/vi/x/nowidth.jpg"}],
+            "formats":[]}"#;
+        let info = parse_probe(json).unwrap();
+        assert_eq!(info.thumbnail.as_deref(), Some("https://i.ytimg.com/vi/x/mqdefault.jpg"), "smallest that is still sharp");
+        let only_main = parse_probe(r#"{"title":"T","thumbnail":"https://x/t.jpg","formats":[]}"#).unwrap();
+        assert_eq!(only_main.thumbnail.as_deref(), Some("https://x/t.jpg"));
+        assert_eq!(parse_probe(r#"{"title":"T","formats":[]}"#).unwrap().thumbnail, None);
+    }
+
+    #[test]
+    fn playlist_entries_carry_thumbnail_and_duration() {
+        let json = r#"{"_type":"playlist","title":"L","entries":[
+            {"url":"https://y/1","title":"One","duration":61.0,"thumbnails":[{"url":"https://i/1.jpg","width":336}]},
+            {"url":"https://y/2","title":"Two"}]}"#;
+        let info = parse_probe(json).unwrap();
+        assert_eq!(info.entries[0].thumbnail.as_deref(), Some("https://i/1.jpg"));
+        assert_eq!(info.entries[0].duration, Some(61.0));
+        assert_eq!(info.entries[1].thumbnail, None);
+    }
+
+    #[test]
     fn detects_media_hosts() {
         for url in [
             "https://www.youtube.com/watch?v=abc",
@@ -396,7 +447,7 @@ mod tests {
         let info = parse_probe(json).unwrap();
         assert_eq!(info.title, "My list");
         assert_eq!(info.entries.len(), 3);
-        assert_eq!(info.entries[2], Entry { url: "https://www.youtube.com/watch?v=c3".into(), title: "Three".into() });
+        assert_eq!(info.entries[2], Entry { url: "https://www.youtube.com/watch?v=c3".into(), title: "Three".into(), thumbnail: None, duration: None });
         let labels: Vec<_> = info.options.iter().map(|o| o.label.as_str()).collect();
         assert_eq!(labels, vec!["1080p", "720p", "480p", "Audio only (MP3)"]);
     }
@@ -560,5 +611,21 @@ mod stream_tests {
         assert_eq!((second.downloaded, second.total), (1050, Some(1200)));
         let done = acc.push(p(200, 200));
         assert_eq!((done.downloaded, done.total), (1200, Some(1200)));
+    }
+}
+
+#[cfg(test)]
+mod meta_tests {
+    use super::*;
+
+    #[test]
+    fn request_meta_lines_up_with_requests() {
+        let entry = |n: u32| Entry { url: format!("https://y/{n}"), title: format!("V{n}"), thumbnail: Some(format!("https://i/{n}.jpg")), duration: Some(n as f64) };
+        let video = QualityOption { label: "720p".into(), format: MediaFormat::Video { max_height: 720 }, approx_size: None };
+        let list = MediaInfo { title: "L".into(), duration: None, options: vec![video.clone()], entries: vec![entry(1), entry(2)], thumbnail: None };
+        assert_eq!(list.request_meta(), vec![(Some("https://i/1.jpg".to_string()), Some(1.0)), (Some("https://i/2.jpg".to_string()), Some(2.0))]);
+        assert_eq!(list.request_meta().len(), list.requests("u", 0).len());
+        let single = MediaInfo { title: "S".into(), duration: Some(9.0), options: vec![video], entries: vec![], thumbnail: Some("https://i/s.jpg".into()) };
+        assert_eq!(single.request_meta(), vec![(Some("https://i/s.jpg".to_string()), Some(9.0))]);
     }
 }

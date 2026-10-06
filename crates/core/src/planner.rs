@@ -61,6 +61,8 @@ mod tests {
             kind: Default::default(),
             referrer: None,
             work_dir: None,
+            thumbnail: None,
+            duration: None,
         }
     }
 

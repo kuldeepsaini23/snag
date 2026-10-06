@@ -68,6 +68,12 @@ pub struct Item {
     /// Video downloads: yt-dlp's partial files live here until the final file is moved out.
     #[serde(default)]
     pub work_dir: Option<PathBuf>,
+    /// Videos: a preview image URL.
+    #[serde(default)]
+    pub thumbnail: Option<String>,
+    /// Videos: length in seconds.
+    #[serde(default)]
+    pub duration: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

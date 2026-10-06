@@ -200,7 +200,7 @@ async fn offer_media_asks_the_ui_to_pick() {
     let dir = tempfile::tempdir().unwrap();
     let m = manager(dir.path(), |_| {}).await;
     let mut rx = m.subscribe();
-    let info = rdm_core::MediaInfo { title: "Clip".into(), duration: None, options: vec![], entries: vec![] };
+    let info = rdm_core::MediaInfo { title: "Clip".into(), duration: None, options: vec![], entries: vec![], thumbnail: None };
     m.offer_media("https://youtu.be/x".into(), info.clone()).await;
     let got = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
@@ -420,6 +420,7 @@ fn three_options() -> MediaInfo {
         duration: None,
         options: vec![video(1080), video(720), QualityOption { label: "MP3".into(), format: MediaFormat::AudioMp3, approx_size: None }],
         entries: vec![],
+        thumbnail: None,
     }
 }
 
@@ -449,8 +450,8 @@ async fn offer_media_without_asking_adds_items() {
     let mut rx = m.subscribe();
     let mut info = three_options();
     info.entries = vec![
-        rdm_core::Entry { url: "https://youtu.be/a".into(), title: "A".into() },
-        rdm_core::Entry { url: "https://youtu.be/b".into(), title: "B".into() },
+        rdm_core::Entry { url: "https://youtu.be/a".into(), title: "A".into(), thumbnail: None, duration: None },
+        rdm_core::Entry { url: "https://youtu.be/b".into(), title: "B".into(), thumbnail: None, duration: None },
     ];
     m.offer_media("https://youtube.com/playlist?list=1".into(), info).await;
     wait_event(&mut rx, |e| matches!(e, Event::Notice(_)).then_some(())).await;
@@ -650,4 +651,20 @@ async fn gallery_item_saves_all_images_to_its_folder() {
     assert!(folder.join("3.jpg").exists());
     assert_eq!(done.downloaded, 350, "the folder's real size");
     m.shutdown().await;
+}
+
+#[tokio::test]
+async fn video_item_keeps_thumbnail_and_duration() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |s| s.start_immediately = false).await;
+    let id = m.add_media_meta("https://y/1".into(), "Clip".into(), MediaFormat::Video { max_height: 720 }, 0, Some("https://i/1.jpg".into()), Some(61.0)).await;
+    let item = m.snapshot().await.items.into_iter().find(|i| i.id == id).unwrap();
+    assert_eq!(item.thumbnail.as_deref(), Some("https://i/1.jpg"));
+    assert_eq!(item.duration, Some(61.0));
+    m.shutdown().await;
+    // Saved with the item.
+    let again = Manager::start(dir.path().join("state.json"));
+    let item = again.snapshot().await.items.into_iter().find(|i| i.id == id).unwrap();
+    assert_eq!(item.thumbnail.as_deref(), Some("https://i/1.jpg"));
+    again.shutdown().await;
 }

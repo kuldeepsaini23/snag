@@ -78,7 +78,7 @@ fn apply(m: &mut Model, scene: &str) {
             let entries = ["Why async Rust is different", "Futures and the Poll trait", "Pinning without pain", "Building a tiny executor", "Tokio runtime internals", "Channels, select! and cancellation", "Q&A livestream (unedited)"]
                 .iter()
                 .enumerate()
-                .map(|(i, t)| Entry { url: format!("https://www.youtube.com/watch?v={i}"), title: t.to_string() })
+                .map(|(i, t)| Entry { url: format!("https://www.youtube.com/watch?v={i}"), title: t.to_string(), thumbnail: None, duration: Some(1100.0 + i as f64 * 97.0) })
                 .collect();
             open_picker(m, info(entries), 2);
             if let Some(p) = &mut m.picker {
@@ -97,6 +97,15 @@ fn apply(m: &mut Model, scene: &str) {
         "quit" => {
             m.items = demo_items();
             m.confirm_quit = true;
+        }
+        "thumbs" => {
+            let mut items = demo_items();
+            for (item, id) in items.iter_mut().filter(|i| matches!(i.kind, Kind::Media(_))).zip(["aqz-KE-bpKQ", "jNQXAC9IVRw", "dQw4w9WgXcQ"]) {
+                item.thumbnail = Some(format!("https://i.ytimg.com/vi/{id}/mqdefault.jpg"));
+                item.duration = Some(2538.0);
+            }
+            m.items = items;
+            m.selected = m.items.iter().rev().find(|i| i.status == Status::Running).map(|i| i.id);
         }
         "toast" => m.toast = Some("https://vimeo.com/824123456".into()),
         "notice" => m.notice = Some("Added “Rust Async Explained” (1080p)".into()),
@@ -130,6 +139,7 @@ fn info(entries: Vec<Entry>) -> MediaInfo {
     MediaInfo {
         title: if entries.is_empty() { "Rust Async Explained — Full Course".into() } else { "Tokio Deep Dive".into() },
         duration: Some(2538.0),
+        thumbnail: None,
         options: vec![
             video(2160, "2160p", 3891),
             video(1440, "1440p", 2150),
@@ -161,6 +171,8 @@ fn demo_items() -> Vec<Item> {
         kind,
         referrer: None,
         work_dir: None,
+        thumbnail: None,
+        duration: None,
     };
     let video = Kind::Media(MediaFormat::Video { max_height: 1080 });
     vec![

@@ -126,7 +126,7 @@ impl Tools {
 
 enum Cmd {
     Snapshot(oneshot::Sender<AppState>),
-    AddMedia(String, String, MediaFormat, QueueId, oneshot::Sender<ItemId>),
+    AddMedia(String, String, MediaFormat, QueueId, Option<String>, Option<f64>, oneshot::Sender<ItemId>),
     AddGallery(String, oneshot::Sender<ItemId>),
     AddWith(String, Option<String>, oneshot::Sender<ItemId>),
     Offer(String, MediaInfo),
@@ -205,8 +205,13 @@ impl Manager {
 
     /// `add_media` straight into `queue` (an unknown queue means Main), so it never starts in Main first.
     pub async fn add_media_to(&self, url: String, title: String, format: MediaFormat, queue: QueueId) -> ItemId {
+        self.add_media_meta(url, title, format, queue, None, None).await
+    }
+
+    /// `add_media_to`, remembering the video's preview image and length.
+    pub async fn add_media_meta(&self, url: String, title: String, format: MediaFormat, queue: QueueId, thumbnail: Option<String>, duration: Option<f64>) -> ItemId {
         let (reply, rx) = oneshot::channel();
-        let _ = self.tx.send(Cmd::AddMedia(url, title, format, queue, reply));
+        let _ = self.tx.send(Cmd::AddMedia(url, title, format, queue, thumbnail, duration, reply));
         rx.await.unwrap_or(ItemId(0))
     }
 
@@ -436,8 +441,10 @@ impl Actor {
                 let category = Category::from_name(&name);
                 let _ = reply.send(self.push_item(url, name, category, Kind::Http, referrer, 0));
             }
-            Cmd::AddMedia(url, title, format, queue, reply) => {
-                let _ = reply.send(self.push_media(url, title, format, queue));
+            Cmd::AddMedia(url, title, format, queue, thumbnail, duration, reply) => {
+                let id = self.push_media(url, title, format, queue);
+                self.set_meta(id, thumbnail, duration);
+                let _ = reply.send(id);
             }
             Cmd::AddGallery(url, reply) => {
                 let name = crate::model::gallery_name(&url);
@@ -523,6 +530,18 @@ impl Actor {
         self.push_item(url, title, category, Kind::Media(format), None, queue)
     }
 
+    fn set_meta(&mut self, id: ItemId, thumbnail: Option<String>, duration: Option<f64>) {
+        if thumbnail.is_none() && duration.is_none() {
+            return;
+        }
+        if let Some(item) = self.state.item_mut(id) {
+            item.thumbnail = thumbnail;
+            item.duration = duration;
+            self.dirty = true;
+        }
+        self.updated(id);
+    }
+
     /// Shows the picker with the preferred quality selected, or adds that quality right away.
     fn offer(&mut self, url: String, info: MediaInfo) {
         let choice = info.preferred(self.state.settings.preferred_quality.as_ref());
@@ -537,8 +556,9 @@ impl Actor {
         }
         let label = info.options.get(choice).map(|o| o.label.clone()).unwrap_or_default();
         let count = requests.len();
-        for (url, title, format) in requests {
-            self.push_media(url, title, format, 0);
+        for ((url, title, format), (thumbnail, duration)) in requests.into_iter().zip(info.request_meta()) {
+            let id = self.push_media(url, title, format, 0);
+            self.set_meta(id, thumbnail, duration);
         }
         let what = if count == 1 { format!("\u{201c}{}\u{201d}", info.title) } else { format!("{count} videos") };
         self.emit(Event::Notice(format!("Added {what} ({label})")));
@@ -591,6 +611,8 @@ impl Actor {
             kind,
             referrer,
             work_dir: None,
+            thumbnail: None,
+            duration: None,
         };
         self.state.items.push(item.clone());
         self.emit(Event::Added(item));

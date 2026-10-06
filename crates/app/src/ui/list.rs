@@ -69,8 +69,31 @@ fn group_title<'a>(title: &'a str, meta: String, c: Colors) -> Element<'a, Messa
     row![text(title).size(13).font(style::SEMIBOLD), text(meta).size(12).color(c.text3)].spacing(8).align_y(Alignment::Center).padding([10, 2]).into()
 }
 
-/// The coloured square that stands in for a thumbnail.
-pub fn tile<'a>(item: &Item, width: f32, height: f32, glyph_size: u16, c: Colors) -> Element<'a, Message> {
+/// The video's thumbnail (with its length), or a coloured square with a kind icon.
+pub fn tile<'a>(item: &Item, thumb: Option<&std::path::Path>, width: f32, height: f32, glyph_size: u16, c: Colors) -> Element<'a, Message> {
+    if let Some(path) = thumb {
+        let picture = iced::widget::image(iced::widget::image::Handle::from_path(path))
+            .width(Length::Fixed(width))
+            .height(Length::Fixed(height))
+            .content_fit(iced::ContentFit::Cover)
+            .border_radius(7.0);
+        return with_duration(picture.into(), item.duration, width, height);
+    }
+    let plain = plain_tile(item, width, height, glyph_size, c);
+    with_duration(plain, item.duration, width, height)
+}
+
+/// Puts "42:18" in the bottom-right corner of a tile.
+pub fn with_duration<'a>(tile: Element<'a, Message>, duration: Option<f64>, width: f32, height: f32) -> Element<'a, Message> {
+    let Some(secs) = duration else { return tile };
+    let badge = container(text(view::duration_label(secs)).size(10).font(style::MONO).color(Color::WHITE))
+        .padding([1, 4])
+        .style(style::tag(Color::from_rgba(0.0, 0.0, 0.0, 0.65), Color::WHITE));
+    let corner = container(badge).width(Length::Fixed(width)).height(Length::Fixed(height)).align_x(Alignment::End).align_y(Alignment::End).padding(4);
+    iced::widget::stack![tile, corner].into()
+}
+
+fn plain_tile<'a>(item: &Item, width: f32, height: f32, glyph_size: u16, c: Colors) -> Element<'a, Message> {
     let (top, bottom, glyph, fg) = match (&item.kind, item.category) {
         (Kind::Media(MediaFormat::AudioMp3), _) | (_, Category::Music) => {
             (Color::from_rgb8(0x6b, 0x3a, 0x8c), Color::from_rgb8(0x23, 0x18, 0x33), Icon::MusicNote, Color::WHITE)
@@ -147,7 +170,8 @@ fn item_row<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
     let act = button(container(icon(glyph, 15)).center(Fill)).width(30).height(30).padding(0).style(style::ghost(c)).on_press_maybe(action);
 
     let middle = container(middle).width(Fill).clip(true);
-    let content = row![tile(i, 76.0, 44.0, 16, c), middle, right, act].spacing(14).align_y(Alignment::Center);
+    let thumb = i.thumbnail.as_ref().and_then(|u| m.thumbs.get(u)).map(|p| p.as_path());
+    let content = row![tile(i, thumb, 76.0, 44.0, 16, c), middle, right, act].spacing(14).align_y(Alignment::Center);
     button(content).width(Fill).padding([9, 10]).style(style::row(c, m.selected == Some(i.id), failed)).on_press(Message::Select(i.id)).into()
 }
 

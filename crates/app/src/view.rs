@@ -111,6 +111,43 @@ impl Model {
     }
 }
 
+impl Model {
+    /// Thumbnails to fetch: shown by an item or the picker, not cached and not on their way.
+    pub fn missing_thumbs(&self) -> Vec<String> {
+        let picker = self.picker.iter().flat_map(|p| p.info.thumbnail.iter().chain(p.info.entries.iter().filter_map(|e| e.thumbnail.as_ref())));
+        let mut out: Vec<String> = Vec::new();
+        for url in self.items.iter().filter_map(|i| i.thumbnail.as_ref()).chain(picker) {
+            if !self.thumbs.contains_key(url) && !self.thumb_pending.contains(url) && !out.contains(url) {
+                out.push(url.clone());
+            }
+        }
+        out
+    }
+}
+
+/// Where a thumbnail is cached, without its extension: a stable hash of its URL (FNV-1a),
+/// so it survives restarts. The extension comes from the image itself (`image_ext`).
+pub fn thumb_file(dir: &std::path::Path, url: &str) -> std::path::PathBuf {
+    let hash = url.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3));
+    dir.join(format!("{hash:016x}"))
+}
+
+/// The image format from its first bytes (the decoder goes by file extension).
+pub fn image_ext(bytes: &[u8]) -> Option<&'static str> {
+    match bytes {
+        [0xFF, 0xD8, 0xFF, ..] => Some("jpg"),
+        [0x89, b'P', b'N', b'G', ..] => Some("png"),
+        [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P', ..] => Some("webp"),
+        _ => None,
+    }
+}
+
+/// "0:42", "42:18", "1:02:40".
+pub fn duration_label(secs: f64) -> String {
+    let s = secs.max(0.0).round() as u64;
+    if s >= 3600 { format!("{}:{:02}:{:02}", s / 3600, (s % 3600) / 60, s % 60) } else { format!("{}:{:02}", s / 60, s % 60) }
+}
+
 /// The tag in the URL bar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LinkTag {
@@ -322,6 +359,8 @@ mod tests {
             kind: Kind::Http,
             referrer: None,
             work_dir: None,
+            thumbnail: None,
+            duration: None,
         }
     }
 
@@ -484,8 +523,8 @@ mod tests {
     }
 
     fn playlist(n: usize) -> MediaInfo {
-        let entries = (1..=n).map(|i| Entry { url: format!("https://y/{i}"), title: format!("Video {i}") }).collect();
-        MediaInfo { title: "List".into(), duration: None, options: options(), entries }
+        let entries = (1..=n).map(|i| Entry { url: format!("https://y/{i}"), title: format!("Video {i}"), thumbnail: None, duration: None }).collect();
+        MediaInfo { title: "List".into(), duration: None, options: options(), entries, thumbnail: None }
     }
 
     #[test]
@@ -739,5 +778,57 @@ mod tests {
         finish(&mut m, 2, Status::Running);
         finish(&mut m, 2, Status::Done);
         assert_eq!(m.take_notes().len(), 2, "a couple are shown one by one");
+    }
+
+    #[test]
+    fn picked_playlist_meta_follows_selection() {
+        let mut info = playlist(3);
+        for (n, e) in info.entries.iter_mut().enumerate() {
+            e.thumbnail = Some(format!("https://i/{n}.jpg"));
+            e.duration = Some(n as f64);
+        }
+        let mut p = Picker::new("https://y/list".into(), info, 0, 0);
+        p.toggle_entry(1);
+        let picked = p.requests_with_meta();
+        assert_eq!(picked.len(), 2);
+        assert_eq!(picked[1].0 .0, "https://y/3");
+        assert_eq!(picked[1].1, (Some("https://i/2.jpg".to_string()), Some(2.0)), "meta stays with its video");
+    }
+
+    #[test]
+    fn missing_thumbs_lists_each_url_once() {
+        let mut m = model();
+        let with = |id: u64, url: &str| Item { thumbnail: Some(url.into()), ..item(id, "v.mp4", Category::Video, Status::Done) };
+        m.items = vec![with(1, "https://i/a.jpg"), with(2, "https://i/a.jpg"), with(3, "https://i/b.jpg"), item(4, "f.zip", Category::Archive, Status::Done)];
+        assert_eq!(m.missing_thumbs(), vec!["https://i/a.jpg".to_string(), "https://i/b.jpg".to_string()]);
+        m.thumb_pending.insert("https://i/a.jpg".into());
+        m.thumbs.insert("https://i/b.jpg".into(), std::path::PathBuf::from("b"));
+        assert!(m.missing_thumbs().is_empty(), "being fetched or already here");
+        m.picker = Some(Picker::new("u".into(), MediaInfo { thumbnail: Some("https://i/p.jpg".into()), ..playlist(0) }, 0, 0));
+        assert_eq!(m.missing_thumbs(), vec!["https://i/p.jpg".to_string()], "the picker's preview too");
+    }
+
+    #[test]
+    fn thumb_file_is_stable_per_url() {
+        let dir = std::path::Path::new(r"C:\data\thumbs");
+        assert_eq!(thumb_file(dir, "https://i/a.jpg"), thumb_file(dir, "https://i/a.jpg"));
+        assert_ne!(thumb_file(dir, "https://i/a.jpg"), thumb_file(dir, "https://i/b.jpg"));
+        assert!(thumb_file(dir, "https://i/a.jpg").starts_with(dir));
+    }
+
+    #[test]
+    fn image_kind_from_first_bytes() {
+        assert_eq!(image_ext(&[0xFF, 0xD8, 0xFF, 0xE0, 0, 0]), Some("jpg"));
+        assert_eq!(image_ext(b"\x89PNG\r\n\x1a\n...."), Some("png"));
+        assert_eq!(image_ext(b"RIFF\0\0\0\0WEBPVP8 "), Some("webp"));
+        assert_eq!(image_ext(b"<html>not an image</html>"), None);
+        assert_eq!(image_ext(&[]), None);
+    }
+
+    #[test]
+    fn duration_labels() {
+        assert_eq!(duration_label(42.0), "0:42");
+        assert_eq!(duration_label(2538.0), "42:18");
+        assert_eq!(duration_label(3760.4), "1:02:40");
     }
 }

@@ -2,6 +2,7 @@ use crate::queues::{QueueDraft, drafts_to_queues};
 use crate::view::{Filter, Library};
 use rdm_core::{AppState, Event, Item, ItemId, MediaFormat, MediaInfo, Queue, QueueId, Settings, Status};
 use rdm_media::QualityOption;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -39,6 +40,11 @@ impl MediaTab {
         if *format == MediaFormat::AudioMp3 { Self::Audio } else { Self::Video }
     }
 }
+
+/// (url, title, format) of one video to add.
+pub type Request = (String, String, MediaFormat);
+/// (thumbnail, duration) of that video.
+pub type Meta = (Option<String>, Option<f64>);
 
 /// Quality choice for a video/audio link (or a whole playlist).
 #[derive(Clone, Debug, PartialEq)]
@@ -91,6 +97,15 @@ impl Picker {
 
     pub fn selected_count(&self) -> usize {
         self.selected.iter().filter(|s| **s).count()
+    }
+
+    /// `requests` with each video's (thumbnail, duration).
+    pub fn requests_with_meta(&self) -> Vec<(Request, Meta)> {
+        let all: Vec<_> = self.info.requests(&self.url, self.choice).into_iter().zip(self.info.request_meta()).collect();
+        if self.info.entries.is_empty() {
+            return all;
+        }
+        all.into_iter().zip(&self.selected).filter(|(_, on)| **on).map(|(r, _)| r).collect()
     }
 
     /// What to add: (url, title, format), one per video (only the selected playlist entries).
@@ -253,6 +268,10 @@ pub struct Model {
     pub confirm_quit: bool,
     /// Notifications waiting to be shown (flushed in batches).
     pub notes: Vec<Note>,
+    /// Thumbnail URL → the cached image file.
+    pub thumbs: HashMap<String, PathBuf>,
+    /// Thumbnails being downloaded.
+    pub thumb_pending: HashSet<String>,
 }
 
 impl Default for Model {
@@ -286,6 +305,8 @@ impl Default for Model {
             maximized: false,
             confirm_quit: false,
             notes: Vec::new(),
+            thumbs: HashMap::new(),
+            thumb_pending: HashSet::new(),
         }
     }
 }
@@ -486,6 +507,8 @@ mod tests {
             kind: Default::default(),
             referrer: None,
             work_dir: None,
+            thumbnail: None,
+            duration: None,
         }
     }
 
@@ -607,6 +630,7 @@ mod tests {
                 QualityOption { label: "Audio only (MP3)".into(), format: MediaFormat::AudioMp3, approx_size: None },
             ],
             entries,
+            thumbnail: None,
         }
     }
 
@@ -618,7 +642,8 @@ mod tests {
 
     #[test]
     fn picker_playlist_makes_one_request_per_entry() {
-        let entries = vec![Entry { url: "https://y/1".into(), title: "One".into() }, Entry { url: "https://y/2".into(), title: "Two".into() }];
+        let entry = |url: &str, title: &str| Entry { url: url.into(), title: title.into(), thumbnail: None, duration: None };
+        let entries = vec![entry("https://y/1", "One"), entry("https://y/2", "Two")];
         let p = Picker::new("https://y/list".into(), info(entries), 0, 0);
         let reqs = p.requests();
         assert_eq!(reqs.len(), 2);

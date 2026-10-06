@@ -28,7 +28,7 @@ pub fn view<'a>(m: &'a Model, p: &'a Picker, c: Colors) -> Element<'a, Message> 
     if playlist {
         sheet = sheet.push(playlist_list(p, c));
     } else {
-        sheet = sheet.push(title_card(p, &host, c));
+        sheet = sheet.push(title_card(m, p, &host, c));
         if p.has_both_tabs() {
             sheet = sheet.push(tabs(p, c));
         }
@@ -84,16 +84,27 @@ pub fn view<'a>(m: &'a Model, p: &'a Picker, c: Colors) -> Element<'a, Message> 
     container(sheet).width(560).padding(20).style(style::sheet(c)).into()
 }
 
-fn title_card<'a>(p: &'a Picker, host: &str, c: Colors) -> Element<'a, Message> {
-    let thumb = container(icon(Icon::PlayFill, 26).color(Color::WHITE))
-        .width(136)
-        .height(76)
-        .align_x(Alignment::Center)
-        .align_y(Alignment::Center)
-        .style(style::tile(Color::from_rgb8(0x8a, 0x55, 0x14), Color::from_rgb8(0x24, 0x1b, 0x12), c.line));
+fn title_card<'a>(m: &'a Model, p: &'a Picker, host: &str, c: Colors) -> Element<'a, Message> {
+    let cached = p.info.thumbnail.as_ref().and_then(|u| m.thumbs.get(u));
+    let thumb: Element<'a, Message> = match cached {
+        Some(path) => iced::widget::image(iced::widget::image::Handle::from_path(path))
+            .width(136)
+            .height(76)
+            .content_fit(iced::ContentFit::Cover)
+            .border_radius(7.0)
+            .into(),
+        None => container(icon(Icon::PlayFill, 26).color(Color::WHITE))
+            .width(136)
+            .height(76)
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center)
+            .style(style::tile(Color::from_rgb8(0x8a, 0x55, 0x14), Color::from_rgb8(0x24, 0x1b, 0x12), c.line))
+            .into(),
+    };
+    let thumb = super::list::with_duration(thumb, p.info.duration, 136.0, 76.0);
     let mut meta = host.to_string();
     if let Some(d) = p.info.duration {
-        meta.push_str(&format!("  ·  {}", duration(d)));
+        meta.push_str(&format!("  ·  {}", view::duration_label(d)));
     }
     let best = p.info.options.first().map(|o| o.label.clone()).unwrap_or_default();
     let detected = container(row![icon(Icon::FilmStrip, 11), text(format!("Video detected · up to {best}")).size(11)].spacing(5).align_y(Alignment::Center))
@@ -187,9 +198,4 @@ fn playlist_list<'a>(p: &'a Picker, c: Colors) -> Element<'a, Message> {
     });
     let list = container(scrollable(rows.width(Fill)).width(Fill).height(Length::Fixed(300.0)).style(style::scroll(c))).width(Fill).padding(4).style(style::card(c));
     column![head, list].spacing(12).into()
-}
-
-fn duration(secs: f64) -> String {
-    let s = secs.max(0.0) as u64;
-    if s >= 3600 { format!("{}:{:02}:{:02}", s / 3600, (s % 3600) / 60, s % 60) } else { format!("{}:{:02}", s / 60, s % 60) }
 }
