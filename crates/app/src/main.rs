@@ -1,8 +1,10 @@
+mod changelog;
 mod choices;
 mod format;
-mod motion;
 mod hsv;
+mod motion;
 mod queues;
+mod report;
 #[cfg(debug_assertions)]
 mod snap;
 mod notify;

@@ -40,6 +40,7 @@ pub fn view(m: &Model, a: Anim, c: Colors) -> Element<'_, Message> {
         search(m, a, c),
         tool(Icon::Gauge, m.speed_open, Message::ToggleSpeed, c),
         tool(Icon::Gear, false, Message::OpenSettings(SettingsTab::General), c),
+        tool(Icon::Question, m.help_open, Message::ToggleHelp, c),
         add,
     ]
     .spacing(8)

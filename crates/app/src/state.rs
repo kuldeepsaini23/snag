@@ -281,6 +281,32 @@ impl Model {
         self.draft.accent = self.accent_hsv.to_hex();
     }
 
+    /// Once per launch, after the first full load: an update shows "What's new" (once), and the
+    /// version is noted. Returns the settings to save when the noted version changes.
+    pub fn check_version(&mut self, current: &str) -> Option<Settings> {
+        if std::mem::replace(&mut self.version_checked, true) {
+            return None;
+        }
+        let seen = self.settings.last_seen_version.trim().to_string();
+        match crate::changelog::on_launch(&seen, current, !self.items.is_empty()) {
+            crate::changelog::Launch::Nothing => return None,
+            crate::changelog::Launch::Show => self.open_info(Info::WhatsNew { since: Some(seen) }),
+            crate::changelog::Launch::Record => {}
+        }
+        self.settings.last_seen_version = current.to_string();
+        Some(self.settings.clone())
+    }
+
+    /// The "?" menu (a click anywhere else closes it, like the speed popover).
+    pub fn toggle_help(&mut self) {
+        self.help_open = !self.help_open;
+    }
+
+    pub fn open_info(&mut self, info: Info) {
+        self.help_open = false;
+        self.info = Some(info);
+    }
+
     pub fn open_search(&mut self) {
         self.search_open = true;
     }
@@ -372,8 +398,30 @@ pub struct Model {
     pub more_open: bool,
     /// The filter tabs' measured widths, for the sliding underline.
     pub tab_widths: Vec<f32>,
-    /// Where the accent picker's cursors are (it remembers the hue of a grey, see `hsv.rs`).
+    /// Where the accent picker's cursors are (set from the accent when Settings opens; it
+    /// remembers the hue of a grey, see `hsv.rs`).
     pub accent_hsv: Hsv,
+    /// The toolbar's "?" menu is open.
+    pub help_open: bool,
+    /// A sheet from the "?" menu is up (above any other sheet).
+    pub info: Option<Info>,
+    /// Report a bug: add versions, settings and the log's end.
+    pub bug_diagnostics: bool,
+    /// The bug report is being written.
+    pub bug_saving: bool,
+    /// "What's new" was looked at for this launch (once, after the first full load).
+    pub version_checked: bool,
+}
+
+/// The sheets of the "?" menu.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Info {
+    Shortcuts,
+    Help,
+    /// After an update, `since` is the version seen before ("" = a build older than that setting)
+    /// and only newer releases are listed; from the menu it is None: all of them.
+    WhatsNew { since: Option<String> },
+    BugReport,
 }
 
 impl Default for Model {
@@ -421,6 +469,11 @@ impl Default for Model {
             more_open: false,
             tab_widths: Vec::new(),
             accent_hsv: Hsv::new(0.0, 1.0, 1.0),
+            help_open: false,
+            info: None,
+            bug_diagnostics: true,
+            bug_saving: false,
+            version_checked: false,
         }
     }
 }

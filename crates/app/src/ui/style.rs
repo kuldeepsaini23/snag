@@ -3,7 +3,7 @@
 use super::theme::Colors;
 use iced::border::Radius;
 use iced::font::Weight;
-use iced::widget::{button, checkbox, container, pick_list, progress_bar, scrollable, slider, text_input, toggler};
+use iced::widget::{button, checkbox, container, pick_list, progress_bar, scrollable, slider, text_editor, text_input, toggler};
 use iced::{Background, Border, Color, Font, Shadow, Theme, Vector};
 
 pub const INTER: Font = Font::with_name("Inter");
@@ -260,6 +260,17 @@ pub fn input(c: Colors) -> impl Fn(&Theme, text_input::Status) -> text_input::St
         background: Background::Color(c.canvas),
         border: border(if matches!(s, text_input::Status::Focused { .. }) { c.accent } else { c.line_strong }, 1.0, 7.0),
         icon: c.text3,
+        placeholder: c.text3,
+        value: c.text,
+        selection: Color { a: 0.35, ..c.accent },
+    }
+}
+
+/// A multi-line field (the bug report's "What happened?").
+pub fn editor(c: Colors) -> impl Fn(&Theme, text_editor::Status) -> text_editor::Style {
+    move |_, s| text_editor::Style {
+        background: Background::Color(c.canvas),
+        border: border(if matches!(s, text_editor::Status::Focused { .. }) { c.accent } else { c.line_strong }, 1.0, 7.0),
         placeholder: c.text3,
         value: c.text,
         selection: Color { a: 0.35, ..c.accent },

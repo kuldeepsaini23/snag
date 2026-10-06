@@ -7,8 +7,9 @@
 //! window reloads the real state from the manager, so nothing a scene set can be saved by a later
 //! click (e.g. closing Settings).
 
-use crate::state::{Model, Picker, Screen, SettingsTab};
-use crate::update::Message;
+use crate::state::{Info, Model, Picker, Screen, SettingsTab};
+use crate::update::{App, Message};
+use iced::widget::text_editor;
 use iced::{Subscription, Task, window};
 use rdm_core::{Category, Item, ItemId, Kind, MediaFormat, MediaInfo, Status};
 use rdm_media::{Entry, QualityOption};
@@ -46,12 +47,17 @@ pub fn subscription() -> Subscription<Message> {
 }
 
 /// Alternates: set up the next scene, then (next tick, once it has been drawn) capture it.
-pub fn take(model: &mut Model) -> Task<Message> {
+pub fn take(app: &mut App) -> Task<Message> {
+    let model = &mut app.model;
     let list = scenes();
     if let Ok(mut st) = STATE.lock() {
         if st.2 {
             if let Some(name) = list.get(st.0).cloned() {
                 apply(model, &name);
+                if name == "bug-report" {
+                    let typed = "I pressed Download on a YouTube video and nothing happened.\nThe row stayed at 0 B for a minute, then said HTTP 403.";
+                    app.bug_text = text_editor::Content::with_text(typed);
+                }
                 st.0 += 1;
                 st.1 = Some(name.clone());
                 st.2 = false;
@@ -86,6 +92,8 @@ fn apply(m: &mut Model, scene: &str) {
     m.hovered = None;
     m.pending_cancel = None;
     m.more_open = false;
+    m.help_open = false;
+    m.info = None;
     freeze(scene.starts_with("mid-").then(|| Instant::now() + MID));
     // The row that shows Pause/Resume and Cancel: the paused ISO.
     let paused = m.items.iter().find(|i| i.status == Status::Paused).map(|i| i.id);
@@ -178,6 +186,13 @@ fn apply(m: &mut Model, scene: &str) {
         "blue" => m.settings.accent = "#0a84ff".into(),
         "white" => m.settings.accent = "#f5f5f7".into(),
         "orange" => m.settings.accent = "#ff9f0a".into(),
+        "help-menu" => m.help_open = true,
+        "shortcuts" => m.open_info(Info::Shortcuts),
+        "help" => m.open_info(Info::Help),
+        // As shown once after an update from a build that didn't record the version yet.
+        "whats-new" => m.open_info(Info::WhatsNew { since: Some(String::new()) }),
+        "whats-new-all" => m.open_info(Info::WhatsNew { since: None }),
+        "bug-report" => m.open_info(Info::BugReport),
         // The colour picker after a drag: purple from the strip, a little muted in the square.
         "accent-picker" => {
             m.open_settings(SettingsTab::Appearance);
