@@ -17,6 +17,7 @@ pub fn view<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
     let quality = match &i.kind {
         Kind::Media(MediaFormat::Video { max_height }) => format!("Up to {max_height}p"),
         Kind::Media(MediaFormat::AudioMp3) => "MP3 audio".into(),
+        Kind::Media(MediaFormat::Live { max_height }) => format!("Live recording, up to {max_height}p"),
         Kind::Gallery => "Original images".into(),
         Kind::Http => "Original file".into(),
     };
@@ -82,7 +83,9 @@ pub fn view<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
     ];
     panel = panel.push(manage);
 
+    let live = matches!(i.kind, Kind::Media(MediaFormat::Live { .. }));
     let (glyph, label, action) = match view::main_action(i) {
+        Some(view::MainAction::Pause) if live => (Icon::Square, "Stop recording", Some(Message::Pause(i.id))),
         Some(view::MainAction::Pause) => (Icon::Pause, "Pause", Some(Message::Pause(i.id))),
         Some(view::MainAction::Resume) => (Icon::Play, "Resume", Some(Message::Resume(i.id))),
         Some(view::MainAction::Redownload) => (Icon::ArrowClockwise, "Download again", Some(Message::Redownload(i.id))),

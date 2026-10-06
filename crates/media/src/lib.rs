@@ -15,6 +15,8 @@ pub enum MediaFormat {
     Video { max_height: u32 },
     /// Best audio converted to MP3.
     AudioMp3,
+    /// A live stream, recorded from now until it ends or is stopped (the file stays playable).
+    Live { max_height: u32 },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -42,6 +44,8 @@ pub struct MediaInfo {
     pub entries: Vec<Entry>,
     /// A small preview image (about 320 px wide when the site offers sizes).
     pub thumbnail: Option<String>,
+    /// Streaming live right now: its options are recordings.
+    pub live: bool,
 }
 
 /// The smallest listed thumbnail that is still at least 320 px wide, else the main one.
@@ -98,14 +102,15 @@ impl MediaInfo {
     /// Index of the option that best matches `pref`: None = the best (first) option;
     /// a video height = the highest option at or below it, else the lowest video; MP3 = the MP3 option.
     pub fn preferred(&self, pref: Option<&MediaFormat>) -> usize {
+        // A live stream's recordings follow the same height preference.
         let video_height = |o: &QualityOption| match o.format {
-            MediaFormat::Video { max_height } => Some(max_height),
+            MediaFormat::Video { max_height } | MediaFormat::Live { max_height } => Some(max_height),
             MediaFormat::AudioMp3 => None,
         };
         let found = match pref {
             None => None,
             Some(MediaFormat::AudioMp3) => self.options.iter().position(|o| o.format == MediaFormat::AudioMp3),
-            Some(MediaFormat::Video { max_height }) => {
+            Some(MediaFormat::Video { max_height } | MediaFormat::Live { max_height }) => {
                 let videos = || self.options.iter().enumerate().filter_map(|(i, o)| video_height(o).map(|h| (i, h)));
                 videos()
                     .filter(|(_, h)| h <= max_height)
@@ -182,10 +187,24 @@ pub fn parse_probe(json: &str) -> Result<MediaInfo, String> {
             .map(|h| QualityOption { label: format!("{h}p"), format: MediaFormat::Video { max_height: h }, approx_size: None })
             .collect();
         options.push(audio_mp3(None));
-        return Ok(MediaInfo { title, duration, options, entries, thumbnail: pick_thumbnail(&v) });
+        return Ok(MediaInfo { title, duration, options, entries, thumbnail: pick_thumbnail(&v), live: false });
     }
 
     let formats = v["formats"].as_array().cloned().unwrap_or_default();
+    if v["is_live"] == true || v["live_status"] == "is_live" {
+        // Live: one muxed stream per height, recorded as it plays.
+        let mut heights: Vec<u64> = formats.iter().filter(|f| f["vcodec"].as_str().is_some_and(|c| c != "none")).filter_map(|f| f["height"].as_u64()).collect();
+        heights.sort_unstable_by(|a, b| b.cmp(a));
+        heights.dedup();
+        let mut options: Vec<QualityOption> = heights
+            .into_iter()
+            .map(|h| QualityOption { label: format!("Record {h}p"), format: MediaFormat::Live { max_height: h as u32 }, approx_size: None })
+            .collect();
+        if options.is_empty() {
+            options.push(QualityOption { label: "Record (best)".into(), format: MediaFormat::Live { max_height: 4320 }, approx_size: None });
+        }
+        return Ok(MediaInfo { title, duration, options, entries: Vec::new(), thumbnail: pick_thumbnail(&v), live: true });
+    }
     let is_video = |f: &Value| f["vcodec"].as_str().is_some_and(|c| c != "none") && f["height"].as_u64().is_some_and(|h| h >= 144);
     let is_audio = |f: &Value| f["vcodec"] == "none" && f["acodec"].as_str().is_some_and(|c| c != "none");
     let best_audio = formats.iter().filter(|f| is_audio(f)).filter_map(size).max();
@@ -204,7 +223,7 @@ pub fn parse_probe(json: &str) -> Result<MediaInfo, String> {
         })
         .collect();
     options.push(audio_mp3(best_audio));
-    Ok(MediaInfo { title, duration, options, entries: Vec::new(), thumbnail: pick_thumbnail(&v) })
+    Ok(MediaInfo { title, duration, options, entries: Vec::new(), thumbnail: pick_thumbnail(&v), live: false })
 }
 
 pub fn build_args(format: &MediaFormat, out_dir: &Path, url: &str, opts: &MediaOptions) -> Vec<String> {
@@ -228,6 +247,10 @@ pub fn build_args(format: &MediaFormat, out_dir: &Path, url: &str, opts: &MediaO
         }
         MediaFormat::AudioMp3 => {
             args.extend(["-f", "ba/b", "-x", "--audio-format", "mp3", "--audio-quality", "0"].map(String::from));
+        }
+        MediaFormat::Live { max_height: h } => {
+            // MPEG-TS straight into the final file: whatever was recorded plays, however it stops.
+            args.extend(["-f".into(), format!("b[height<={h}]/b"), "--hls-use-mpegts".into(), "--no-part".into()]);
         }
     }
     if let (MediaFormat::Video { .. }, Some(langs)) = (format, &opts.subtitles) {
@@ -353,12 +376,19 @@ pub async fn download(
     });
     let mut lines = BufReader::new(child.stdout.take().expect("stdout is piped")).lines();
     let mut final_path = None;
+    // A live recording's file, so stopping it can hand back what was recorded.
+    let mut recording: Option<PathBuf> = None;
+    let live = matches!(format, MediaFormat::Live { .. });
+    let stopped = |recording: &Option<PathBuf>| match (live, recording) {
+        (true, Some(path)) => MediaOutcome::Completed(path.clone()),
+        _ => MediaOutcome::Paused,
+    };
     let mut streams = StreamProgress::default();
     loop {
         let line = tokio::select! {
             _ = cancel.cancelled() => {
                 let _ = child.kill().await;
-                return Ok(MediaOutcome::Paused);
+                return Ok(stopped(&recording));
             }
             line = lines.next_line() => line.map_err(|e| e.to_string())?,
         };
@@ -367,12 +397,14 @@ pub async fn download(
             progress.send_replace(streams.push(p));
         } else if let Some(path) = line.strip_prefix("RDMF ") {
             final_path = Some(PathBuf::from(path.trim()));
+        } else if let Some(path) = line.strip_prefix("[download] Destination: ") {
+            recording = Some(PathBuf::from(path.trim()));
         }
     }
     let status = tokio::select! {
         _ = cancel.cancelled() => {
             let _ = child.kill().await;
-            return Ok(MediaOutcome::Paused);
+            return Ok(stopped(&recording));
         }
         status = child.wait() => status.map_err(|e| e.to_string())?,
     };
@@ -515,6 +547,24 @@ mod tests {
         let list = probe_args("https://www.youtube.com/playlist?list=PL1", None, None);
         assert!(!list.contains(&"--no-playlist".to_string()), "{list:?}");
         assert_eq!(list.last().unwrap(), "https://www.youtube.com/playlist?list=PL1");
+    }
+
+    #[test]
+    fn live_streams_are_offered_as_recordings() {
+        let json = r#"{"title":"Launch","is_live":true,"formats":[{"vcodec":"avc1","acodec":"mp4a","height":720},{"vcodec":"avc1","acodec":"mp4a","height":1080}]}"#;
+        let info = parse_probe(json).unwrap();
+        assert!(info.live);
+        assert_eq!(info.options.iter().map(|o| o.format.clone()).collect::<Vec<_>>(), vec![MediaFormat::Live { max_height: 1080 }, MediaFormat::Live { max_height: 720 }]);
+        assert!(info.options.iter().all(|o| o.label.contains("Record")), "{:?}", info.options);
+        let normal = parse_probe(r#"{"title":"T","live_status":"was_live","formats":[]}"#).unwrap();
+        assert!(!normal.live, "a past stream is an ordinary video");
+    }
+
+    #[test]
+    fn live_args_keep_the_file_playable_when_stopped() {
+        let args = build_args(&MediaFormat::Live { max_height: 720 }, Path::new("out"), "u", &MediaOptions::default());
+        assert!(args.iter().any(|a| a == "--hls-use-mpegts") && args.iter().any(|a| a == "--no-part"), "{args:?}");
+        assert!(!args.iter().any(|a| a == "--merge-output-format"), "one muxed stream, nothing to merge: {args:?}");
     }
 
     #[test]
@@ -666,10 +716,10 @@ mod meta_tests {
     fn request_meta_lines_up_with_requests() {
         let entry = |n: u32| Entry { url: format!("https://y/{n}"), title: format!("V{n}"), thumbnail: Some(format!("https://i/{n}.jpg")), duration: Some(n as f64) };
         let video = QualityOption { label: "720p".into(), format: MediaFormat::Video { max_height: 720 }, approx_size: None };
-        let list = MediaInfo { title: "L".into(), duration: None, options: vec![video.clone()], entries: vec![entry(1), entry(2)], thumbnail: None };
+        let list = MediaInfo { title: "L".into(), duration: None, options: vec![video.clone()], entries: vec![entry(1), entry(2)], thumbnail: None, live: false };
         assert_eq!(list.request_meta(), vec![(Some("https://i/1.jpg".to_string()), Some(1.0)), (Some("https://i/2.jpg".to_string()), Some(2.0))]);
         assert_eq!(list.request_meta().len(), list.requests("u", 0).len());
-        let single = MediaInfo { title: "S".into(), duration: Some(9.0), options: vec![video], entries: vec![], thumbnail: Some("https://i/s.jpg".into()) };
+        let single = MediaInfo { title: "S".into(), duration: Some(9.0), options: vec![video], entries: vec![], thumbnail: Some("https://i/s.jpg".into()), live: false };
         assert_eq!(single.request_meta(), vec![(Some("https://i/s.jpg".to_string()), Some(9.0))]);
     }
 }

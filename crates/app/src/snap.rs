@@ -140,6 +140,7 @@ fn info(entries: Vec<Entry>) -> MediaInfo {
         title: if entries.is_empty() { "Rust Async Explained — Full Course".into() } else { "Tokio Deep Dive".into() },
         duration: Some(2538.0),
         thumbnail: None,
+        live: false,
         options: vec![
             video(2160, "2160p", 3891),
             video(1440, "1440p", 2150),

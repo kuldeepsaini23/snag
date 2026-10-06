@@ -73,6 +73,7 @@ pub fn view<'a>(m: &'a Model, p: &'a Picker, c: Colors) -> Element<'a, Message> 
     let label = match (playlist, m.queues.iter().find(|q| q.id == p.queue).filter(|q| q.id != 0)) {
         (true, None) => format!("Download {requests} video{}", if requests == 1 { "" } else { "s" }),
         (_, Some(q)) => format!("Add to {}", view::ellipsize(&q.name, 18)),
+        (false, None) if p.info.live => "Start recording".to_string(),
         (false, None) => "Download now".to_string(),
     };
     let go = button(row![icon(Icon::Download, 13), text(label).size(12.5).font(style::SEMIBOLD)].spacing(7).align_y(Alignment::Center))
@@ -108,7 +109,8 @@ fn title_card<'a>(m: &'a Model, p: &'a Picker, host: &str, c: Colors) -> Element
         meta.push_str(&format!("  ·  {}", view::duration_label(d)));
     }
     let best = p.info.options.first().map(|o| o.label.clone()).unwrap_or_default();
-    let detected = container(row![icon(Icon::FilmStrip, 11), text(format!("Video detected · up to {best}")).size(11)].spacing(5).align_y(Alignment::Center))
+    let tag_text = if p.info.live { "Live now · records until it ends or you stop it".to_string() } else { format!("Video detected · up to {best}") };
+    let detected = container(row![icon(Icon::FilmStrip, 11), text(tag_text).size(11)].spacing(5).align_y(Alignment::Center))
         .padding([2, 7])
         .style(style::tag(c.accent_soft, c.accent));
     let info = column![text(&p.info.title).size(14).font(style::SEMIBOLD), small(meta, c.text2), detected].spacing(5).width(Fill);
@@ -153,6 +155,7 @@ fn options<'a>(p: &'a Picker, c: Colors) -> Element<'a, Message> {
         let what = match o.format {
             MediaFormat::Video { .. } => "MP4",
             MediaFormat::AudioMp3 => "MP3",
+            MediaFormat::Live { .. } => "LIVE",
         };
         let size = o.approx_size.map(|s| format!("≈ {}", format::size(s))).unwrap_or_default();
         let row = row![label, Space::new().width(Fill), small(what, c.text3), text(size).size(12).font(style::MONO).color(c.text2)].spacing(12).align_y(Alignment::Center);

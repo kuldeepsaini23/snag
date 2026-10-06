@@ -40,6 +40,15 @@ fn main() {
             eprintln!("ERROR: Unable to download video subtitles for 'en': HTTP Error 429: Too Many Requests");
             std::process::exit(1);
         }
+        "live" => {
+            // A live stream: writes straight to its file and keeps going until stopped.
+            let home = args.windows(2).find(|w| w[0] == "-P" && !w[1].starts_with("temp:")).map(|w| w[1].clone()).unwrap_or_default();
+            let file = std::path::Path::new(&home).join("Launch [live].mp4");
+            let _ = std::fs::write(&file, vec![7u8; 4096]);
+            println!("[download] Destination: {}", file.display());
+            println!("RDMP 4096 NA NA 1000");
+            std::thread::sleep(Duration::from_secs(30));
+        }
         "busy" => {
             eprintln!("ERROR: Unable to download webpage: HTTP Error 503: Service Unavailable");
             std::process::exit(1);

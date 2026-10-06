@@ -148,7 +148,9 @@ fn item_row<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
     }
 
     let mono = |s: String, size: f32, color: Color| text(s).size(size).font(style::MONO).color(color);
+    let live = matches!(i.kind, Kind::Media(MediaFormat::Live { .. }));
     let (top, bottom): (String, String) = match &i.status {
+        Status::Running if live => ("● REC".into(), format::size(i.downloaded)),
         Status::Running => (
             format::speed(i.speed_bps),
             i.total.and_then(|t| format::eta(t.saturating_sub(i.downloaded), i.speed_bps)).map(|e| format!("{e} left")).unwrap_or_default(),
@@ -160,13 +162,14 @@ fn item_row<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
         Status::Queued => ("—".into(), "queued".into()),
         Status::Done => view::when_label(i.added, chrono::Local::now()),
     };
-    let top_color = if failed { c.danger } else { c.text2 };
+    let top_color = if failed || (live && i.status == Status::Running) { c.danger } else { c.text2 };
     let right = column![mono(top, 11.5, top_color), mono(bottom, 11.0, c.text3)].align_x(Alignment::End).spacing(2).width(96);
 
     let (glyph, action) = match &i.status {
         Status::Done if missing => (Icon::ArrowClockwise, Some(Message::Redownload(i.id))),
         Status::Done => (Icon::FolderOpen, i.dest.as_ref().map(|_| Message::ShowInFolder(i.id))),
         Status::Running | Status::Queued if waiting => (Icon::Clock, Some(Message::Pause(i.id))),
+        Status::Running if live => (Icon::Square, Some(Message::Pause(i.id))),
         Status::Running | Status::Queued => (Icon::Pause, Some(Message::Pause(i.id))),
         Status::Paused => (Icon::Play, Some(Message::Resume(i.id))),
         Status::Failed(_) => (Icon::ArrowClockwise, Some(Message::Resume(i.id))),

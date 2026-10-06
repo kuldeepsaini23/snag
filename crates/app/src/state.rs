@@ -698,6 +698,7 @@ mod tests {
             ],
             entries,
             thumbnail: None,
+            live: false,
         }
     }
 

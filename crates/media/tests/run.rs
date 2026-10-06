@@ -164,3 +164,17 @@ async fn refused_subtitles_dont_fail_a_saved_video() {
     let r = download(&fake(), "fake://subfail", &MediaFormat::Video { max_height: 720 }, dir.path(), &MediaOptions::default(), CancellationToken::new(), &tx).await;
     assert_eq!(r, Ok(MediaOutcome::Completed(PathBuf::from(r"C:\out\clip.mp4"))));
 }
+
+#[tokio::test]
+async fn stopping_a_live_recording_keeps_the_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let (tx, _rx) = watch::channel(MediaProgress::default());
+    let cancel = CancellationToken::new();
+    let stop = cancel.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+        stop.cancel();
+    });
+    let r = download(&fake(), "fake://live", &MediaFormat::Live { max_height: 720 }, dir.path(), &MediaOptions::default(), cancel, &tx).await;
+    assert_eq!(r, Ok(MediaOutcome::Completed(dir.path().join("Launch [live].mp4"))), "stop = finished recording, not paused");
+}

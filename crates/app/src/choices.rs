@@ -13,6 +13,7 @@ impl fmt::Display for Quality {
             None => f.write_str("Best available"),
             Some(MediaFormat::Video { max_height }) => write!(f, "Up to {max_height}p"),
             Some(MediaFormat::AudioMp3) => f.write_str("Audio only (MP3)"),
+            Some(MediaFormat::Live { max_height }) => write!(f, "Record up to {max_height}p"),
         }
     }
 }

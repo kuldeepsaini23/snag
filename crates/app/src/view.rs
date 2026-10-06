@@ -234,6 +234,7 @@ pub fn kind_label(item: &Item) -> String {
     match &item.kind {
         Kind::Media(MediaFormat::Video { max_height }) => format!("{max_height}p · MP4"),
         Kind::Media(MediaFormat::AudioMp3) => "Audio · MP3".into(),
+        Kind::Media(MediaFormat::Live { max_height }) => format!("Live · {max_height}p"),
         Kind::Gallery => "Images".into(),
         Kind::Http => item
             .name
@@ -502,6 +503,8 @@ mod tests {
         assert_eq!(row_meta(&done), "Completed · PDF · 12 MB");
         let mp3 = Item { kind: Kind::Media(MediaFormat::AudioMp3), ..item(4, "x", Category::Music, Status::Queued) };
         assert_eq!(row_meta(&mp3), "Queued · Audio · MP3");
+        let live = Item { kind: Kind::Media(MediaFormat::Live { max_height: 720 }), ..item(8, "x", Category::Video, Status::Queued) };
+        assert_eq!(row_meta(&live), "Queued · Live · 720p");
         let mut gallery = Item { kind: Kind::Gallery, ..item(7, "pinterest.com · 1", Category::Image, Status::Done) };
         gallery.total = Some(350 * 1024);
         assert_eq!(row_meta(&gallery), "Completed · Images · 350 KB");
@@ -568,7 +571,7 @@ mod tests {
 
     fn playlist(n: usize) -> MediaInfo {
         let entries = (1..=n).map(|i| Entry { url: format!("https://y/{i}"), title: format!("Video {i}"), thumbnail: None, duration: None }).collect();
-        MediaInfo { title: "List".into(), duration: None, options: options(), entries, thumbnail: None }
+        MediaInfo { title: "List".into(), duration: None, options: options(), entries, thumbnail: None, live: false }
     }
 
     #[test]

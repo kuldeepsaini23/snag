@@ -200,7 +200,7 @@ async fn offer_media_asks_the_ui_to_pick() {
     let dir = tempfile::tempdir().unwrap();
     let m = manager(dir.path(), |_| {}).await;
     let mut rx = m.subscribe();
-    let info = rdm_core::MediaInfo { title: "Clip".into(), duration: None, options: vec![], entries: vec![], thumbnail: None };
+    let info = rdm_core::MediaInfo { title: "Clip".into(), duration: None, options: vec![], entries: vec![], thumbnail: None, live: false };
     m.offer_media("https://youtu.be/x".into(), info.clone()).await;
     let got = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
@@ -421,6 +421,7 @@ fn three_options() -> MediaInfo {
         options: vec![video(1080), video(720), QualityOption { label: "MP3".into(), format: MediaFormat::AudioMp3, approx_size: None }],
         entries: vec![],
         thumbnail: None,
+        live: false,
     }
 }
 
@@ -824,5 +825,22 @@ async fn media_link_from_a_page_keeps_its_referer() {
     assert_eq!(done.referrer.as_deref(), Some("https://site.tv/watch/1"));
     let args = std::fs::read_to_string(dir.path().join("dl").join("fake-args.txt")).unwrap();
     assert!(args.contains("--referer\nhttps://site.tv/watch/1"), "{args}");
+    m.shutdown().await;
+}
+
+#[tokio::test]
+async fn stopping_a_live_recording_finishes_it() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let m = manager(dir.path(), |_| {}).await;
+    let mut rx = m.subscribe();
+    let id = m.add_media("https://www.video.test/live".into(), "Launch".into(), MediaFormat::Live { max_height: 720 }).await;
+    wait_item(&mut rx, |i| i.id == id && i.status == Status::Running && i.downloaded > 0).await;
+    m.pause(id).await; // "Stop recording"
+    let done = wait_item(&mut rx, has(id, Status::Done)).await;
+    assert_eq!(done.category, rdm_core::Category::Video);
+    let file = done.dest.expect("the recording");
+    assert!(file.ends_with("Launch [live].mp4") && file.exists());
+    assert_eq!(done.downloaded, 4096);
     m.shutdown().await;
 }
