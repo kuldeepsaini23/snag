@@ -213,7 +213,7 @@ fn item_row<'a>(m: &'a Model, i: &'a Item, pose: Option<RowPose>, c: Colors) -> 
     let actions = container(actions).width(64).align_x(Alignment::End);
 
     let middle = container(middle).width(Fill).clip(true);
-    let thumb = i.thumbnail.as_ref().and_then(|u| m.thumbs.get(u)).map(|p| p.as_path());
+    let thumb = view::thumb_url(i).and_then(|u| m.thumbs.get(&u)).map(|p| p.as_path());
     let content = row![tile(i, thumb, 76.0, 44.0, 16, c), middle, right, actions].spacing(14).align_y(Alignment::Center);
     let row = button(content).width(Fill).padding([9, 10]).style(style::row(c, m.selected == Some(i.id), failed, pulse)).on_press(Message::Select(i.id));
     mouse_area(row).on_enter(Message::HoverRow(i.id, true)).on_exit(Message::HoverRow(i.id, false)).into()

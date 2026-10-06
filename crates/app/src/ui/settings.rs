@@ -1,5 +1,6 @@
 //! The Settings sheet (Figma frames 07–12). Closing it saves.
 
+use super::color_picker;
 use super::icon::{Icon, icon};
 use super::style;
 use super::theme::{self, Colors, SWATCHES};
@@ -34,7 +35,7 @@ pub fn view<'a>(m: &'a Model, phone: Option<(&'a str, &'a iced::widget::qr_code:
 
     let (title, subtitle) = match m.settings_tab {
         SettingsTab::General => ("General", "Where files go and what happens when they finish"),
-        SettingsTab::Appearance => ("Appearance", "Make Snag yours: accent colour"),
+        SettingsTab::Appearance => ("Appearance", "Make Snag yours: pick any accent colour"),
         SettingsTab::Connections => ("Connections", "How hard Snag pushes each server"),
         SettingsTab::Speed => ("Speed & Schedule", "Cap bandwidth and run queues on a schedule"),
         SettingsTab::Extension => ("Extension", "Catch downloads and videos straight from Chrome"),
@@ -180,17 +181,38 @@ fn appearance(m: &Model, c: Colors) -> Element<'_, Message> {
         r.push(button(Space::new()).width(20).height(20).padding(0).style(style::swatch(color, chosen, Color::WHITE)).on_press(Message::DraftAccent((*hex).to_string())))
     });
     let invalid = theme::parse_hex(&m.draft.accent).is_none();
-    let desc = if invalid { "Type a hex value like #ff9f0a" } else { "Any hex value. Text on the accent switches between dark and light automatically" };
+    let desc = if invalid { "Type a hex value like #ff9f0a" } else { "Drag in the square, or type any hex value. Text on the accent switches between dark and light by itself" };
+    // The square, the strip and the hex box all edit the same colour (`Model::type_accent`).
+    let picker = column![
+        color_picker::square(m.accent_hsv, PICKER_WIDTH, 146.0, c.surface, c),
+        color_picker::hue_strip(m.accent_hsv, PICKER_WIDTH, 20.0, c.surface, c),
+    ]
+    .spacing(2);
+    let logo = iced::widget::image(super::icon::logo(c.accent)).width(34).height(34).opacity(c.alpha);
+    let side = column![
+        text("Custom colour").size(13).font(style::MEDIUM),
+        small(desc, c.text3),
+        Space::new().height(4),
+        field("#ff9f0a", &m.draft.accent, 120.0, Message::DraftAccent, c),
+        Space::new().height(4),
+        row![logo, small("The logo, file tiles and the browser extension follow it", c.text3)].spacing(10).align_y(Alignment::Center),
+    ]
+    .spacing(4)
+    .padding(iced::Padding { top: 8.0, right: 8.0, ..Default::default() })
+    .width(Fill);
     column![section(
         "Accent colour",
         vec![
             line("Accent", "Used for progress, links and highlights", swatches.into(), c),
-            line("Custom colour", desc, field("#ff9f0a", &m.draft.accent, 120.0, Message::DraftAccent, c), c),
+            row![picker, side].spacing(12).padding([6, 6]).into(),
         ],
         c,
     )]
     .into()
 }
+
+/// The colour square's and hue strip's width in Appearance.
+const PICKER_WIDTH: f32 = 248.0;
 
 fn connections(m: &Model, c: Colors) -> Element<'_, Message> {
     let d = &m.draft;

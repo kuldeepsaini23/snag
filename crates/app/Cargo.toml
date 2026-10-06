@@ -12,10 +12,11 @@ rdm-core = { path = "../core" }
 rdm-media = { path = "../media" }
 rdm-bridge = { path = "../bridge" }
 rdm-engine = { path = "../engine" }
-iced = { version = "0.14", features = ["tokio", "image", "qr_code"] }
+iced = { version = "0.14", features = ["tokio", "image", "qr_code", "canvas"] }
 tokio.workspace = true
 futures-util.workspace = true
 chrono.workspace = true
+serde_json.workspace = true
 tray-icon = "0.26.0"
 tauri-winrt-notification = "0.8.1"
 winreg = "0.56.0"

@@ -5199,6 +5199,7 @@ dependencies = [
  "rdm-core",
  "rdm-engine",
  "rdm-media",
+ "serde_json",
  "tauri-winrt-notification",
  "tempfile",
  "tokio",

@@ -112,17 +112,78 @@ impl Model {
 }
 
 impl Model {
-    /// Thumbnails to fetch: shown by an item or the picker, not cached and not on their way.
-    pub fn missing_thumbs(&self) -> Vec<String> {
-        let picker = self.picker.iter().flat_map(|p| p.info.thumbnail.iter().chain(p.info.entries.iter().filter_map(|e| e.thumbnail.as_ref())));
+    /// Thumbnails to fetch at `now`: shown by an item or the picker, not cached, not on their way,
+    /// and not waiting to be tried again after a failure.
+    pub fn missing_thumbs(&self, now: std::time::Instant) -> Vec<String> {
+        let picker = self.picker.iter().flat_map(|p| p.info.thumbnail.iter().cloned().chain(p.info.entries.iter().filter_map(|e| e.thumbnail.clone())));
+        let waiting = |url: &String| self.thumb_failures.get(url).is_some_and(|(n, at)| thumb_backoff(*n).is_none() || now < *at);
         let mut out: Vec<String> = Vec::new();
-        for url in self.items.iter().filter_map(|i| i.thumbnail.as_ref()).chain(picker) {
-            if !self.thumbs.contains_key(url) && !self.thumb_pending.contains(url) && !out.contains(url) {
-                out.push(url.clone());
+        for url in self.items.iter().filter_map(thumb_url).chain(picker) {
+            if !self.thumbs.contains_key(&url) && !self.thumb_pending.contains(&url) && !waiting(&url) && !out.contains(&url) {
+                out.push(url);
             }
         }
         out
     }
+
+    /// A thumbnail arrived (`Some`) or couldn't be fetched: a failure is tried again later.
+    pub fn thumb_ready(&mut self, url: String, path: Option<std::path::PathBuf>, now: std::time::Instant) {
+        self.thumb_pending.remove(&url);
+        match path {
+            Some(path) => {
+                self.thumb_failures.remove(&url);
+                self.thumbs.insert(url, path);
+            }
+            None => {
+                let failures = self.thumb_failures.get(&url).map_or(0, |(n, _)| *n) + 1;
+                let at = now + thumb_backoff(failures).unwrap_or_default();
+                self.thumb_failures.insert(url, (failures, at));
+            }
+        }
+    }
+
+    /// When the next failed thumbnail is due again (None: nothing waits).
+    pub fn next_thumb_retry(&self) -> Option<std::time::Instant> {
+        self.thumb_failures.values().filter(|(n, _)| thumb_backoff(*n).is_some()).map(|(_, at)| *at).min()
+    }
+}
+
+/// How long to wait before trying a thumbnail again after its `failures`-th failure; None once
+/// it has failed too often (it's tried again on the next launch).
+pub fn thumb_backoff(failures: u32) -> Option<std::time::Duration> {
+    const WAITS: [u64; 4] = [10, 60, 300, 1800];
+    WAITS.get(failures.checked_sub(1)? as usize).map(|s| std::time::Duration::from_secs(*s))
+}
+
+/// The 11-character video id of a YouTube link (watch, youtu.be, shorts, live, embed).
+pub fn youtube_id(url: &str) -> Option<&str> {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
+    let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h).split(':').next().unwrap_or("").to_ascii_lowercase();
+    let path = path.split('#').next().unwrap_or("");
+    let (path, query) = path.split_once('?').unwrap_or((path, ""));
+    let id = if host == "youtu.be" {
+        path.split('/').next()
+    } else if host == "youtube.com" || host.ends_with(".youtube.com") {
+        match path.split('/').collect::<Vec<_>>().as_slice() {
+            ["watch"] => query.split('&').find_map(|kv| kv.strip_prefix("v=")),
+            ["shorts" | "live" | "embed" | "v", id, ..] => Some(*id),
+            _ => None,
+        }
+    } else {
+        None
+    };
+    id.filter(|id| id.len() == 11 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'))
+}
+
+/// The picture a row shows: the one recorded with the item, else YouTube's own for its video
+/// (items added before thumbnails were recorded, and paths that don't record one).
+pub fn thumb_url(item: &Item) -> Option<String> {
+    if item.thumbnail.is_some() {
+        return item.thumbnail.clone();
+    }
+    let id = youtube_id(&item.url).filter(|_| matches!(item.kind, Kind::Media(_)))?;
+    Some(format!("https://i.ytimg.com/vi/{id}/mqdefault.jpg"))
 }
 
 /// Where a thumbnail is cached, without its extension: a stable hash of its URL (FNV-1a),
@@ -296,8 +357,8 @@ pub fn motion_targets(m: &Model) -> crate::motion::Targets {
         tab: FILTERS.iter().position(|f| *f == m.filter).unwrap_or(0),
         sidebar: m.sidebar_open,
         inspector: m.inspected().is_some(),
-        sheet: matches!(m.screen, crate::state::Screen::Picker | crate::state::Screen::Settings) || m.confirm_quit || m.pair_request.is_some(),
-        popover: m.speed_open,
+        sheet: matches!(m.screen, crate::state::Screen::Picker | crate::state::Screen::Settings) || m.confirm_quit || m.pair_request.is_some() || m.info.is_some(),
+        popover: m.speed_open || m.help_open,
         toast: m.screen == crate::state::Screen::Downloads && (m.toast.is_some() || m.notice.is_some()),
         search: m.search_open,
     }
@@ -914,12 +975,79 @@ mod tests {
         let mut m = model();
         let with = |id: u64, url: &str| Item { thumbnail: Some(url.into()), ..item(id, "v.mp4", Category::Video, Status::Done) };
         m.items = vec![with(1, "https://i/a.jpg"), with(2, "https://i/a.jpg"), with(3, "https://i/b.jpg"), item(4, "f.zip", Category::Archive, Status::Done)];
-        assert_eq!(m.missing_thumbs(), vec!["https://i/a.jpg".to_string(), "https://i/b.jpg".to_string()]);
+        let now = std::time::Instant::now();
+        assert_eq!(m.missing_thumbs(now), vec!["https://i/a.jpg".to_string(), "https://i/b.jpg".to_string()]);
         m.thumb_pending.insert("https://i/a.jpg".into());
         m.thumbs.insert("https://i/b.jpg".into(), std::path::PathBuf::from("b"));
-        assert!(m.missing_thumbs().is_empty(), "being fetched or already here");
+        assert!(m.missing_thumbs(now).is_empty(), "being fetched or already here");
         m.picker = Some(Picker::new("u".into(), MediaInfo { thumbnail: Some("https://i/p.jpg".into()), ..playlist(0) }, 0, 0));
-        assert_eq!(m.missing_thumbs(), vec!["https://i/p.jpg".to_string()], "the picker's preview too");
+        assert_eq!(m.missing_thumbs(now), vec!["https://i/p.jpg".to_string()], "the picker's preview too");
+    }
+
+    #[test]
+    fn youtube_thumbnail_from_id() {
+        for url in [
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://m.youtube.com/watch?feature=share&v=dQw4w9WgXcQ&t=42",
+            "https://youtu.be/dQw4w9WgXcQ?si=abc",
+            "https://www.youtube.com/shorts/dQw4w9WgXcQ",
+            "https://www.youtube.com/live/dQw4w9WgXcQ?feature=x",
+            "https://www.youtube.com/embed/dQw4w9WgXcQ",
+            "https://music.youtube.com/watch?v=dQw4w9WgXcQ&list=RD1",
+            "http://youtube.com/watch?v=dQw4w9WgXcQ#t=1",
+        ] {
+            assert_eq!(youtube_id(url), Some("dQw4w9WgXcQ"), "{url}");
+        }
+        for url in [
+            "https://www.youtube.com/@channel/videos",
+            "https://www.youtube.com/playlist?list=PL1",
+            "https://youtu.be/short",
+            "https://notyoutube.com/watch?v=dQw4w9WgXcQ",
+            "https://vimeo.com/824123456",
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ!",
+        ] {
+            assert_eq!(youtube_id(url), None, "{url}");
+        }
+        let video = Item { kind: Kind::Media(MediaFormat::Video { max_height: 1080 }), url: "https://youtu.be/dQw4w9WgXcQ".into(), ..item(1, "v.mp4", Category::Video, Status::Done) };
+        assert_eq!(thumb_url(&video).as_deref(), Some("https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg"), "older items without a recorded thumbnail");
+        let recorded = Item { thumbnail: Some("https://i/own.jpg".into()), ..video.clone() };
+        assert_eq!(thumb_url(&recorded).as_deref(), Some("https://i/own.jpg"), "a recorded one wins");
+        let file = Item { url: "https://youtu.be/dQw4w9WgXcQ".into(), ..item(2, "a.zip", Category::Archive, Status::Done) };
+        assert_eq!(thumb_url(&file), None, "only videos and music get a picture");
+        let m = Model { items: vec![video], ..Model::default() };
+        assert_eq!(m.missing_thumbs(std::time::Instant::now()), vec!["https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg".to_string()], "and it's fetched");
+    }
+
+    #[test]
+    fn thumb_retries_with_backoff() {
+        use std::time::Duration;
+        let t0 = std::time::Instant::now();
+        let url = "https://i/a.jpg".to_string();
+        let mut m = Model { items: vec![Item { thumbnail: Some(url.clone()), ..item(1, "v.mp4", Category::Video, Status::Done) }], ..Model::default() };
+        assert_eq!(m.missing_thumbs(t0), vec![url.clone()]);
+        m.thumb_pending.insert(url.clone());
+        assert!(m.missing_thumbs(t0).is_empty(), "on its way");
+        // It failed: not pending any more, but not asked for again straight away either.
+        m.thumb_ready(url.clone(), None, t0);
+        assert!(!m.thumb_pending.contains(&url));
+        assert!(m.missing_thumbs(t0).is_empty());
+        let first = thumb_backoff(1).expect("a first retry");
+        assert_eq!(m.next_thumb_retry(), Some(t0 + first));
+        assert_eq!(m.missing_thumbs(t0 + first), vec![url.clone()], "tried again after the wait");
+        // Each failure waits longer, and after a few it gives up (until the next launch).
+        let waits: Vec<Duration> = (1..).map_while(thumb_backoff).collect();
+        assert!(waits.windows(2).all(|w| w[1] > w[0]), "{waits:?}");
+        assert!((2..=6).contains(&waits.len()), "bounded: {waits:?}");
+        let mut t = t0;
+        for _ in 1..=waits.len() {
+            t += Duration::from_secs(3600);
+            m.thumb_ready(url.clone(), None, t);
+        }
+        assert!(m.missing_thumbs(t + Duration::from_secs(86_400)).is_empty(), "gave up");
+        assert_eq!(m.next_thumb_retry(), None, "nothing to wake up for");
+        // A later success (another launch's cache) is taken.
+        m.thumb_ready(url.clone(), Some("a.jpg".into()), t);
+        assert_eq!(m.thumbs.get(&url), Some(&std::path::PathBuf::from("a.jpg")));
     }
 
     #[test]

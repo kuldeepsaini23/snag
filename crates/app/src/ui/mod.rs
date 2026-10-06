@@ -1,6 +1,8 @@
 //! The Figma views. Logic lives in `state.rs` / `view.rs` / `update.rs`; this module only draws.
 
 pub mod icon;
+mod color_picker;
+mod help;
 mod inspector;
 mod list;
 mod picker;
@@ -83,6 +85,17 @@ pub fn view(app: &App) -> Element<'_, Message> {
         let pop = float(popover::view(m, c.faded(a.popover))).translate(move |_, _| Vector::new(0.0, -8.0 * (1.0 - a.popover)));
         layers = layers.push(container(opaque(pop)).width(Fill).height(Fill).align_x(Alignment::End).padding(Padding {
             top: 46.0,
+            right: 268.0,
+            bottom: 0.0,
+            left: 0.0,
+        }));
+    }
+    if m.help_open {
+        // Like the speed popover: a click anywhere else closes it; it drops down from the "?".
+        layers = layers.push(mouse_area(Space::new().width(Fill).height(Fill)).on_press(Message::ToggleHelp));
+        let menu = float(help::menu(c.faded(a.popover))).translate(move |_, _| Vector::new(0.0, -8.0 * (1.0 - a.popover)));
+        layers = layers.push(container(opaque(menu)).width(Fill).height(Fill).align_x(Alignment::End).padding(Padding {
+            top: 46.0,
             right: 228.0,
             bottom: 0.0,
             left: 0.0,
@@ -99,6 +112,10 @@ pub fn view(app: &App) -> Element<'_, Message> {
     }
     if m.confirm_quit {
         layers = layers.push(modal(confirm_quit(m, sheet_c), a.sheet, Message::KeepDownloading));
+    }
+    if let Some(info) = &m.info {
+        // Help, What's new and the bug report go over anything else that is open.
+        layers = layers.push(modal(help::sheet(m, info, &app.bug_text, sheet_c), a.sheet, Message::CloseInfo));
     }
     if m.pair_request.is_some() {
         layers = layers.push(modal(confirm_pair(sheet_c), a.sheet, Message::AnswerPair(false)));

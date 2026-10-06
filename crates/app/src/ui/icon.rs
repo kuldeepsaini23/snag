@@ -32,17 +32,27 @@ pub fn tint_logo(rgba: &[u8], accent: Color) -> Vec<u8> {
     out
 }
 
-/// The logo for an accent. One handle per accent for the whole run: iced loads images in the
-/// background and keys them by handle, so a handle made anew every frame would never show.
+/// Logos kept for recent accents. Dragging the colour picker passes through hundreds of colours;
+/// only the last few are kept (the least recently drawn goes first).
+const LOGO_CACHE: usize = 8;
+
+static LOGOS: Mutex<Vec<([u8; 4], Handle)>> = Mutex::new(Vec::new());
+
+/// The logo for an accent. One handle per accent colour, reused on every frame it's drawn at:
+/// iced keys uploaded images by handle, so a handle made anew every frame would be uploaded anew.
 pub fn logo(accent: Color) -> Handle {
-    static CACHE: Mutex<Vec<([u8; 4], Handle)>> = Mutex::new(Vec::new());
+    // A fading sheet draws the accent see-through; the image takes that as its opacity instead.
+    let accent = Color { a: 1.0, ..accent };
     let key = accent.into_rgba8();
-    let Ok(mut cache) = CACHE.lock() else { return Handle::from_rgba(64, 64, tint_logo(LOGO_RGBA, accent)) };
-    if let Some((_, h)) = cache.iter().find(|(k, _)| *k == key) {
-        return h.clone();
-    }
-    let handle = Handle::from_rgba(64, 64, tint_logo(LOGO_RGBA, accent));
+    let Ok(mut cache) = LOGOS.lock() else { return Handle::from_rgba(64, 64, tint_logo(LOGO_RGBA, accent)) };
+    let handle = match cache.iter().position(|(k, _)| *k == key) {
+        Some(i) => cache.remove(i).1,
+        None => Handle::from_rgba(64, 64, tint_logo(LOGO_RGBA, accent)),
+    };
     cache.push((key, handle.clone()));
+    if cache.len() > LOGO_CACHE {
+        cache.remove(0);
+    }
     handle
 }
 pub const PHOSPHOR: &[u8] = include_bytes!("../../assets/fonts/Phosphor.ttf");
@@ -60,10 +70,12 @@ pub enum Icon {
     ArrowClockwise,
     ArrowRight,
     Browser,
+    Bug,
     CaretDown,
     CaretRight,
     Check,
     CheckCircle,
+    DeviceMobile,
     ClipboardText,
     Clock,
     Copy,
@@ -78,8 +90,11 @@ pub enum Icon {
     Gauge,
     Gear,
     Image,
+    Keyboard,
+    Lifebuoy,
     Link,
     ListNumbers,
+    Magnet,
     MagnifyingGlass,
     MusicNote,
     MusicNotes,
@@ -89,8 +104,10 @@ pub enum Icon {
     PlayFill,
     Plug,
     Plus,
+    Question,
     Queue,
     Sidebar,
+    Sparkle,
     Square,
     Trash,
     TrayDown,
@@ -102,7 +119,7 @@ pub enum Icon {
 impl Icon {
     /// Every icon (the font test checks each one).
     #[cfg(test)]
-    pub const ALL: [Icon; 41] = [Icon::AppWindow, Icon::ArrowClockwise, Icon::ArrowRight, Icon::Browser, Icon::CaretDown, Icon::CaretRight, Icon::Check, Icon::CheckCircle, Icon::ClipboardText, Icon::Clock, Icon::Copy, Icon::Download, Icon::File, Icon::FilePdf, Icon::FileText, Icon::FileZip, Icon::FilmStrip, Icon::FolderOpen, Icon::Folder, Icon::Gauge, Icon::Gear, Icon::Image, Icon::Link, Icon::ListNumbers, Icon::MagnifyingGlass, Icon::MusicNote, Icon::MusicNotes, Icon::Palette, Icon::Pause, Icon::Play, Icon::PlayFill, Icon::Plug, Icon::Plus, Icon::Queue, Icon::Sidebar, Icon::Square, Icon::Trash, Icon::TrayDown, Icon::WarningCircle, Icon::Wrench, Icon::X];
+    pub const ALL: [Icon; 48] = [Icon::AppWindow, Icon::ArrowClockwise, Icon::ArrowRight, Icon::Browser, Icon::Bug, Icon::CaretDown, Icon::CaretRight, Icon::Check, Icon::CheckCircle, Icon::DeviceMobile, Icon::ClipboardText, Icon::Clock, Icon::Copy, Icon::Download, Icon::File, Icon::FilePdf, Icon::FileText, Icon::FileZip, Icon::FilmStrip, Icon::FolderOpen, Icon::Folder, Icon::Gauge, Icon::Gear, Icon::Image, Icon::Keyboard, Icon::Lifebuoy, Icon::Link, Icon::ListNumbers, Icon::Magnet, Icon::MagnifyingGlass, Icon::MusicNote, Icon::MusicNotes, Icon::Palette, Icon::Pause, Icon::Play, Icon::PlayFill, Icon::Plug, Icon::Plus, Icon::Question, Icon::Queue, Icon::Sidebar, Icon::Sparkle, Icon::Square, Icon::Trash, Icon::TrayDown, Icon::WarningCircle, Icon::Wrench, Icon::X];
 
     pub fn ch(self) -> char {
         let code = match self {
@@ -110,10 +127,12 @@ impl Icon {
             Self::ArrowClockwise => 0xe036,
             Self::ArrowRight => 0xe06c,
             Self::Browser => 0xe0f4,
+            Self::Bug => 0xe5f4,
             Self::CaretDown => 0xe136,
             Self::CaretRight => 0xe13a,
             Self::Check => 0xe182,
             Self::CheckCircle => 0xe184,
+            Self::DeviceMobile => 0xe1e0,
             Self::ClipboardText => 0xe198,
             Self::Clock => 0xe19a,
             Self::Copy => 0xe1ca,
@@ -128,8 +147,11 @@ impl Icon {
             Self::Gauge => 0xe628,
             Self::Gear => 0xe272,
             Self::Image => 0xe2ca,
+            Self::Keyboard => 0xe2d8,
+            Self::Lifebuoy => 0xe63a,
             Self::Link => 0xe2e2,
             Self::ListNumbers => 0xe2f6,
+            Self::Magnet => 0xe680,
             Self::MagnifyingGlass => 0xe30c,
             Self::MusicNote => 0xe33c,
             Self::MusicNotes => 0xe340,
@@ -138,8 +160,10 @@ impl Icon {
             Self::Play | Self::PlayFill => 0xe3d0,
             Self::Plug => 0xe946,
             Self::Plus => 0xe3d4,
+            Self::Question => 0xe3e8,
             Self::Queue => 0xe6ac,
             Self::Sidebar => 0xec24,
+            Self::Sparkle => 0xe6a2,
             Self::Square => 0xe45e,
             Self::Trash => 0xe4a6,
             Self::TrayDown => 0xe010,
@@ -204,6 +228,18 @@ mod tests {
 
         let white = tint_logo(LOGO_RGBA, crate::ui::theme::parse_hex("#f5f5f7").unwrap());
         assert_eq!(px(&white, ink), [0x1a, 0x18, 0x16, 255], "dark S on a white tile");
+    }
+
+    #[test]
+    fn logo_handles_are_reused_and_bounded() {
+        let blue = crate::ui::theme::parse_hex("#0a84ff").unwrap();
+        assert_eq!(logo(blue).id(), logo(blue).id(), "the same accent draws with the same handle, frame after frame");
+        // A drag through many colours: the one in use stays, the cache stays small.
+        for k in 0..200u8 {
+            let _ = logo(Color::from_rgb8(k, 255 - k, 128));
+            assert_eq!(logo(blue).id(), logo(blue).id());
+        }
+        assert!(LOGOS.lock().unwrap().len() <= LOGO_CACHE);
     }
 
     /// Minimal cmap (format 4) lookup, enough to prove the code points are real.

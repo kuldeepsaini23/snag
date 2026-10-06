@@ -1,8 +1,8 @@
 use crate::motion::Motion;
 use crate::queues::QueueDraft;
-use crate::state::{MediaTab, Model, Screen, SettingsTab, explorer_select_arg};
+use crate::state::{Info, MediaTab, Model, Screen, SettingsTab, explorer_select_arg};
 use crate::view::{Filter, Library};
-use iced::widget::{Id, operation};
+use iced::widget::{Id, operation, text_editor};
 use iced::{Subscription, Task, keyboard, window};
 use rdm_core::{AppState, Event, ItemId, Manager, MediaFormat, MediaInfo, QueueId, Status};
 use std::future::Future;
@@ -28,6 +28,8 @@ pub struct App {
     pub now: Instant,
     /// The item the inspector shows, kept while it slides closed.
     pub inspector_item: Option<ItemId>,
+    /// Report a bug: "What happened?" as typed (kept if the sheet is closed before saving).
+    pub bug_text: text_editor::Content,
 }
 
 /// Text inputs the app focuses itself.
@@ -105,6 +107,8 @@ pub enum Message {
     RefreshUrl(ItemId),
     /// A thumbnail finished downloading (None: it couldn't be fetched).
     ThumbReady(String, Option<PathBuf>),
+    /// A failed thumbnail may be due again (every update fetches the ones due).
+    RetryThumbs,
     // List
     SetFilter(Filter),
     SetLibrary(Library),
@@ -145,6 +149,9 @@ pub enum Message {
     DraftQuality(Option<MediaFormat>),
     DraftAsk(bool),
     DraftAccent(String),
+    /// The accent picker: saturation and value (0 … 1) from the square, hue (degrees) from the strip.
+    AccentSv(f32, f32),
+    AccentHue(f32),
     CopyToken,
     NewToken,
     AddQueue,
@@ -176,6 +183,16 @@ pub enum Message {
     ClipboardText(Option<String>),
     ToastDownload,
     ToastClose,
+    // Help
+    /// The toolbar's "?" menu.
+    ToggleHelp,
+    OpenInfo(Info),
+    CloseInfo,
+    BugEdit(text_editor::Action),
+    BugDiagnostics(bool),
+    SaveBugReport,
+    /// The report's file and text, or why it couldn't be written.
+    BugReportSaved(Result<(PathBuf, String), String>),
     DismissNotice,
     /// Debug builds: render the window to a file (see `snap.rs`).
     #[cfg(debug_assertions)]
@@ -191,7 +208,7 @@ pub fn boot(manager: Manager, bridge_status: String, data_dir: PathBuf, runtime:
     let tray = crate::tray::create();
     crate::notify::register(&data_dir);
     let motion = Motion::new(crate::view::motion_targets(&model), crate::motion::system_reduced_motion());
-    let app = App { model, manager, data_dir, tray, runtime, phone: None, motion, now: Instant::now(), inspector_item: None };
+    let app = App { model, manager, data_dir, tray, runtime, phone: None, motion, now: Instant::now(), inspector_item: None, bug_text: text_editor::Content::new() };
     (app, Task::perform(async move { m.snapshot().await }, Message::Loaded))
 }
 
@@ -287,7 +304,7 @@ fn sync_phone(app: &mut App) {
 }
 
 fn fetch_thumbs(app: &mut App) -> Task<Message> {
-    let wanted = app.model.missing_thumbs();
+    let wanted = app.model.missing_thumbs(Instant::now());
     if wanted.is_empty() {
         return Task::none();
     }
@@ -398,7 +415,13 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
                 return show_window();
             }
         }
-        Message::Loaded(state) => model.load(state),
+        Message::Loaded(state) => {
+            model.load(state);
+            // After an update, "What's new" shows once; the version seen is saved.
+            if let Some(settings) = model.check_version(crate::changelog::VERSION) {
+                return fire(&app.manager, move |m| async move { m.update_settings(settings).await });
+            }
+        }
         Message::Lagged => {
             let m = app.manager.clone();
             return Task::perform(async move { m.snapshot().await }, Message::Loaded);
@@ -469,13 +492,9 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
                 return fire(&app.manager, move |m| async move { m.refresh_url(id, url).await });
             }
         }
-        Message::ThumbReady(url, path) => {
-            // A failed fetch stays "pending" so it isn't retried every update.
-            if let Some(path) = path {
-                model.thumb_pending.remove(&url);
-                model.thumbs.insert(url, path);
-            }
-        }
+        // A failure is tried again later, a few times (see `view::thumb_backoff`).
+        Message::ThumbReady(url, path) => model.thumb_ready(url, path, Instant::now()),
+        Message::RetryThumbs => {}
         Message::PauseAll => {
             let ids = model.pause_all_ids();
             return fire(&app.manager, move |m| async move {
@@ -516,6 +535,10 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
                 return update(app, Message::AnswerPair(false));
             } else if model.confirm_quit {
                 model.keep_downloading();
+            } else if model.info.is_some() {
+                model.info = None;
+            } else if model.help_open {
+                model.help_open = false;
             } else if model.speed_open {
                 if let Some(bps) = model.close_speed() {
                     return set_limit(app, bps);
@@ -578,7 +601,9 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::DraftClipboard(v) => model.draft.clipboard_watch = v,
         Message::DraftQuality(q) => model.draft.preferred_quality = q,
         Message::DraftAsk(v) => model.draft.ask_quality = v,
-        Message::DraftAccent(v) => model.draft.accent = v,
+        Message::DraftAccent(v) => model.type_accent(v),
+        Message::AccentSv(s, v) => model.drag_accent_sv(s, v),
+        Message::AccentHue(h) => model.drag_accent_hue(h),
         Message::CopyToken => {
             model.notice = Some("Pairing code copied".into());
             return iced::clipboard::write(model.settings.extension_token.clone());
@@ -679,9 +704,39 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             }
         }
         Message::ToastClose => model.toast = None,
+        Message::ToggleHelp => model.toggle_help(),
+        Message::OpenInfo(info) => model.open_info(info),
+        Message::CloseInfo => model.info = None,
+        Message::BugEdit(action) => app.bug_text.perform(action),
+        Message::BugDiagnostics(on) => model.bug_diagnostics = on,
+        Message::SaveBugReport => {
+            if model.bug_saving {
+                return Task::none();
+            }
+            let Some(desktop) = crate::report::desktop() else {
+                model.notice = Some("Couldn't find your Desktop folder".into());
+                return Task::none();
+            };
+            model.bug_saving = true;
+            let (what, include, settings, items) = (app.bug_text.text(), model.bug_diagnostics, model.settings.clone(), model.items.clone());
+            return Task::perform(crate::report::save(what, include, settings, items, app.data_dir.clone(), desktop), Message::BugReportSaved);
+        }
+        Message::BugReportSaved(result) => {
+            model.bug_saving = false;
+            match result {
+                Ok((file, text)) => {
+                    model.info = None;
+                    model.notice = Some("Bug report saved on your Desktop and copied: paste it wherever you report the bug".into());
+                    app.bug_text = text_editor::Content::new();
+                    reveal(&file);
+                    return iced::clipboard::write(text);
+                }
+                Err(e) => model.notice = Some(e),
+            }
+        }
         Message::DismissNotice => model.notice = None,
         #[cfg(debug_assertions)]
-        Message::Snap => return crate::snap::take(model),
+        Message::Snap => return crate::snap::take(app),
         #[cfg(debug_assertions)]
         Message::Snapped(shot) => crate::snap::save(&shot),
         Message::Done => {}
@@ -749,6 +804,10 @@ pub fn subscription(app: &App) -> Subscription<Message> {
     if !app.model.notes.is_empty() {
         subs.push(iced::time::every(std::time::Duration::from_secs(2)).map(|_| Message::FlushNotes));
     }
+    // A thumbnail that failed waits to be tried again; something has to wake the window up for it.
+    if app.model.next_thumb_retry().is_some() {
+        subs.push(iced::time::every(std::time::Duration::from_secs(5)).map(|_| Message::RetryThumbs));
+    }
     // Frames only while something moves: an idle window draws nothing.
     if app.motion.animating(Instant::now()) {
         subs.push(window::frames().map(|_| Message::Frame));
@@ -767,12 +826,13 @@ pub fn subscription(app: &App) -> Subscription<Message> {
     Subscription::batch(subs)
 }
 
-/// Ctrl+K focuses search; Escape closes whatever is on top.
+/// Ctrl+K focuses search; F1 opens Help; Escape closes whatever is on top.
 fn on_key(event: keyboard::Event) -> Option<Message> {
     let keyboard::Event::KeyPressed { key, modifiers, .. } = event else { return None };
     match key.as_ref() {
         keyboard::Key::Named(keyboard::key::Named::Escape) => Some(Message::Escape),
         keyboard::Key::Character("k") if modifiers.command() => Some(Message::FocusSearch),
+        keyboard::Key::Named(keyboard::key::Named::F1) => Some(Message::OpenInfo(Info::Help)),
         _ => None,
     }
 }
