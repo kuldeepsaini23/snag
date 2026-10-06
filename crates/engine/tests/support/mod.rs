@@ -56,6 +56,7 @@ impl TestServer {
             .route("/drops/{size}", get(drops))
             .route("/wrong-range/{size}", get(wrong_range))
             .route("/expired", get(|| async { StatusCode::FORBIDDEN }))
+            .route("/needs-cookie/{size}", get(needs_cookie))
             .with_state(Counters::default());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -123,6 +124,15 @@ fn full_200(size: usize) -> Response {
         .header(header::CONTENT_LENGTH, size)
         .body(stream_body(data(size), None, None))
         .unwrap()
+}
+
+/// Like a logged-in download: every request (probe and each range) must carry the browser's cookie and referrer.
+async fn needs_cookie(Path(size): Path<usize>, headers: HeaderMap) -> Response {
+    let has = |name: header::HeaderName, value: &str| headers.get(name).and_then(|v| v.to_str().ok()) == Some(value);
+    if !(has(header::COOKIE, "session=abc; theme=dark") && has(header::REFERER, "https://site.test/page")) {
+        return Response::builder().status(StatusCode::FORBIDDEN).body(Body::empty()).unwrap();
+    }
+    ranged(&headers, data(size), "\"c\"", None)
 }
 
 async fn file(Path(size): Path<usize>, headers: HeaderMap) -> Response {

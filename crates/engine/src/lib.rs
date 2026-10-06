@@ -17,11 +17,19 @@ pub use tokio_util::sync::CancellationToken;
 
 use std::time::Duration;
 
+/// `default_client()` plus headers sent with every request (e.g. the browser's Cookie and Referer).
+/// reqwest drops Cookie when a redirect leads to another host.
+pub fn client_with(headers: reqwest::header::HeaderMap) -> reqwest::Client {
+    builder().default_headers(headers).build().expect("static client config is valid")
+}
+
 pub fn default_client() -> reqwest::Client {
+    builder().build().expect("static client config is valid")
+}
+
+fn builder() -> reqwest::ClientBuilder {
     reqwest::Client::builder()
         .user_agent(concat!("RDM/", env!("CARGO_PKG_VERSION")))
         .connect_timeout(Duration::from_secs(15))
         .read_timeout(Duration::from_secs(30))
-        .build()
-        .expect("static client config is valid")
 }

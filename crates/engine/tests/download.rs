@@ -34,6 +34,28 @@ fn cancel_after(ms: u64) -> CancellationToken {
 }
 
 #[tokio::test]
+async fn client_with_sends_cookie_and_referer() {
+    use rdm_engine::client_with;
+    use reqwest::header::{COOKIE, HeaderMap, HeaderValue, REFERER};
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let size = 3 * 1024 * 1024;
+    let url = s.url(&format!("/needs-cookie/{size}"));
+
+    let (tx, _rx) = watch::channel(Progress::default());
+    let without = download(&default_client(), &url, &dir.path().join("a.bin"), &opts(4), CancellationToken::new(), &tx).await;
+    assert!(without.is_err(), "the server refuses requests without the cookie");
+
+    let mut headers = HeaderMap::new();
+    headers.insert(COOKIE, HeaderValue::from_static("session=abc; theme=dark"));
+    headers.insert(REFERER, HeaderValue::from_static("https://site.test/page"));
+    let dest = dir.path().join("b.bin");
+    let r = download(&client_with(headers), &url, &dest, &opts(4), CancellationToken::new(), &tx).await;
+    assert_eq!(r.unwrap(), Outcome::Completed(dest.clone()));
+    assert_eq!(std::fs::read(&dest).unwrap(), data(size), "every range request carried the headers");
+}
+
+#[tokio::test]
 async fn downloads_byte_exact_with_many_connections_into_new_dir() {
     let s = TestServer::start().await;
     let dir = tempfile::tempdir().unwrap();
