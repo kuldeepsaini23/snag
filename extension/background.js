@@ -1,6 +1,7 @@
-// RDM extension service worker: finds the desktop app on 127.0.0.1 and hands it links.
+// RDM extension background: finds the desktop app on 127.0.0.1 and hands it links.
+// Chrome runs it as a service worker; Firefox loads catch-rules.js before it (see build.js).
 
-importScripts("catch-rules.js");
+if (typeof importScripts === "function") importScripts("catch-rules.js");
 
 const PORTS = [47321, 47322, 47323, 47324, 47325, 47326];
 const DEFAULTS = { token: "", catchDownloads: true, minSizeMB: 1 };

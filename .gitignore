@@ -2,3 +2,4 @@
 .superpowers/
 *.rdmpart
 *.rdmstate
+extension/dist/
