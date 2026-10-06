@@ -1023,4 +1023,27 @@ mod tests {
         assert!(m.take_notes_at(t).is_empty());
         assert_eq!(m.take_notes_at(t + std::time::Duration::from_secs(121)).len(), 1, "after two minutes it's told anyway");
     }
+
+    #[test]
+    fn watches_reach_the_model() {
+        let mut m = Model::default();
+        let w = rdm_core::watch::Watch {
+            id: 1,
+            url: "https://www.youtube.com/@c/videos".into(),
+            name: "C".into(),
+            format: MediaFormat::Video { max_height: 720 },
+            max_minutes: None,
+            every_hours: 6,
+            queue: 0,
+            last_check: 0,
+            seen: vec![],
+            primed: false,
+        };
+        m.apply(Event::Watches(vec![w.clone()]));
+        assert_eq!(m.watches, vec![w.clone()]);
+        let st = rdm_core::AppState { watches: vec![w.clone()], ..Default::default() };
+        let mut fresh = Model::default();
+        fresh.load(st);
+        assert_eq!(fresh.watches.len(), 1, "a snapshot brings them too");
+    }
 }

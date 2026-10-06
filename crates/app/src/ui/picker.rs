@@ -81,7 +81,17 @@ pub fn view<'a>(m: &'a Model, p: &'a Picker, c: Colors) -> Element<'a, Message> 
         .padding([8, 14])
         .on_press_maybe((requests > 0).then_some(Message::DownloadPicked));
     let cancel = button(text("Cancel").size(12.5).font(style::SEMIBOLD)).style(style::secondary(c)).padding([8, 14]).on_press(Message::CancelPick);
-    sheet = sheet.push(row![small(hint, c.text3).width(Fill), cancel, go].spacing(8).align_y(Alignment::Center));
+    let mut actions = row![small(hint, c.text3).width(Fill), cancel].spacing(8).align_y(Alignment::Center);
+    if playlist {
+        // A channel or playlist can also be followed: its new uploads download by themselves.
+        actions = actions.push(
+            button(row![icon(Icon::Clock, 13), text("Watch for new videos").size(12.5).font(style::SEMIBOLD)].spacing(6).align_y(Alignment::Center))
+                .style(style::outline(c))
+                .padding([8, 12])
+                .on_press(Message::WatchPicked),
+        );
+    }
+    sheet = sheet.push(actions.push(go));
 
     container(sheet).width(560).padding(20).style(style::sheet(c)).into()
 }

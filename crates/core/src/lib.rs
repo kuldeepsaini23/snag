@@ -3,6 +3,7 @@ pub mod cookies;
 pub mod instance;
 pub mod manager;
 pub mod model;
+pub mod watch;
 pub mod planner;
 pub mod schedule;
 pub mod store;

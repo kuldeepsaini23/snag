@@ -15,6 +15,12 @@ fn main() {
         println!("yt-dlp is up to date (fake)");
         return;
     }
+    if args.iter().any(|a| a == "-J") && what == "channel" {
+        // A channel listing the test controls: channel.json next to this exe.
+        let listing = std::env::current_exe().ok().and_then(|e| std::fs::read_to_string(e.with_file_name("channel.json")).ok());
+        println!("{}", listing.unwrap_or_else(|| r#"{"_type":"playlist","title":"Channel","entries":[]}"#.into()));
+        return;
+    }
     if args.iter().any(|a| a == "-J") {
         println!(
             r#"{{"_type":"video","title":"Fake clip","duration":3.0,"formats":[{{"vcodec":"avc1","acodec":"none","height":480,"filesize":300}},{{"vcodec":"none","acodec":"mp4a","filesize":100}}]}}"#

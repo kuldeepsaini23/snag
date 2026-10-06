@@ -75,6 +75,9 @@ pub enum Message {
     DraftSubtitles(bool),
     DraftAutoRetry(bool),
     DraftKeepSharing(bool),
+    /// The picker's playlist/channel: download its new uploads from now on.
+    WatchPicked,
+    RemoveWatch(u32),
     DraftSubtitleLangs(String),
     RefreshTyped(ItemId, String),
     /// Use the typed link for this item.
@@ -310,6 +313,15 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::DraftSubtitles(v) => model.draft.subtitles = v,
         Message::DraftAutoRetry(v) => model.draft.auto_retry = v,
         Message::DraftKeepSharing(v) => model.draft.keep_sharing = v,
+        Message::WatchPicked => {
+            let Some(p) = model.picker.take() else { return Task::none() };
+            model.screen = Screen::Downloads;
+            let format = p.info.options.get(p.choice).map(|o| o.format.clone()).unwrap_or(MediaFormat::Video { max_height: 1080 });
+            model.notice = Some(format!("Watching “{}”: new uploads download by themselves", p.info.title));
+            let (url, name) = (p.url, p.info.title);
+            return fire(&app.manager, move |m| async move { m.add_watch(url, name, format, None, 6).await });
+        }
+        Message::RemoveWatch(id) => return fire(&app.manager, move |m| async move { m.remove_watch(id).await }),
         Message::DraftSubtitleLangs(v) => model.draft.subtitle_langs = v,
         Message::RefreshTyped(id, text) => model.refresh_typed(id, text),
         Message::RefreshUrl(id) => {

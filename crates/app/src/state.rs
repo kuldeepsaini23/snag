@@ -294,6 +294,8 @@ pub struct Model {
     pub refresh: Option<(ItemId, String)>,
     /// Why the settings sheet couldn't be saved (shown in it with a warning icon).
     pub settings_error: Option<String>,
+    /// Watched channels and playlists.
+    pub watches: Vec<rdm_core::watch::Watch>,
 }
 
 impl Default for Model {
@@ -332,6 +334,7 @@ impl Default for Model {
             thumb_pending: HashSet::new(),
             refresh: None,
             settings_error: None,
+            watches: Vec::new(),
         }
     }
 }
@@ -341,6 +344,7 @@ impl Model {
     pub fn load(&mut self, state: AppState) {
         self.items = state.items;
         self.queues = state.queues;
+        self.watches = state.watches;
         // An open settings sheet keeps what's being typed; it is saved on close.
         if self.screen != Screen::Settings {
             self.draft = Draft::from_settings(&state.settings);
@@ -389,6 +393,7 @@ impl Model {
             }
             Event::Notice(text) => self.notice = Some(text),
             Event::Focus | Event::Quit => {}
+            Event::Watches(watches) => self.watches = watches,
             Event::Queues(queues) => {
                 if let crate::view::Library::Queue(id) = self.library
                     && !queues.iter().any(|q| q.id == id)

@@ -41,6 +41,8 @@ pub enum Event {
     Focus,
     /// Another process (rdm --quit, the uninstaller) asks RDM to quit; it pauses and saves first.
     Quit,
+    /// The watched channels/playlists changed.
+    Watches(Vec<crate::watch::Watch>),
 }
 
 /// Handle to the download manager. Cheap to clone; all clones talk to one actor.
@@ -159,6 +161,9 @@ enum Cmd {
     AddGallery(String, oneshot::Sender<ItemId>),
     AddTorrent(String, oneshot::Sender<ItemId>),
     Refresh(ItemId, String),
+    AddWatch(crate::watch::Watch),
+    RemoveWatch(u32),
+    CheckWatches,
     AddWith(String, Option<String>, oneshot::Sender<ItemId>),
     Offer(String, MediaInfo),
     SetQueues(Vec<Queue>),
@@ -288,6 +293,22 @@ impl Manager {
     }
 
     /// Browser cookies for later downloads (memory only).
+    /// Watches a channel or playlist: new uploads are downloaded in `format`, every
+    /// `every_hours`. The first check only records what's already there.
+    pub async fn add_watch(&self, url: String, name: String, format: MediaFormat, max_minutes: Option<u32>, every_hours: u32) {
+        let watch = crate::watch::Watch { id: 0, url, name, format, max_minutes, every_hours, queue: 0, last_check: 0, seen: Vec::new(), primed: false };
+        let _ = self.tx.send(Cmd::AddWatch(watch));
+    }
+
+    pub async fn remove_watch(&self, id: u32) {
+        let _ = self.tx.send(Cmd::RemoveWatch(id));
+    }
+
+    /// Checks every watch now (whether due or not).
+    pub async fn check_watches_now(&self) {
+        let _ = self.tx.send(Cmd::CheckWatches);
+    }
+
     /// A magnet link or a link to a `.torrent` file.
     pub async fn add_torrent(&self, url: String) -> ItemId {
         let (reply, rx) = oneshot::channel();
@@ -424,6 +445,8 @@ enum Msg {
     /// Probe finished: the actor picks the final destination and replies with it.
     Resolve { id: ItemId, name: String, total: Option<u64>, reply: oneshot::Sender<PathBuf> },
     Finished { id: ItemId, result: Result<Outcome, String> },
+    /// A watched channel/playlist was read.
+    WatchListed(u32, Result<Vec<rdm_media::Entry>, String>),
     /// An automatic retry's wait is over (only the latest timer of an item counts).
     Retry(ItemId, u64),
 }
@@ -460,6 +483,8 @@ struct Actor {
     retries: HashMap<ItemId, u32>,
     referrers: Referrers,
     torrents: Arc<Torrents>,
+    /// Watches being read right now.
+    watching: HashSet<u32>,
     /// The current retry timer of each item; anything the user does cancels it.
     retry_gen: HashMap<ItemId, u64>,
     next_gen: u64,
@@ -492,6 +517,7 @@ impl Actor {
             retries: HashMap::new(),
             referrers: Referrers::default(),
             torrents: Arc::default(),
+            watching: HashSet::new(),
             retry_gen: HashMap::new(),
             next_gen: 0,
             retry_base: RETRY_BASE,
@@ -562,6 +588,24 @@ impl Actor {
                     self.updated(id);
                     self.schedule();
                 }
+            }
+            Cmd::AddWatch(mut watch) => {
+                if self.state.watches.iter().any(|w| w.url == watch.url) {
+                    return;
+                }
+                watch.id = self.state.watches.iter().map(|w| w.id).max().unwrap_or(0) + 1;
+                let id = watch.id;
+                self.state.watches.push(watch);
+                self.watches_changed();
+                self.check_watch(id);
+            }
+            Cmd::RemoveWatch(id) => {
+                self.state.watches.retain(|w| w.id != id);
+                self.watches_changed();
+            }
+            Cmd::CheckWatches => {
+                let ids: Vec<u32> = self.state.watches.iter().map(|w| w.id).collect();
+                ids.into_iter().for_each(|id| self.check_watch(id));
             }
             Cmd::AddTorrent(url, reply) => {
                 let name = rdm_torrent::link_name(&url);
@@ -675,6 +719,28 @@ impl Actor {
             self.dirty = true;
         }
         self.updated(id);
+    }
+
+    fn watches_changed(&mut self) {
+        self.dirty = true;
+        self.emit(Event::Watches(self.state.watches.clone()));
+    }
+
+    /// Reads a watched channel/playlist in the background (once at a time per watch).
+    fn check_watch(&mut self, id: u32) {
+        let Some(url) = self.state.watches.iter().find(|w| w.id == id).map(|w| w.url.clone()) else { return };
+        if !self.watching.insert(id) {
+            return;
+        }
+        let (tools, msg_tx) = (self.tools.clone(), self.msg_tx.clone());
+        tokio::spawn(async move {
+            let listed = async {
+                let ytdlp = tools.ytdlp().await?;
+                Ok(rdm_media::probe(&ytdlp, &url, None, None).await?.entries)
+            }
+            .await;
+            let _ = msg_tx.send(Msg::WatchListed(id, listed));
+        });
     }
 
     /// Calls off a pending automatic retry and starts the count afresh (the user acted).
@@ -1037,6 +1103,25 @@ impl Actor {
                 self.updated(id);
                 let _ = reply.send(dest);
             }
+            Msg::WatchListed(id, listed) => {
+                self.watching.remove(&id);
+                let now = chrono::Utc::now().timestamp();
+                let Some(watch) = self.state.watches.iter_mut().find(|w| w.id == id) else { return };
+                let new = match listed {
+                    Ok(entries) => watch.take_new(&entries, now),
+                    Err(_) => {
+                        // Try again at the next due time.
+                        watch.last_check = now;
+                        Vec::new()
+                    }
+                };
+                let (format, queue) = (watch.format.clone(), watch.queue);
+                for e in new {
+                    let id = self.push_media(e.url, e.title, format.clone(), queue);
+                    self.set_meta(id, e.thumbnail, e.duration);
+                }
+                self.watches_changed();
+            }
             Msg::Retry(id, generation) => {
                 // Only this item's latest timer, and only if nothing was done to it meanwhile.
                 if self.retry_gen.get(&id) != Some(&generation) || self.running.contains_key(&id) {
@@ -1157,6 +1242,9 @@ impl Actor {
     }
 
     fn on_tick(&mut self) {
+        let now = chrono::Utc::now().timestamp();
+        let due: Vec<u32> = self.state.watches.iter().filter(|w| w.due(now)).map(|w| w.id).collect();
+        due.into_iter().for_each(|id| self.check_watch(id));
         let mut changed = Vec::new();
         for (id, r) in &self.running {
             let p = r.progress.borrow().clone();

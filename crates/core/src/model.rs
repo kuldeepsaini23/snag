@@ -159,6 +159,8 @@ pub struct AppState {
     pub items: Vec<Item>,
     pub queues: Vec<Queue>,
     pub settings: Settings,
+    /// Watched channels and playlists.
+    pub watches: Vec<crate::watch::Watch>,
 }
 
 impl Default for AppState {
@@ -168,6 +170,7 @@ impl Default for AppState {
             items: Vec::new(),
             queues: vec![Queue { id: 0, name: "Main".into(), max_concurrent: usize::MAX, schedule: None }],
             settings: Settings::default(),
+            watches: Vec::new(),
         }
     }
 }

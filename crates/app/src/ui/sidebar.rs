@@ -54,6 +54,17 @@ pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
         list = list.push(entry(glyph, q.name.clone(), count(counts.queue(q.id)), m.library == lib, Message::SetLibrary(lib)));
     }
 
+    if !m.watches.is_empty() {
+        list = list.push(heading("Watching", c));
+        for w in &m.watches {
+            let remove = button(icon(Icon::X, 11)).style(style::ghost(c)).padding(3).on_press(Message::RemoveWatch(w.id));
+            let row = row![icon(Icon::FilmStrip, 15).color(c.text2), text(w.name.clone()).size(13).width(Fill).wrapping(iced::widget::text::Wrapping::None), remove]
+                .spacing(10)
+                .align_y(Alignment::Center);
+            list = list.push(container(row).padding([4, 10]).clip(true));
+        }
+    }
+
     list = list.push(heading("Sources", c));
     let extension_on = m.bridge_status.starts_with("Listening");
     list = list.push(entry(Icon::Browser, "Chrome extension".into(), on_off(extension_on), false, Message::OpenSettings(SettingsTab::Extension)));

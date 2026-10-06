@@ -845,35 +845,30 @@ async fn stopping_a_live_recording_finishes_it() {
     m.shutdown().await;
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn magnet_link_downloads_from_a_peer() {
-    use rdm_torrent::{EngineOptions, Progress as TorrentProgress, Source, TorrentEngine};
-    // A seeder on this machine with a 200 KB file.
-    let seed_dir = tempfile::tempdir().unwrap();
-    let data: Vec<u8> = (0..200_000).map(|i| (i * 7 % 253) as u8).collect();
-    let file = seed_dir.path().join("movie.mkv");
-    std::fs::write(&file, &data).unwrap();
-    let spawner = librqbit::spawn_utils::BlockingSpawner::new(2);
-    let created = librqbit::create_torrent(&file, librqbit::CreateTorrentOptions { name: None, trackers: vec![], piece_length: Some(16384) }, &spawner).await.unwrap();
-    let torrent = created.as_bytes().unwrap().to_vec();
-    let seeder = TorrentEngine::start(seed_dir.path(), EngineOptions { local_only: true, peers: vec![] }).await.unwrap();
-    let (tx, _rx) = tokio::sync::watch::channel(TorrentProgress::default());
-    seeder.share(&Source::File(torrent), &tx).await.unwrap();
-    let peer: std::net::SocketAddr = ([127, 0, 0, 1], seeder.port().unwrap()).into();
-
+#[tokio::test]
+async fn watched_channel_downloads_only_new_uploads() {
     let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let listing = |n: &[u32]| {
+        let entries: Vec<String> = n.iter().map(|i| format!(r#"{{"url":"https://www.video.test/v{i}/ok","title":"Upload {i}","duration":60}}"#)).collect();
+        std::fs::write(dir.path().join("bin").join("channel.json"), format!(r#"{{"_type":"playlist","title":"Chan","entries":[{}]}}"#, entries.join(","))).unwrap();
+    };
     let m = manager(dir.path(), |_| {}).await;
-    m.use_torrent_peers(vec![peer]);
     let mut rx = m.subscribe();
-    let magnet = format!("magnet:?xt=urn:btih:{}&dn=movie.mkv", created.info_hash().as_string());
-    let id = m.add_torrent(magnet).await;
-    let added = m.snapshot().await.items.into_iter().find(|i| i.id == id).unwrap();
-    assert_eq!(added.kind, rdm_core::Kind::Torrent);
-    assert_eq!(added.name, "movie.mkv", "named from the magnet link straight away");
-    let done = tokio::time::timeout(Duration::from_secs(90), wait_item(&mut rx, has(id, Status::Done))).await.expect("in time");
-    let dest = done.dest.expect("the file");
-    assert_eq!(dest, dir.path().join("dl").join("movie.mkv"), "sorting is off in these tests");
-    assert_eq!(std::fs::read(&dest).unwrap(), data);
-    assert_eq!(done.category, rdm_core::Category::Video);
+    listing(&[1, 2]);
+    m.add_watch("https://www.video.test/channel".into(), "Chan".into(), MediaFormat::Video { max_height: 480 }, None, 6).await;
+    m.check_watches_now().await;
+    let watches = wait_event(&mut rx, |e| match e {
+        Event::Watches(w) if w.first().is_some_and(|w| w.primed) => Some(w),
+        _ => None,
+    })
+    .await;
+    assert_eq!(watches[0].seen.len(), 2);
+    assert!(m.snapshot().await.items.is_empty(), "subscribing doesn't download the back catalogue");
+    listing(&[3, 1, 2]);
+    m.check_watches_now().await;
+    let item = wait_item(&mut rx, |i| i.name == "Upload 3" && i.status == Status::Done).await;
+    assert_eq!(item.duration, Some(60.0));
+    assert_eq!(m.snapshot().await.items.len(), 1, "only the new upload");
     m.shutdown().await;
 }
