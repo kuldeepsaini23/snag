@@ -282,3 +282,43 @@ async fn extension_pairs_with_one_click_after_the_user_allows() {
     assert_eq!(resp.status().as_u16(), 403);
     assert!(!resp.text().await.unwrap().contains(TOKEN));
 }
+
+/// The fake yt-dlp from the media crate, as bin/yt-dlp.exe in `data_dir`.
+fn install_fake_ytdlp(data_dir: &Path) {
+    static FAKE: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    let fake = FAKE.get_or_init(|| {
+        let out = std::env::temp_dir().join(format!("rdm-bridge-fake-ytdlp-{}.exe", std::process::id()));
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../media/tests/fake_ytdlp.rs");
+        let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".into());
+        let status = std::process::Command::new(rustc).args(["--edition", "2024", "-o"]).arg(&out).arg(&src).status().unwrap();
+        assert!(status.success(), "couldn't compile the fake yt-dlp");
+        out
+    });
+    std::fs::create_dir_all(data_dir.join("bin")).unwrap();
+    std::fs::copy(fake, data_dir.join("bin").join("yt-dlp.exe")).unwrap();
+}
+
+#[tokio::test]
+async fn unknown_video_site_falls_back_to_the_stream_the_page_played() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let m = manager(dir.path()).await;
+    let b = start(m.clone(), 48221..=48230).await.unwrap();
+    let mut rx = m.subscribe();
+    // A page yt-dlp can't read ("fail"), but the extension saw an MP4 playing on it.
+    let body = json!({ "url": "https://videos.example/watch/fail", "referrer": "https://videos.example/watch/fail", "fallback": "https://cdn.example/v/movie.mp4" });
+    let (status, reply) = post(b.port, body, TOKEN).await;
+    assert_eq!(status, 202, "read in the background: {reply}");
+    let item = tokio::time::timeout(std::time::Duration::from_secs(20), async {
+        loop {
+            if let Ok(rdm_core::Event::Added(i)) = rx.recv().await {
+                return i;
+            }
+        }
+    })
+    .await
+    .expect("the fallback was added");
+    assert_eq!(item.url, "https://cdn.example/v/movie.mp4");
+    assert_eq!(item.kind, rdm_core::Kind::Http);
+    assert_eq!(item.referrer.as_deref(), Some("https://videos.example/watch/fail"));
+}

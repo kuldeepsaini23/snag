@@ -99,7 +99,7 @@ async function init() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab || !tab.url) return say("No page to send.");
     say("Sending…");
-    const result = await chrome.runtime.sendMessage({ type: "send", url: tab.url });
+    const result = await chrome.runtime.sendMessage({ type: "send", url: tab.url, referrer: tab.url, tabId: tab.id, withFallback: true });
     say(result.ok ? "Sent to Snag ✓" : result.error);
   });
 

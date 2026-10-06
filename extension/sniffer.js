@@ -31,6 +31,10 @@ function classifyMedia(r) {
   const path = u.pathname;
 
   if (/\.m3u8$/i.test(path) || type.includes("mpegurl")) return { kind: "hls", url: r.url };
+  // A player that names its playlist in the query (?src=…/master.m3u8): the playlist is the media.
+  for (const value of u.searchParams.values()) {
+    if (/^https?:\/\/.+\.m3u8(\?|$)/i.test(value)) return { kind: "hls", url: value };
+  }
   if (/\.mpd$/i.test(path) || type === "application/dash+xml") return { kind: "dash", url: r.url };
   if (SEGMENT_EXT.test(path) || SEGMENT_NAME.test(path) || type === "video/mp2t" || type.includes("segment")) return null;
 
@@ -46,6 +50,14 @@ function classifyMedia(r) {
   }
   if (size > 0 && size < MIN_FILE_BYTES) return null;
   return size > 0 && r.status === 206 ? { kind: "file", url: r.url, size } : { kind: "file", url: r.url };
+}
+
+/** What to download if the page itself can't be read: a stream playlist, else the biggest file. */
+function bestMedia(items) {
+  if (!items.length) return null;
+  const playlist = items.find((i) => i.kind !== "file");
+  if (playlist) return playlist;
+  return items.reduce((a, b) => ((b.size || 0) > (a.size || 0) ? b : a));
 }
 
 /** The same media fetched in pieces has range parameters in its query: ignore them. */
@@ -80,4 +92,4 @@ class MediaList {
   }
 }
 
-if (typeof module !== "undefined") module.exports = { classifyMedia, mediaKey, MediaList };
+if (typeof module !== "undefined") module.exports = { classifyMedia, mediaKey, MediaList, bestMedia };

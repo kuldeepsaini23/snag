@@ -304,16 +304,16 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             }
             model.notice = None;
             let m = app.manager.clone();
-            if torrent {
-                return Task::perform(async move { m.add_torrent(url).await }, Message::Added);
-            }
-            if rdm_media::gallery::is_gallery_url(&url) {
-                return Task::perform(async move { m.add_gallery(url).await }, Message::Added);
-            }
-            if rdm_media::is_media_url(&url) {
-                model.probing = true;
-                model.notice = Some("Reading video info… (the first time also fetches yt-dlp)".into());
-                return Task::perform(async move { let r = m.probe_media(url.clone()).await; (url, r) }, |(url, r)| Message::Probed(url, r));
+            match rdm_core::route::route(&url) {
+                rdm_core::route::Route::Torrent => return Task::perform(async move { m.add_torrent(url).await }, Message::Added),
+                rdm_core::route::Route::Gallery => return Task::perform(async move { m.add_gallery(url).await }, Message::Added),
+                rdm_core::route::Route::Media => {
+                    // yt-dlp reads it (it knows 1,800+ sites; for any other page it looks for a video).
+                    model.probing = true;
+                    model.notice = Some("Reading the page…".into());
+                    return Task::perform(async move { let r = m.probe_media(url.clone()).await; (url, r) }, |(url, r)| Message::Probed(url, r));
+                }
+                rdm_core::route::Route::File => {}
             }
             return Task::perform(async move { m.add(url).await }, Message::Added);
         }
@@ -570,6 +570,12 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
                     model.notice = None;
                     let m = app.manager.clone();
                     return Task::perform(async move { m.add_gallery(url).await }, Message::Added);
+                }
+                // Not a site yt-dlp knows and no video on the page: it may be a plain download link.
+                Err(e) if !rdm_media::is_media_url(&url) && e.contains("Unsupported URL") => {
+                    model.notice = None;
+                    let m = app.manager.clone();
+                    return Task::perform(async move { m.add(url).await }, Message::Added);
                 }
                 Err(e) => model.notice = Some(format!("Couldn't read that link: {e}")),
             }

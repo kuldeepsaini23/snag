@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Snag — Download Manager",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Sends downloads, videos and images to the Snag desktop app.",
   "permissions": ["downloads", "storage", "contextMenus", "cookies", "webRequest", "scripting"],
   "host_permissions": ["http://127.0.0.1/*", "<all_urls>"],
@@ -10,20 +10,7 @@
   "icons": { "16": "icon-16.png", "32": "icon-32.png", "48": "icon-48.png", "128": "icon-128.png" },
   "content_scripts": [
     {
-      "matches": [
-        "https://www.youtube.com/*",
-        "https://m.youtube.com/*",
-        "https://vimeo.com/*",
-        "https://x.com/*",
-        "https://twitter.com/*",
-        "https://www.instagram.com/*",
-        "https://www.tiktok.com/*",
-        "https://www.dailymotion.com/*",
-        "https://www.twitch.tv/*",
-        "https://soundcloud.com/*",
-        "https://www.facebook.com/*",
-        "https://www.reddit.com/*"
-      ],
+      "matches": ["http://*/*", "https://*/*"],
       "js": ["catch-rules.js", "content.js"],
       "run_at": "document_idle"
     }

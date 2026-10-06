@@ -21,6 +21,10 @@ fn main() {
         println!("{}", listing.unwrap_or_else(|| r#"{"_type":"playlist","title":"Channel","entries":[]}"#.into()));
         return;
     }
+    if args.iter().any(|a| a == "-J") && what == "fail" {
+        eprintln!("ERROR: Unsupported URL: {url}");
+        std::process::exit(1);
+    }
     if args.iter().any(|a| a == "-J") {
         println!(
             r#"{{"_type":"video","title":"Fake clip","duration":3.0,"formats":[{{"vcodec":"avc1","acodec":"none","height":480,"filesize":300}},{{"vcodec":"none","acodec":"mp4a","filesize":100}}]}}"#

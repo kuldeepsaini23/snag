@@ -5,6 +5,7 @@ pub mod manager;
 pub mod model;
 pub mod watch;
 pub mod planner;
+pub mod route;
 pub mod schedule;
 pub mod store;
 

@@ -10,6 +10,15 @@ test("HLS and DASH playlists are found on any site", () => {
   assert.strictEqual(classifyMedia(resp("https://cdn.x/v/index", "application/vnd.apple.mpegurl")).kind, "hls");
   assert.strictEqual(classifyMedia(resp("https://cdn.x/v/manifest.mpd")).kind, "dash");
   assert.strictEqual(classifyMedia(resp("https://cdn.x/v/m", "application/dash+xml")).kind, "dash");
+  assert.strictEqual(classifyMedia(resp("https://player.x/load?src=https%3A%2F%2Fcdn.x%2Fhls%2Fmaster.m3u8", "text/plain")).kind, "hls", "named in the query");
+  assert.strictEqual(classifyMedia(resp("https://cdn.x/hls/720p/index-v1-a1.m3u8?sig=1", "application/octet-stream")).kind, "hls");
+});
+
+test("the best media to fall back on: a playlist, else the biggest file", () => {
+  const { bestMedia } = require("../sniffer.js");
+  assert.strictEqual(bestMedia([]), null);
+  assert.strictEqual(bestMedia([{ kind: "file", url: "a", size: 5 }, { kind: "file", url: "b", size: 50 }]).url, "b");
+  assert.strictEqual(bestMedia([{ kind: "file", url: "a", size: 500 }, { kind: "hls", url: "m" }]).url, "m");
 });
 
 test("progressive video and audio files of 1 MB or more are found", () => {

@@ -6,6 +6,7 @@ use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use rdm_core::route::Route;
 use rdm_core::{Cookie, Manager};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -60,6 +61,9 @@ struct AddRequest {
     /// Entries that don't parse are skipped rather than failing the whole request.
     #[serde(default)]
     cookies: Vec<Value>,
+    /// The best stream the extension saw playing on the page: used if yt-dlp can't read the page.
+    #[serde(default)]
+    fallback: Option<String>,
 }
 
 async fn add(State(manager): State<Manager>, headers: HeaderMap, Json(req): Json<AddRequest>) -> (StatusCode, Json<Value>) {
@@ -74,44 +78,65 @@ async fn add(State(manager): State<Manager>, headers: HeaderMap, Json(req): Json
     if !cookies.is_empty() {
         manager.remember_cookies(cookies);
     }
-    // Magnet links and .torrent files (also .torrent downloads the browser caught) are torrents.
-    if torrent {
-        let id = manager.add_torrent(req.url).await;
-        return (StatusCode::OK, Json(json!({ "id": id.0 })));
-    }
-    // Page links on image sites go to gallery-dl (they'd otherwise save HTML). A real file the
-    // browser was downloading (kind "file": already cancelled there) always stays a file download.
-    if req.kind.as_deref() != Some("file") && rdm_media::gallery::is_gallery_url(&req.url) {
-        let id = manager.add_gallery(req.url).await;
-        return (StatusCode::OK, Json(json!({ "id": id.0 })));
-    }
-    let media = match req.kind.as_deref() {
-        Some("media") => true,
-        Some("file") => false,
-        _ => rdm_media::is_media_url(&req.url),
+    let referrer = req.referrer.filter(|r| r.starts_with("http"));
+    // A file the browser was downloading (already cancelled there) stays a file; anything else
+    // goes where its link belongs.
+    let route = match (req.kind.as_deref(), rdm_core::route::route(&req.url)) {
+        (_, Route::Torrent) => Route::Torrent,
+        (Some("file"), _) => Route::File,
+        (Some("media"), _) => Route::Media,
+        (_, route) => route,
     };
-    if media {
-        // A stream found on a page (the extension's media sniffer) needs that page as Referer.
-        if let Some(page) = req.referrer.clone().filter(|r| r.starts_with("http")) {
-            manager.remember_referrer(req.url.clone(), page);
+    match route {
+        Route::Torrent => {
+            let id = manager.add_torrent(req.url).await;
+            (StatusCode::OK, Json(json!({ "id": id.0 })))
         }
-        // Reading a video page takes a few seconds; answer now, add when ready.
-        tokio::spawn(add_media(manager, req.url));
-        return (StatusCode::ACCEPTED, Json(json!({ "queued": true })));
+        Route::Gallery => {
+            let id = manager.add_gallery(req.url).await;
+            (StatusCode::OK, Json(json!({ "id": id.0 })))
+        }
+        Route::Media => {
+            // A stream found on a page (the extension's media sniffer) needs that page as Referer.
+            if let Some(page) = referrer.clone() {
+                manager.remember_referrer(req.url.clone(), page);
+            }
+            // Reading a video page takes a few seconds; answer now, add when ready.
+            tokio::spawn(add_media(manager, req.url, req.fallback.filter(|f| f.starts_with("http")), referrer));
+            (StatusCode::ACCEPTED, Json(json!({ "queued": true })))
+        }
+        Route::File => {
+            let id = manager.add_with(req.url, referrer).await;
+            (StatusCode::OK, Json(json!({ "id": id.0 })))
+        }
     }
-    let id = manager.add_with(req.url, req.referrer.filter(|r| r.starts_with("http"))).await;
-    (StatusCode::OK, Json(json!({ "id": id.0 })))
 }
 
 /// Reads the page, then lets the user choose the quality in the app window.
-async fn add_media(manager: Manager, url: String) {
+/// Reads the page with yt-dlp. If it can't (a site it doesn't know), falls back to the stream
+/// the extension saw playing on the page.
+async fn add_media(manager: Manager, url: String, fallback: Option<String>, referrer: Option<String>) {
     match manager.probe_media(url.clone()).await {
         Ok(info) => manager.offer_media(url, info).await,
         // A photo post (no video in it): save its images instead.
         Err(e) if rdm_media::gallery::is_photo_post(&url, &e) => {
             manager.add_gallery(url).await;
         }
-        Err(e) => manager.notify(format!("Couldn't read the link from the browser: {e}")).await,
+        Err(e) => match fallback {
+            Some(stream) if rdm_core::route::route(&stream) == Route::File => {
+                manager.add_with(stream, referrer).await;
+            }
+            Some(stream) => {
+                if let Some(page) = referrer {
+                    manager.remember_referrer(stream.clone(), page);
+                }
+                match manager.probe_media(stream.clone()).await {
+                    Ok(info) => manager.offer_media(stream, info).await,
+                    Err(e) => manager.notify(format!("Couldn't read the video on that page: {e}")).await,
+                }
+            }
+            None => manager.notify(format!("Couldn't find a video on that page: {e}")).await,
+        },
     }
 }
 

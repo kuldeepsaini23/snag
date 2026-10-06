@@ -41,8 +41,29 @@ async function cookiesFor(url) {
 
 // ---------- media sniffer: media playing on any page ----------
 
-/** tabId -> MediaList of what the page fetched (cleared when the tab navigates). */
+/** tabId -> MediaList of what the page fetched (cleared when the tab navigates). Also kept in
+ * session storage: the browser stops this worker when idle and the list must survive that. */
 const tabMedia = new Map();
+
+async function mediaOf(tabId) {
+  let list = tabMedia.get(tabId);
+  if (!list) {
+    list = new MediaList(50);
+    try {
+      const saved = (await chrome.storage.session.get(`media:${tabId}`))[`media:${tabId}`] || [];
+      for (const item of saved) list.add(item);
+    } catch (_) {
+      // No session storage: memory only.
+    }
+    tabMedia.set(tabId, list);
+  }
+  return list;
+}
+
+function forgetMedia(tabId) {
+  tabMedia.delete(tabId);
+  chrome.storage.session.remove(`media:${tabId}`).catch(() => {});
+}
 
 function header(headers, name) {
   const h = (headers || []).find((x) => x.name.toLowerCase() === name);
@@ -67,9 +88,13 @@ chrome.webRequest.onResponseStarted.addListener(
       contentRange: header(d.responseHeaders, "content-range"),
     });
     if (!found) return;
-    let list = tabMedia.get(d.tabId);
-    if (!list) tabMedia.set(d.tabId, (list = new MediaList(50)));
-    if (list.add({ ...found, size: found.size || size })) showCount(d.tabId);
+    mediaOf(d.tabId).then((list) => {
+      if (!list.add({ ...found, size: found.size || size })) return;
+      chrome.storage.session.set({ [`media:${d.tabId}`]: list.items }).catch(() => {});
+      showCount(d.tabId);
+      // The page shows its "Download with Snag" button once it plays something.
+      chrome.tabs.sendMessage(d.tabId, { type: "media-count", n: list.items.length }).catch(() => {});
+    });
   },
   { urls: ["<all_urls>"] },
   ["responseHeaders"],
@@ -77,11 +102,11 @@ chrome.webRequest.onResponseStarted.addListener(
 
 chrome.tabs.onUpdated.addListener((tabId, change) => {
   if (change.status === "loading" && change.url) {
-    tabMedia.delete(tabId);
+    forgetMedia(tabId);
     showCount(tabId);
   }
 });
-chrome.tabs.onRemoved.addListener((tabId) => tabMedia.delete(tabId));
+chrome.tabs.onRemoved.addListener((tabId) => forgetMedia(tabId));
 
 /** One-click pairing: Snag asks the user "Allow?", then hands over the code. */
 async function pair() {
@@ -108,12 +133,12 @@ async function pairedApp() {
   return { app, token };
 }
 
-async function sendToApp(url, kind, referrer) {
+async function sendToApp(url, kind, referrer, fallback) {
   const { app, token } = await pairedApp();
   const resp = await fetch(`http://127.0.0.1:${app.port}/add`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-RDM-Token": token },
-    body: JSON.stringify({ url, kind, referrer: referrer || undefined, cookies: await cookiesFor(url) }),
+    body: JSON.stringify({ url, kind, referrer: referrer || undefined, fallback: fallback || undefined, cookies: await cookiesFor(url) }),
   });
   const body = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error(body.error || `Snag answered ${resp.status}`);
@@ -196,11 +221,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     return true;
   }
   if (msg.type === "media-list") {
-    reply({ items: tabMedia.get(msg.tabId)?.items || [] });
-    return false;
+    const tabId = msg.tabId ?? _sender.tab?.id;
+    mediaOf(tabId).then((list) => reply({ items: list.items }));
+    return true;
   }
   if (msg.type === "send") {
-    sendToApp(msg.url, msg.kind, msg.referrer)
+    // Sending a page: the stream it played is the fallback if Snag can't read the page itself.
+    const tabId = msg.tabId ?? _sender.tab?.id;
+    const best = msg.withFallback && tabId !== undefined ? mediaOf(tabId).then((l) => bestMedia(l.items)) : Promise.resolve(null);
+    best
+      .then((b) => sendToApp(msg.url, msg.kind, msg.referrer, b && b.url !== msg.url ? b.url : undefined))
       .then((result) => {
         flash(true);
         reply({ ok: true, result });

@@ -28,7 +28,7 @@
     button.addEventListener("click", () => {
       button.disabled = true;
       label.textContent = "Sending…";
-      chrome.runtime.sendMessage({ type: "send", url: location.href, kind: "media" }, (result) => {
+      chrome.runtime.sendMessage({ type: "send", url: location.href, kind: "media", referrer: location.href, withFallback: true }, (result) => {
         // Not connected yet: the background connects first (Snag asks "Allow?") and then sends.
         label.textContent = result && result.ok ? "Sent to Snag ✓" : (result && result.error) || "Snag not reachable";
         setTimeout(() => {
@@ -40,18 +40,31 @@
     return host;
   }
 
+  // Shown on known video pages, and on any page once it plays a video or audio stream.
   let lastUrl = "";
-  function sync() {
-    if (location.href === lastUrl) return;
-    lastUrl = location.href;
+  let mediaSeen = 0;
+  function show(on) {
     const existing = document.getElementById(HOST_ID);
-    if (isVideoPage(location.hostname, location.pathname)) {
-      if (!existing) document.documentElement.appendChild(build());
-    } else if (existing) {
-      existing.remove();
-    }
+    if (on && !existing) document.documentElement.appendChild(build());
+    if (!on && existing) existing.remove();
   }
-
+  function sync() {
+    if (location.href !== lastUrl) {
+      lastUrl = location.href;
+      mediaSeen = 0;
+    }
+    show(isVideoPage(location.hostname, location.pathname) || mediaSeen > 0);
+  }
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.type === "media-count") {
+      mediaSeen = msg.n;
+      sync();
+    }
+  });
+  chrome.runtime.sendMessage({ type: "media-list" }, (r) => {
+    mediaSeen = (r && r.items && r.items.length) || 0;
+    sync();
+  });
   sync();
   setInterval(sync, 1000);
 })();
