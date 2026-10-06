@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
+pub mod disguise;
 pub mod gallery;
 
 pub const YTDLP_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
@@ -454,12 +455,23 @@ pub async fn download(
     // The final file was moved into place: whatever failed after that (subtitles, embedding)
     // doesn't undo the download.
     if let (false, Some(path)) = (status.success(), final_path.clone()) {
-        return Ok(MediaOutcome::Completed(path));
+        return Ok(MediaOutcome::Completed(undisguise(path).await));
     }
     if !status.success() {
         return Err(error_from(&stderr).unwrap_or_else(|| format!("yt-dlp failed ({status})")));
     }
-    final_path.map(MediaOutcome::Completed).ok_or_else(|| "yt-dlp finished without reporting the file".to_string())
+    let path = final_path.ok_or_else(|| "yt-dlp finished without reporting the file".to_string())?;
+    Ok(MediaOutcome::Completed(undisguise(path).await))
+}
+
+/// A stream whose pieces were disguised as images becomes a playable `.ts` (see `disguise`);
+/// any other file is returned as it is.
+async fn undisguise(path: PathBuf) -> PathBuf {
+    let probe = path.clone();
+    match tokio::task::spawn_blocking(move || disguise::unwrap(&probe)).await {
+        Ok(Ok(Some(fixed))) => fixed,
+        _ => path,
+    }
 }
 
 #[cfg(test)]
