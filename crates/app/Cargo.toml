@@ -12,7 +12,7 @@ rdm-core = { path = "../core" }
 rdm-media = { path = "../media" }
 rdm-bridge = { path = "../bridge" }
 rdm-engine = { path = "../engine" }
-iced = { version = "0.14", features = ["tokio", "image", "qr_code"] }
+iced = { version = "0.14", features = ["tokio", "image", "qr_code", "canvas"] }
 tokio.workspace = true
 futures-util.workspace = true
 chrono.workspace = true

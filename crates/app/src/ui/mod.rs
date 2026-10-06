@@ -1,6 +1,7 @@
 //! The Figma views. Logic lives in `state.rs` / `view.rs` / `update.rs`; this module only draws.
 
 pub mod icon;
+mod color_picker;
 mod inspector;
 mod list;
 mod picker;

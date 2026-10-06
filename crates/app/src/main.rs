@@ -1,6 +1,7 @@
 mod choices;
 mod format;
 mod motion;
+mod hsv;
 mod queues;
 #[cfg(debug_assertions)]
 mod snap;

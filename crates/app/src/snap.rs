@@ -178,6 +178,18 @@ fn apply(m: &mut Model, scene: &str) {
         "blue" => m.settings.accent = "#0a84ff".into(),
         "white" => m.settings.accent = "#f5f5f7".into(),
         "orange" => m.settings.accent = "#ff9f0a".into(),
+        // The colour picker after a drag: purple from the strip, a little muted in the square.
+        "accent-picker" => {
+            m.open_settings(SettingsTab::Appearance);
+            m.drag_accent_hue(265.0);
+            m.drag_accent_sv(0.62, 0.9);
+        }
+        // A grey typed into the box: the strip keeps the purple hue it had.
+        "accent-grey" => {
+            m.open_settings(SettingsTab::Appearance);
+            m.drag_accent_hue(265.0);
+            m.type_accent("#8a8a8a".into());
+        }
         s if s.starts_with("settings-") => {
             let tab = match &s[9..] {
                 "appearance" => SettingsTab::Appearance,

@@ -147,6 +147,9 @@ pub enum Message {
     DraftQuality(Option<MediaFormat>),
     DraftAsk(bool),
     DraftAccent(String),
+    /// The accent picker: saturation and value (0 … 1) from the square, hue (degrees) from the strip.
+    AccentSv(f32, f32),
+    AccentHue(f32),
     CopyToken,
     NewToken,
     AddQueue,
@@ -576,7 +579,9 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::DraftClipboard(v) => model.draft.clipboard_watch = v,
         Message::DraftQuality(q) => model.draft.preferred_quality = q,
         Message::DraftAsk(v) => model.draft.ask_quality = v,
-        Message::DraftAccent(v) => model.draft.accent = v,
+        Message::DraftAccent(v) => model.type_accent(v),
+        Message::AccentSv(s, v) => model.drag_accent_sv(s, v),
+        Message::AccentHue(h) => model.drag_accent_hue(h),
         Message::CopyToken => {
             model.notice = Some("Pairing code copied".into());
             return iced::clipboard::write(model.settings.extension_token.clone());

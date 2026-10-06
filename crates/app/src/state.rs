@@ -1,3 +1,4 @@
+use crate::hsv::Hsv;
 use crate::queues::{QueueDraft, drafts_to_queues};
 use crate::view::{Filter, Library};
 use rdm_core::{AppState, Event, Item, ItemId, MediaFormat, MediaInfo, Queue, QueueId, Settings, Status};
@@ -257,6 +258,29 @@ impl Model {
         }
     }
 
+    /// A hex typed into the box or a swatch: the picker follows a valid one, unless it already
+    /// shows that colour (so rounding never nudges its cursors).
+    pub fn type_accent(&mut self, hex: String) {
+        if let Some(rgb) = crate::hsv::parse(&hex)
+            && rgb != self.accent_hsv.to_rgb()
+        {
+            self.accent_hsv = Hsv::from_rgb(rgb, self.accent_hsv);
+        }
+        self.draft.accent = hex;
+    }
+
+    /// The saturation/value square was clicked or dragged (both 0 … 1).
+    pub fn drag_accent_sv(&mut self, s: f32, v: f32) {
+        self.accent_hsv = Hsv::new(self.accent_hsv.h, s, v);
+        self.draft.accent = self.accent_hsv.to_hex();
+    }
+
+    /// The hue strip was clicked or dragged (degrees).
+    pub fn drag_accent_hue(&mut self, h: f32) {
+        self.accent_hsv = Hsv::new(h, self.accent_hsv.s, self.accent_hsv.v);
+        self.draft.accent = self.accent_hsv.to_hex();
+    }
+
     pub fn open_search(&mut self) {
         self.search_open = true;
     }
@@ -348,6 +372,8 @@ pub struct Model {
     pub more_open: bool,
     /// The filter tabs' measured widths, for the sliding underline.
     pub tab_widths: Vec<f32>,
+    /// Where the accent picker's cursors are (it remembers the hue of a grey, see `hsv.rs`).
+    pub accent_hsv: Hsv,
 }
 
 impl Default for Model {
@@ -394,6 +420,7 @@ impl Default for Model {
             hovered: None,
             more_open: false,
             tab_widths: Vec::new(),
+            accent_hsv: Hsv::new(0.0, 1.0, 1.0),
         }
     }
 }
@@ -525,6 +552,7 @@ impl Model {
 
     pub fn open_settings(&mut self, tab: SettingsTab) {
         self.draft = Draft::from_settings(&self.settings);
+        self.type_accent(self.settings.accent.clone());
         self.queue_drafts = self.queues.iter().map(QueueDraft::from_queue).collect();
         self.settings_tab = tab;
         self.notice = None;
@@ -891,6 +919,41 @@ mod tests {
         assert_eq!(m.selected, Some(ItemId(3)));
         m.escape_downloads();
         assert_eq!(m.selected, None);
+    }
+
+    #[test]
+    fn hex_and_picker_agree() {
+        let mut m = Model::default();
+        m.open_settings(SettingsTab::Appearance);
+        assert_eq!(m.accent_hsv.to_hex(), m.settings.accent, "the picker opens on the saved accent");
+        // Dragging writes the hex box, and the preview follows.
+        m.drag_accent_hue(211.0);
+        m.drag_accent_sv(0.96, 1.0);
+        assert_eq!(m.draft.accent, m.accent_hsv.to_hex());
+        assert_eq!(m.accent_hex(), m.draft.accent, "the window previews the dragged colour");
+        // The box echoing what the picker shows doesn't move the picker (no rounding drift).
+        let before = m.accent_hsv;
+        m.type_accent(m.draft.accent.to_uppercase());
+        assert_eq!(m.accent_hsv, before);
+        // Half-typed: the picker waits; a whole hex moves it.
+        m.type_accent("#32".into());
+        assert_eq!(m.accent_hsv, before);
+        m.type_accent("#32d74b".into());
+        assert_eq!(m.accent_hsv.to_hex(), "#32d74b");
+        m.type_accent("#fff".into());
+        assert_eq!(m.accent_hsv.to_hex(), "#ffffff", "short hex too");
+        // A grey typed in keeps the hue the strip shows; dragging back into colour starts there.
+        m.drag_accent_hue(120.0);
+        m.type_accent("#808080".into());
+        assert_eq!(m.accent_hsv.h, 120.0);
+        m.drag_accent_sv(1.0, 1.0);
+        assert_eq!(m.draft.accent, "#00ff00");
+        // Black keeps both hue and saturation, so the cursor stays where it was dragged.
+        m.drag_accent_sv(0.5, 0.0);
+        assert_eq!(m.draft.accent, "#000000");
+        assert_eq!((m.accent_hsv.h, m.accent_hsv.s), (120.0, 0.5));
+        let (saved, _) = m.close_settings().expect("valid");
+        assert_eq!(saved.accent, "#000000", "closing saves what the picker shows");
     }
 
     #[test]
