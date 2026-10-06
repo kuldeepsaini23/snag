@@ -694,3 +694,20 @@ async fn refresh_link_ignores_bad_links_and_running_items() {
     assert_eq!(m.snapshot().await.items[0].url, s.url("/file/1000"), "only http(s) links");
     m.shutdown().await;
 }
+
+#[tokio::test]
+async fn subtitle_setting_reaches_ytdlp() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let m = manager(dir.path(), |s| {
+        s.subtitles = true;
+        s.subtitle_langs = "en.*,hi".into();
+    })
+    .await;
+    let mut rx = m.subscribe();
+    let id = m.add_media("https://www.video.test/ok".into(), "Clip".into(), MediaFormat::Video { max_height: 480 }).await;
+    wait_item(&mut rx, has(id, Status::Done)).await;
+    let args = std::fs::read_to_string(dir.path().join("dl").join("fake-args.txt")).unwrap();
+    assert!(args.contains("--sub-langs\nen.*,hi") && args.contains("--embed-subs"), "{args}");
+    m.shutdown().await;
+}

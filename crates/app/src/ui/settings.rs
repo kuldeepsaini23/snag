@@ -156,6 +156,13 @@ fn general(m: &Model, c: Colors) -> Element<'_, Message> {
             vec![
                 line("Quality", "Picked for you, or pre-selected in the quality list", quality.into(), c),
                 line("Ask every time", "Show the quality list for every video link", switch(d.ask_quality, Message::DraftAsk, c), c),
+                line("Subtitles", "Fetch subtitles (also auto-generated ones) and embed them in the video", switch(d.subtitles, Message::DraftSubtitles, c), c),
+                line(
+                    "Subtitle languages",
+                    "Language codes, comma separated: en.* = all English, hi = Hindi, all = everything",
+                    field("en.*", &d.subtitle_langs, 120.0, Message::DraftSubtitleLangs, c),
+                    c,
+                ),
             ],
             c,
         ),

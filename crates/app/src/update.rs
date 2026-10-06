@@ -70,6 +70,8 @@ pub enum Message {
     /// Show the notifications collected since the last flush.
     FlushNotes,
     DraftNotify(bool),
+    DraftSubtitles(bool),
+    DraftSubtitleLangs(String),
     RefreshTyped(ItemId, String),
     /// Use the typed link for this item.
     RefreshUrl(ItemId),
@@ -292,6 +294,8 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             }
         }
         Message::DraftNotify(v) => model.draft.notify = v,
+        Message::DraftSubtitles(v) => model.draft.subtitles = v,
+        Message::DraftSubtitleLangs(v) => model.draft.subtitle_langs = v,
         Message::RefreshTyped(id, text) => model.refresh_typed(id, text),
         Message::RefreshUrl(id) => {
             if let Some(url) = model.take_refresh(id) {

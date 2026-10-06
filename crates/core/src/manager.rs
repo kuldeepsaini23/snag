@@ -766,7 +766,8 @@ impl Actor {
         let settings = &self.state.settings;
         let dir = media_dir(settings, &format);
         let cookies = cookie_file(&self.jar, &self.cookie_dir, &id.0.to_string(), &url);
-        let opts = MediaOptions { cookies: cookies.clone(), limit_bps, temp_dir: work_dir };
+        let subtitles = (settings.subtitles && !settings.subtitle_langs.trim().is_empty()).then(|| settings.subtitle_langs.trim().to_string());
+        let opts = MediaOptions { cookies: cookies.clone(), limit_bps, temp_dir: work_dir, subtitles };
         let (tools, msg_tx) = (self.tools.clone(), self.msg_tx.clone());
         tokio::spawn(async move {
             let result = async {
@@ -805,7 +806,7 @@ impl Actor {
         let name = self.state.item(id).map(|i| i.name.clone()).unwrap_or_else(|| crate::model::gallery_name(&url));
         let dir = base.join(name);
         let cookies = cookie_file(&self.jar, &self.cookie_dir, &id.0.to_string(), &url);
-        let opts = MediaOptions { cookies: cookies.clone(), limit_bps, temp_dir: None };
+        let opts = MediaOptions { cookies: cookies.clone(), limit_bps, ..Default::default() };
         let (tools, msg_tx) = (self.tools.clone(), self.msg_tx.clone());
         tokio::spawn(async move {
             let result = async {

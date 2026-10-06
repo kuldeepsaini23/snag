@@ -104,6 +104,10 @@ pub struct Settings {
     pub preferred_quality: Option<MediaFormat>,
     /// Windows notifications when downloads finish or fail.
     pub notify: bool,
+    /// Videos: fetch subtitles and embed them in the file.
+    pub subtitles: bool,
+    /// Subtitle languages for yt-dlp (`en.*`, `en.*,hi`, `all`).
+    pub subtitle_langs: String,
 }
 
 impl Default for Settings {
@@ -122,6 +126,8 @@ impl Default for Settings {
             ask_quality: true,
             preferred_quality: None,
             notify: true,
+            subtitles: false,
+            subtitle_langs: "en.*".into(),
         }
     }
 }

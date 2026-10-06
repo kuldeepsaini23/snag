@@ -88,6 +88,8 @@ pub struct MediaOptions {
     pub limit_bps: u64,
     /// Where partial files live until the final file is moved into place (`-P temp:`).
     pub temp_dir: Option<PathBuf>,
+    /// Videos: subtitle languages to fetch and embed (yt-dlp `--sub-langs`, e.g. "en.*").
+    pub subtitles: Option<String>,
 }
 
 impl MediaInfo {
@@ -225,6 +227,9 @@ pub fn build_args(format: &MediaFormat, out_dir: &Path, url: &str, opts: &MediaO
         MediaFormat::AudioMp3 => {
             args.extend(["-f", "ba/b", "-x", "--audio-format", "mp3", "--audio-quality", "0"].map(String::from));
         }
+    }
+    if let (MediaFormat::Video { .. }, Some(langs)) = (format, &opts.subtitles) {
+        args.extend(["--write-subs".into(), "--write-auto-subs".into(), "--sub-langs".into(), langs.clone(), "--embed-subs".into()]);
     }
     if let Some(cookies) = &opts.cookies {
         args.extend(["--cookies".into(), cookies.display().to_string()]);
@@ -499,11 +504,26 @@ mod tests {
     }
 
     #[test]
+    fn subtitles_are_fetched_and_embedded_for_videos_only() {
+        let opts = MediaOptions { subtitles: Some("en.*,hi".into()), ..Default::default() };
+        let video = build_args(&MediaFormat::Video { max_height: 720 }, Path::new("out"), "u", &opts);
+        assert!(window(&video, ["--sub-langs", "en.*,hi"]), "{video:?}");
+        for flag in ["--write-subs", "--write-auto-subs", "--embed-subs"] {
+            assert!(video.iter().any(|a| a == flag), "{flag}: {video:?}");
+        }
+        let mp3 = build_args(&MediaFormat::AudioMp3, Path::new("out"), "u", &opts);
+        assert!(!mp3.iter().any(|a| a.contains("sub")), "no subtitles in an MP3: {mp3:?}");
+        let none = build_args(&MediaFormat::Video { max_height: 720 }, Path::new("out"), "u", &MediaOptions::default());
+        assert!(!none.iter().any(|a| a.contains("sub")));
+    }
+
+    #[test]
     fn args_carry_cookies_limit_and_temp_dir() {
         let opts = MediaOptions {
             cookies: Some(PathBuf::from(r"C:\rdm\cookies\7.txt")),
             limit_bps: 512 * 1024,
             temp_dir: Some(PathBuf::from(r"C:\dl\Videos\.rdm-parts\7")),
+            ..Default::default()
         };
         let args = build_args(&MediaFormat::Video { max_height: 720 }, Path::new(r"C:\dl\Videos"), "https://youtu.be/x", &opts);
         assert!(window(&args, ["--cookies", r"C:\rdm\cookies\7.txt"]), "{args:?}");

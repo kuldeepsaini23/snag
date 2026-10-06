@@ -142,6 +142,8 @@ pub struct Draft {
     pub ask_quality: bool,
     pub preferred_quality: Option<MediaFormat>,
     pub notify: bool,
+    pub subtitles: bool,
+    pub subtitle_langs: String,
     /// "#rrggbb" as typed (Custom colour).
     pub accent: String,
 }
@@ -159,6 +161,8 @@ impl Draft {
             ask_quality: s.ask_quality,
             preferred_quality: s.preferred_quality.clone(),
             notify: s.notify,
+            subtitles: s.subtitles,
+            subtitle_langs: s.subtitle_langs.clone(),
             accent: s.accent.clone(),
         }
     }
@@ -188,6 +192,8 @@ impl Draft {
             ask_quality: self.ask_quality,
             preferred_quality: self.preferred_quality.clone(),
             notify: self.notify,
+            subtitles: self.subtitles,
+            subtitle_langs: if self.subtitle_langs.trim().is_empty() { base.subtitle_langs.clone() } else { self.subtitle_langs.trim().to_string() },
             accent: accent.to_string(),
             ..base.clone()
         })

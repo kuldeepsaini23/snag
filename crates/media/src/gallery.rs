@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn args_carry_dir_cookies_and_limit() {
-        let opts = MediaOptions { cookies: Some(PathBuf::from(r"C:\c.txt")), limit_bps: 2048, temp_dir: None };
+        let opts = MediaOptions { cookies: Some(PathBuf::from(r"C:\c.txt")), limit_bps: 2048, ..Default::default() };
         let a = args("https://imgur.com/a/x", Path::new(r"C:\dl\Images\x"), &opts);
         assert_eq!(a, vec!["-D", r"C:\dl\Images\x", "--cookies", r"C:\c.txt", "--limit-rate", "2048", "https://imgur.com/a/x"]);
         assert_eq!(args("u", Path::new("d"), &MediaOptions::default()), vec!["-D", "d", "u"]);
