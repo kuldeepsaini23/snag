@@ -22,7 +22,11 @@ async function findApp(token) {
       });
       if (!resp.ok) continue;
       const body = await resp.json();
-      if (body.app === "rdm") return { port, paired: Boolean(body.paired) };
+      if (body.app === "rdm") {
+        // Remember Snag's colour for the in-page button and the popup.
+        if (body.accent) chrome.storage.local.set({ accent: body.accent }).catch(() => {});
+        return { port, paired: Boolean(body.paired) };
+      }
     } catch (_) {
       // Nothing on this port: try the next one.
     }
@@ -158,6 +162,32 @@ async function sendBatch(urls, referrer) {
   return body;
 }
 
+/** Snag reads a video page and lists its qualities (for the menu in the page / popup). */
+async function probeInApp(url, referrer) {
+  const { app, token } = await pairedApp();
+  const resp = await fetch(`http://127.0.0.1:${app.port}/probe`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-RDM-Token": token },
+    body: JSON.stringify({ url, referrer: referrer || undefined, cookies: await cookiesFor(url) }),
+  });
+  const body = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(body.error || `Snag answered ${resp.status}`);
+  return body;
+}
+
+/** The quality picked in the menu: Snag adds it straight away. */
+async function addMediaInApp(choice) {
+  const { app, token } = await pairedApp();
+  const resp = await fetch(`http://127.0.0.1:${app.port}/add-media`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-RDM-Token": token },
+    body: JSON.stringify(choice),
+  });
+  const body = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(body.error || `Snag answered ${resp.status}`);
+  return body;
+}
+
 /** Brief ✓ / ! on the toolbar icon. */
 function flash(ok) {
   chrome.action.setBadgeBackgroundColor({ color: ok ? "#32d74b" : "#ff453a" });
@@ -239,6 +269,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
         flash(false);
         reply({ ok: false, error: e.message });
       });
+    return true;
+  }
+  if (msg.type === "probe") {
+    probeInApp(msg.url, msg.referrer)
+      .then((info) => reply({ ok: true, info }))
+      .catch((e) => reply({ ok: false, error: e.message }));
+    return true;
+  }
+  if (msg.type === "add-media") {
+    addMediaInApp(msg.choice)
+      .then(() => reply({ ok: true }))
+      .catch((e) => reply({ ok: false, error: e.message }));
     return true;
   }
   if (msg.type === "pair") {

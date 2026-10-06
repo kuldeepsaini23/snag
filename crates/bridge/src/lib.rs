@@ -25,7 +25,7 @@ pub async fn start(manager: Manager, ports: RangeInclusive<u16>) -> Result<Bridg
     for port in ports {
         match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
             Ok(listener) => {
-                let app = Router::new().route("/ping", get(ping)).route("/add", post(add)).route("/focus", post(focus)).route("/quit", post(quit)).route("/add-batch", post(add_batch)).route("/pair", post(pair)).with_state(manager);
+                let app = Router::new().route("/ping", get(ping)).route("/add", post(add)).route("/focus", post(focus)).route("/quit", post(quit)).route("/add-batch", post(add_batch)).route("/pair", post(pair)).route("/probe", post(probe)).route("/add-media", post(add_media_choice)).with_state(manager);
                 tokio::spawn(async move {
                     let _ = axum::serve(listener, app).await;
                 });
@@ -45,7 +45,13 @@ async fn authorized(manager: &Manager, headers: &HeaderMap) -> bool {
 }
 
 async fn ping(State(manager): State<Manager>, headers: HeaderMap) -> Json<Value> {
-    Json(json!({ "app": "rdm", "version": env!("CARGO_PKG_VERSION"), "paired": authorized(&manager, &headers).await }))
+    let paired = authorized(&manager, &headers).await;
+    let mut body = json!({ "app": "rdm", "version": env!("CARGO_PKG_VERSION"), "paired": paired });
+    if paired {
+        // The extension's button and popup follow Snag's accent colour.
+        body["accent"] = json!(manager.snapshot().await.settings.accent);
+    }
+    Json(body)
 }
 
 #[derive(Deserialize)]
@@ -146,6 +152,65 @@ async fn focus(State(manager): State<Manager>, headers: HeaderMap) -> (StatusCod
     }
     manager.focus().await;
     (StatusCode::OK, Json(json!({ "ok": true })))
+}
+
+#[derive(Deserialize)]
+struct ProbeRequest {
+    url: String,
+    #[serde(default)]
+    referrer: Option<String>,
+    #[serde(default)]
+    cookies: Vec<Value>,
+}
+
+/// Reads a video page for the extension's own quality menu: title, preview, and the options
+/// (each with the `format` to send back to `/add-media`).
+async fn probe(State(manager): State<Manager>, headers: HeaderMap, Json(req): Json<ProbeRequest>) -> (StatusCode, Json<Value>) {
+    if !authorized(&manager, &headers).await {
+        return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "not paired" })));
+    }
+    let cookies: Vec<Cookie> = req.cookies.into_iter().filter_map(|c| serde_json::from_value(c).ok()).collect();
+    if !cookies.is_empty() {
+        manager.remember_cookies(cookies);
+    }
+    if let Some(page) = req.referrer.filter(|r| r.starts_with("http") && *r != req.url) {
+        manager.remember_referrer(req.url.clone(), page);
+    }
+    match manager.probe_media(req.url).await {
+        Ok(info) => {
+            let options: Vec<Value> = info.options.iter().map(|o| json!({ "label": o.label, "size": o.approx_size, "format": o.format })).collect();
+            let body = json!({
+                "title": info.title,
+                "thumbnail": info.thumbnail,
+                "duration": info.duration,
+                "live": info.live,
+                "playlist": info.entries.len(),
+                "options": options,
+            });
+            (StatusCode::OK, Json(body))
+        }
+        Err(e) => (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "error": e }))),
+    }
+}
+
+#[derive(Deserialize)]
+struct AddMediaRequest {
+    url: String,
+    title: String,
+    format: rdm_core::MediaFormat,
+    #[serde(default)]
+    thumbnail: Option<String>,
+    #[serde(default)]
+    duration: Option<f64>,
+}
+
+/// The quality the user picked in the extension: added straight away, no window in between.
+async fn add_media_choice(State(manager): State<Manager>, headers: HeaderMap, Json(req): Json<AddMediaRequest>) -> (StatusCode, Json<Value>) {
+    if !authorized(&manager, &headers).await {
+        return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "not paired" })));
+    }
+    let id = manager.add_media_meta(req.url, req.title, req.format, 0, req.thumbnail, req.duration).await;
+    (StatusCode::OK, Json(json!({ "id": id.0 })))
 }
 
 /// One-click pairing: a browser extension asks, the user allows it in Snag, the extension gets

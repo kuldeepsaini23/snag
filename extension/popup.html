@@ -53,6 +53,12 @@
       .media-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .tag { font-size: 10px; font-weight: 600; color: #1a1816; background: var(--accent); border-radius: 4px; padding: 1px 5px; }
       .media-item button { padding: 5px 9px; font-size: 12px; }
+      #quality { display: none; }
+      #quality.has { display: block; }
+      .q-title { font-weight: 600; font-size: 12.5px; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .q-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: var(--raised); margin-top: 4px; transition: filter .12s; }
+      .q-row:hover { filter: brightness(1.2); }
+      .q-row .detail { margin-left: auto; color: var(--t2); font-weight: 400; font-size: 12px; }
     </style>
   </head>
   <body>
@@ -86,10 +92,17 @@
       <div id="media-list"></div>
     </div>
 
-    <button id="send" class="primary">Send this page to Snag</button>
+    <div id="quality" class="card">
+      <label>Download this video</label>
+      <div class="q-title" id="q-title"></div>
+      <div id="q-list"></div>
+    </div>
+
+    <button id="send" class="primary">Download this page…</button>
     <button id="grab" style="width: 100%; margin-top: 8px">Grab all from this page…</button>
     <div id="message"></div>
 
+    <script src="quality.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

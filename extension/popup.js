@@ -22,12 +22,6 @@ async function refreshStatus() {
   }
 }
 
-function sizeLabel(bytes) {
-  if (!bytes) return "";
-  const mb = bytes / (1024 * 1024);
-  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(mb >= 10 ? 0 : 1)} MB`;
-}
-
 function mediaName(item) {
   try {
     const name = decodeURIComponent(new URL(item.url).pathname.split("/").filter(Boolean).pop() || "");
@@ -37,6 +31,45 @@ function mediaName(item) {
   } catch (_) {
     return "Media";
   }
+}
+
+/** The page's qualities: pick one and Snag starts it. */
+function showQualities(tab, info, sendPage) {
+  $("q-title").textContent = info.title || tab.title || "";
+  const list = $("q-list");
+  list.textContent = "";
+  if (info.playlist > 0) {
+    const all = document.createElement("button");
+    all.className = "q-row";
+    all.textContent = `Whole playlist (${info.playlist}) — choose in Snag`;
+    all.addEventListener("click", sendPage);
+    list.append(all);
+  }
+  for (const q of qualityRows(info)) {
+    const row = document.createElement("button");
+    row.className = "q-row";
+    const label = document.createElement("span");
+    label.textContent = q.label;
+    row.append(label);
+    if (q.badge) {
+      const badge = document.createElement("span");
+      badge.className = "tag";
+      badge.textContent = q.badge;
+      row.append(badge);
+    }
+    const detail = document.createElement("span");
+    detail.className = "detail";
+    detail.textContent = q.detail;
+    row.append(detail);
+    row.addEventListener("click", async () => {
+      say(`Adding ${q.label}…`);
+      const choice = { url: tab.url, title: info.title || tab.title, format: q.format, thumbnail: info.thumbnail || undefined, duration: info.duration || undefined };
+      const r = await chrome.runtime.sendMessage({ type: "add-media", choice });
+      say(r.ok ? `Downloading ${q.label} ✓` : r.error);
+    });
+    list.append(row);
+  }
+  $("quality").classList.add("has");
 }
 
 /** What the page has played or loaded: streams first, then files. */
@@ -69,7 +102,8 @@ async function showMedia(tab) {
 }
 
 async function init() {
-  const { token = "", catchDownloads = true } = await chrome.storage.local.get(["token", "catchDownloads"]);
+  const { token = "", catchDownloads = true, accent } = await chrome.storage.local.get(["token", "catchDownloads", "accent"]);
+  document.documentElement.style.setProperty("--accent", safeAccent(accent));
   $("token").value = token;
   $("catch").checked = catchDownloads;
 
@@ -98,9 +132,16 @@ async function init() {
   $("send").addEventListener("click", async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab || !tab.url) return say("No page to send.");
-    say("Sending…");
-    const result = await chrome.runtime.sendMessage({ type: "send", url: tab.url, referrer: tab.url, tabId: tab.id, withFallback: true });
-    say(result.ok ? "Sent to Snag ✓" : result.error);
+    const sendPage = async () => {
+      say("Sending…");
+      const result = await chrome.runtime.sendMessage({ type: "send", url: tab.url, referrer: tab.url, tabId: tab.id, withFallback: true });
+      say(result.ok ? "Sent to Snag ✓" : result.error);
+    };
+    say("Reading the page…");
+    const probe = await chrome.runtime.sendMessage({ type: "probe", url: tab.url, referrer: tab.url });
+    if (!probe.ok || !probe.info.options || !probe.info.options.length) return sendPage();
+    say("");
+    showQualities(tab, probe.info, sendPage);
   });
 
   $("grab").addEventListener("click", async () => {

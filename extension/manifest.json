@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Snag — Download Manager",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Sends downloads, videos and images to the Snag desktop app.",
   "permissions": ["downloads", "storage", "contextMenus", "cookies", "webRequest", "scripting"],
   "host_permissions": ["http://127.0.0.1/*", "<all_urls>"],
@@ -11,7 +11,7 @@
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*"],
-      "js": ["catch-rules.js", "content.js"],
+      "js": ["catch-rules.js", "quality.js", "content.js"],
       "run_at": "document_idle"
     }
   ]

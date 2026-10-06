@@ -47,7 +47,10 @@ async fn ping_reports_pairing() {
     assert_eq!(status, 200);
     assert_eq!(body["app"], "rdm");
     assert_eq!(body["paired"], false);
-    assert_eq!(get(b.port, "/ping", Some(TOKEN)).await.1["paired"], true);
+    let paired = get(b.port, "/ping", Some(TOKEN)).await.1;
+    assert_eq!(paired["paired"], true);
+    assert_eq!(paired["accent"], "#ff9f0a", "the extension follows Snag's colour");
+    assert!(body.get("accent").is_none(), "only paired extensions get the settings");
 }
 
 #[tokio::test]
@@ -321,4 +324,43 @@ async fn unknown_video_site_falls_back_to_the_stream_the_page_played() {
     assert_eq!(item.url, "https://cdn.example/v/movie.mp4");
     assert_eq!(item.kind, rdm_core::Kind::Http);
     assert_eq!(item.referrer.as_deref(), Some("https://videos.example/watch/fail"));
+}
+
+async fn post_to(port: u16, path: &str, body: Value, token: &str) -> (u16, Value) {
+    let resp = Client::new()
+        .post(format!("http://127.0.0.1:{port}{path}"))
+        .header("X-RDM-Token", token)
+        .header("Content-Type", "application/json")
+        .body(body.to_string())
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status().as_u16();
+    (status, serde_json::from_str(&resp.text().await.unwrap()).unwrap_or(Value::Null))
+}
+
+#[tokio::test]
+async fn extension_picks_the_quality_itself() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let m = manager(dir.path()).await;
+    let b = start(m.clone(), 48231..=48240).await.unwrap();
+    // Not paired: nothing.
+    assert_eq!(post_to(b.port, "/probe", json!({ "url": "https://videos.example/watch/clip" }), "wrong").await.0, 401);
+    let (status, info) = post_to(b.port, "/probe", json!({ "url": "https://videos.example/watch/clip" }), TOKEN).await;
+    assert_eq!(status, 200, "{info}");
+    assert_eq!(info["title"], "Fake clip");
+    let options = info["options"].as_array().expect("options");
+    assert!(options.iter().any(|o| o["label"] == "480p"), "{info}");
+    let mp3 = options.iter().find(|o| o["label"] == "Audio only (MP3)").expect("mp3 offered");
+    // The extension sends back the option it picked.
+    let (status, reply) = post_to(b.port, "/add-media", json!({ "url": "https://videos.example/watch/clip", "title": info["title"], "format": mp3["format"] }), TOKEN).await;
+    assert_eq!(status, 200, "{reply}");
+    let items = m.snapshot().await.items;
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].kind, rdm_core::Kind::Media(rdm_core::MediaFormat::AudioMp3));
+    // A page Snag can't read: the error, for the extension to show (and fall back).
+    let (status, reply) = post_to(b.port, "/probe", json!({ "url": "https://videos.example/watch/fail" }), TOKEN).await;
+    assert_eq!(status, 422);
+    assert!(reply["error"].as_str().unwrap().contains("Unsupported URL"), "{reply}");
 }
