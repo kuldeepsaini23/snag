@@ -13,7 +13,8 @@ use iced::widget::{Space, button, column, container, pick_list, row, rule, scrol
 use iced::{Alignment, Color, Element, Fill, Length};
 use rdm_core::Status;
 
-pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
+/// `phone`: the phone page link and its QR code, while phone sharing is on.
+pub fn view<'a>(m: &'a Model, phone: Option<(&'a str, &'a iced::widget::qr_code::Data)>, c: Colors) -> Element<'a, Message> {
     let nav = SETTINGS_TABS.iter().fold(column![text("Settings").size(15).font(style::SEMIBOLD), Space::new().height(8)].spacing(2), |col, &tab| {
         let (glyph, label) = tab_info(tab);
         let on = m.settings_tab == tab;
@@ -47,7 +48,7 @@ pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
         SettingsTab::Appearance => appearance(m, c),
         SettingsTab::Connections => connections(m, c),
         SettingsTab::Speed => speed(m, c),
-        SettingsTab::Extension => extension(m, c),
+        SettingsTab::Extension => extension(m, phone, c),
         SettingsTab::Tools => tools(m, c),
     };
     let mut content = column![head, scrollable(container(body).padding(iced::Padding { right: 10.0, ..Default::default() })).style(style::scroll(c)).height(Fill)].spacing(14);
@@ -282,7 +283,7 @@ fn speed(m: &Model, c: Colors) -> Element<'_, Message> {
     page.into()
 }
 
-fn extension(m: &Model, c: Colors) -> Element<'_, Message> {
+fn extension<'a>(m: &'a Model, phone: Option<(&'a str, &'a iced::widget::qr_code::Data)>, c: Colors) -> Element<'a, Message> {
     let listening = m.bridge_status.starts_with("Listening");
     let status = row![
         container(Space::new()).width(7).height(7).style(style::tag(if listening { c.success } else { c.danger }, c.text)),
@@ -315,15 +316,42 @@ fn extension(m: &Model, c: Colors) -> Element<'_, Message> {
         .style(style::outline(c))
         .padding([7, 12])
         .on_press(Message::NewToken);
-    column![section(
-        "Connection",
-        vec![
-            line("Status", &m.bridge_status, status.into(), c),
-            line("Pairing code", "Paste this once into the extension's popup", code.into(), c),
-            line("New code", "Disconnects the extension until you paste the new one", regenerate.into(), c),
-        ],
+    let mut phone_rows = vec![line(
+        "Send from your phone",
+        "A page on your home network: scan the code, then paste or share links on the phone",
+        toggler(m.settings.phone_sharing).on_toggle(Message::PhoneSharing).size(18).style(style::toggle(c)).into(),
         c,
-    )]
+    )];
+    if let Some((link, qr)) = phone {
+        let code = iced::widget::qr_code(qr).cell_size(4).style(move |_| iced::widget::qr_code::Style { cell: Color::BLACK, background: Color::WHITE });
+        let card = row![
+            container(code).padding(8).style(move |_| container::Style { background: Some(Color::WHITE.into()), border: iced::Border { radius: 8.0.into(), ..Default::default() }, ..Default::default() }),
+            column![
+                text("Scan with your phone's camera").size(13).font(style::MEDIUM),
+                small(link.to_string(), c.text3),
+                small("Same Wi-Fi as this PC. Anyone with this link can send downloads, so keep it to yourself.", c.text3),
+            ]
+            .spacing(6)
+            .width(Fill),
+        ]
+        .spacing(16)
+        .align_y(Alignment::Center)
+        .padding([10, 14]);
+        phone_rows.push(card.into());
+    }
+    column![
+        section(
+            "Connection",
+            vec![
+                line("Status", &m.bridge_status, status.into(), c),
+                line("Pairing code", "Paste this once into the extension's popup", code.into(), c),
+                line("New code", "Disconnects the extension and your phone until you use the new one", regenerate.into(), c),
+            ],
+            c,
+        ),
+        section("Phone", phone_rows, c),
+    ]
+    .spacing(18)
     .into()
 }
 

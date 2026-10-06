@@ -45,6 +45,7 @@ fn main() -> iced::Result {
 
     let boot_manager = manager.clone();
     let boot_dir = data_dir.clone();
+    let boot_runtime = runtime.handle().clone();
     let window = iced::window::Settings {
         size: iced::Size::new(1280.0, 800.0),
         min_size: Some(iced::Size::new(960.0, 600.0)),
@@ -53,7 +54,7 @@ fn main() -> iced::Result {
         icon: iced::window::icon::from_rgba(tray::ICON_64.to_vec(), 64, 64).ok(),
         ..Default::default()
     };
-    let result = iced::application(move || update::boot(boot_manager.clone(), bridge_status.clone(), boot_dir.clone()), update::update, ui::view)
+    let result = iced::application(move || update::boot(boot_manager.clone(), bridge_status.clone(), boot_dir.clone(), boot_runtime.clone()), update::update, ui::view)
         .title("Snag")
         .subscription(update::subscription)
         .theme(|app: &update::App| ui::theme::theme(&ui::theme::colors(app.model.accent_hex())))

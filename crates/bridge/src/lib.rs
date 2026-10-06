@@ -1,5 +1,7 @@
 //! Local HTTP bridge for the browser extension: 127.0.0.1 only, token-protected.
 
+pub mod phone;
+
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};

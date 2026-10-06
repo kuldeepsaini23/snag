@@ -149,6 +149,7 @@ pub struct Draft {
     pub subtitle_langs: String,
     pub auto_retry: bool,
     pub keep_sharing: bool,
+    pub phone_sharing: bool,
     /// "#rrggbb" as typed (Custom colour).
     pub accent: String,
 }
@@ -170,6 +171,7 @@ impl Draft {
             subtitle_langs: s.subtitle_langs.clone(),
             auto_retry: s.auto_retry,
             keep_sharing: s.keep_sharing,
+            phone_sharing: s.phone_sharing,
             accent: s.accent.clone(),
         }
     }
@@ -203,6 +205,7 @@ impl Draft {
             subtitle_langs: if self.subtitle_langs.trim().is_empty() { base.subtitle_langs.clone() } else { self.subtitle_langs.trim().to_string() },
             auto_retry: self.auto_retry,
             keep_sharing: self.keep_sharing,
+            phone_sharing: self.phone_sharing,
             accent: accent.to_string(),
             ..base.clone()
         })

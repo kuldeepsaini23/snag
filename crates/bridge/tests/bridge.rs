@@ -214,3 +214,37 @@ async fn magnet_and_torrent_links_become_torrents() {
     assert!(items.iter().all(|i| i.kind == rdm_core::Kind::Torrent), "{items:?}");
     assert_eq!(items[0].name, "Ubuntu");
 }
+
+#[tokio::test]
+async fn phone_page_needs_the_token_and_adds_shared_links() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path()).await;
+    // Bound to localhost here; in the app it binds the home network only while switched on.
+    let phone = rdm_bridge::phone::start(m.clone(), ([127, 0, 0, 1], 0).into()).await.unwrap();
+    let base = format!("http://127.0.0.1:{}", phone.port);
+    let get = |path: String| async move { Client::new().get(path).send().await.unwrap() };
+    assert_eq!(get(format!("{base}/m")).await.status().as_u16(), 401, "no token, no page");
+    assert_eq!(get(format!("{base}/m?t=wrong")).await.status().as_u16(), 401);
+    let page = get(format!("{base}/m?t={TOKEN}")).await;
+    assert_eq!(page.status().as_u16(), 200);
+    assert!(page.text().await.unwrap().contains("<form"), "a page to paste links into");
+    // Shared text from a phone app often wraps the link in words.
+    let shared = get(format!("{base}/share?t={TOKEN}&text=Look%20at%20this%20https%3A%2F%2Fx.test%2Fa.zip%20cool")).await;
+    assert_eq!(shared.status().as_u16(), 200);
+    assert_eq!(get(format!("{base}/share?t=wrong&url=https%3A%2F%2Fx.test%2Fb.zip")).await.status().as_u16(), 401);
+    let items = m.snapshot().await.items;
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].url, "https://x.test/a.zip");
+    phone.stop();
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    assert!(Client::new().get(format!("{base}/m?t={TOKEN}")).send().await.is_err(), "switched off: nothing listens");
+}
+
+#[test]
+fn first_link_in_shared_text() {
+    use rdm_bridge::phone::first_link;
+    assert_eq!(first_link("Watch https://youtu.be/abc?t=1 now"), Some("https://youtu.be/abc?t=1".to_string()));
+    assert_eq!(first_link("magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=x"), Some("magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=x".to_string()));
+    assert_eq!(first_link("(see https://x.test/a.zip)."), Some("https://x.test/a.zip".to_string()), "trailing punctuation dropped");
+    assert_eq!(first_link("no links here"), None);
+}

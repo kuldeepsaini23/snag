@@ -49,7 +49,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
     }
     match (m.screen, &m.picker) {
         (Screen::Picker, Some(p)) => layers = layers.push(modal(picker::view(m, p, c), Message::CancelPick)),
-        (Screen::Settings, _) => layers = layers.push(modal(settings::view(m, c), Message::CloseSettings)),
+        (Screen::Settings, _) => layers = layers.push(modal(settings::view(m, app.phone.as_ref().map(|(_, link, qr)| (link.as_str(), qr)), c), Message::CloseSettings)),
         _ => {}
     }
     if m.confirm_quit {

@@ -17,6 +17,10 @@ pub struct App {
     /// Held only to keep the tray icon alive (None if Windows refused it).
     #[allow(dead_code)]
     pub tray: Option<crate::tray::Tray>,
+    /// The download manager's runtime (servers started from the UI run there).
+    pub runtime: tokio::runtime::Handle,
+    /// Phone sharing while it's switched on: the server, its link and QR code.
+    pub phone: Option<(rdm_bridge::phone::Phone, String, iced::widget::qr_code::Data)>,
 }
 
 /// Text inputs the app focuses itself.
@@ -75,6 +79,8 @@ pub enum Message {
     DraftSubtitles(bool),
     DraftAutoRetry(bool),
     DraftKeepSharing(bool),
+    /// Phone sharing on/off (applies at once, like a switch should).
+    PhoneSharing(bool),
     /// The picker's playlist/channel: download its new uploads from now on.
     WatchPicked,
     RemoveWatch(u32),
@@ -154,12 +160,12 @@ pub enum Message {
     Done,
 }
 
-pub fn boot(manager: Manager, bridge_status: String, data_dir: PathBuf) -> (App, Task<Message>) {
+pub fn boot(manager: Manager, bridge_status: String, data_dir: PathBuf, runtime: tokio::runtime::Handle) -> (App, Task<Message>) {
     let m = manager.clone();
     let model = Model { bridge_status, ..Model::default() };
     let tray = crate::tray::create();
     crate::notify::register(&data_dir);
-    (App { model, manager, data_dir, tray }, Task::perform(async move { m.snapshot().await }, Message::Loaded))
+    (App { model, manager, data_dir, tray, runtime, phone: None }, Task::perform(async move { m.snapshot().await }, Message::Loaded))
 }
 
 /// Runs a manager call in the background; its result isn't needed (events report it).
@@ -176,9 +182,41 @@ fn on_window<T: Send + 'static>(action: fn(window::Id) -> Task<T>) -> Task<T> {
 
 pub fn update(app: &mut App, message: Message) -> Task<Message> {
     let task = handle(app, message);
+    sync_phone(app);
     // Items and the picker may now show videos whose thumbnails aren't here yet.
     let thumbs = fetch_thumbs(app);
     Task::batch([task, thumbs])
+}
+
+/// Phone sharing follows its setting (and a regenerated pairing code).
+fn sync_phone(app: &mut App) {
+    let s = &app.model.settings;
+    if !s.phone_sharing {
+        app.phone = None;
+        return;
+    }
+    let token = s.extension_token.clone();
+    if let Some((phone, link, _)) = &app.phone
+        && link.ends_with(&token)
+    {
+        let _ = phone.port;
+        return;
+    }
+    app.phone = None;
+    let Some(ip) = rdm_bridge::phone::lan_ip() else {
+        app.model.notice = Some("Phone sharing: no home network found".into());
+        return;
+    };
+    for port in rdm_bridge::phone::PORTS {
+        if let Ok(phone) = rdm_bridge::phone::start_on(&app.runtime, app.manager.clone(), (std::net::Ipv4Addr::UNSPECIFIED, port).into()) {
+            let link = rdm_bridge::phone::page_url(ip, phone.port, &token);
+            if let Ok(qr) = iced::widget::qr_code::Data::new(&link) {
+                app.phone = Some((phone, link, qr));
+            }
+            return;
+        }
+    }
+    app.model.notice = Some("Phone sharing: no free port (47330–47335)".into());
 }
 
 fn fetch_thumbs(app: &mut App) -> Task<Message> {
@@ -313,6 +351,12 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::DraftSubtitles(v) => model.draft.subtitles = v,
         Message::DraftAutoRetry(v) => model.draft.auto_retry = v,
         Message::DraftKeepSharing(v) => model.draft.keep_sharing = v,
+        Message::PhoneSharing(on) => {
+            model.draft.phone_sharing = on;
+            let settings = rdm_core::Settings { phone_sharing: on, ..model.settings.clone() };
+            model.settings.phone_sharing = on;
+            return fire(&app.manager, move |m| async move { m.update_settings(settings).await });
+        }
         Message::WatchPicked => {
             let Some(p) = model.picker.take() else { return Task::none() };
             model.screen = Screen::Downloads;

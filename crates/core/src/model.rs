@@ -126,6 +126,8 @@ pub struct Settings {
     pub auto_retry: bool,
     /// Torrents: keep sharing with others after the download finishes.
     pub keep_sharing: bool,
+    /// "Send from your phone": a page on the home network (off by default).
+    pub phone_sharing: bool,
 }
 
 impl Default for Settings {
@@ -148,6 +150,7 @@ impl Default for Settings {
             subtitle_langs: "en.*".into(),
             auto_retry: true,
             keep_sharing: false,
+            phone_sharing: false,
         }
     }
 }
