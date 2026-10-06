@@ -90,6 +90,11 @@ pub fn explorer_select_arg(path: &std::path::Path) -> String {
     format!("/select,\"{}\"", path.display())
 }
 
+/// A finished item whose file is no longer on disk.
+pub fn file_missing(item: &Item) -> bool {
+    item.status == Status::Done && item.dest.as_ref().is_none_or(|p| !p.exists())
+}
+
 /// Everything the window shows. Pure data: no iced, no manager.
 #[derive(Clone, Debug)]
 pub struct Model {
@@ -320,6 +325,23 @@ mod tests {
     fn explorer_select_quotes_the_path() {
         let p = std::path::Path::new(r"C:\dl\Videos\A, B 😳.mp4");
         assert_eq!(explorer_select_arg(p), r#"/select,"C:\dl\Videos\A, B 😳.mp4""#);
+    }
+
+    #[test]
+    fn done_item_without_its_file_is_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let present = dir.path().join("here.bin");
+        std::fs::write(&present, b"x").unwrap();
+        let mut done = item(1, Status::Done, 0);
+        done.dest = Some(present);
+        assert!(!file_missing(&done));
+        done.dest = Some(dir.path().join("gone.bin"));
+        assert!(file_missing(&done));
+        done.dest = None;
+        assert!(file_missing(&done));
+        let mut running = item(2, Status::Running, 0);
+        running.dest = Some(dir.path().join("gone.bin"));
+        assert!(!file_missing(&running), "only finished items can be missing");
     }
 
     #[test]

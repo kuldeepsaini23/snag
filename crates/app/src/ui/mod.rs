@@ -1,7 +1,7 @@
 //! Basic views with default iced widgets. The Figma pass replaces this module.
 
 use crate::format;
-use crate::state::{Model, Picker, Screen};
+use crate::state::{Model, Picker, Screen, file_missing};
 use crate::update::{App, Message};
 use iced::widget::{button, checkbox, column, container, progress_bar, row, scrollable, space, text, text_input};
 use iced::{Alignment, Element, Fill};
@@ -70,8 +70,10 @@ fn item_row(i: &Item, selected: bool) -> Element<'_, Message> {
         }
     }
 
+    let missing = file_missing(i);
     let mut actions = row![].spacing(6);
     actions = match i.status {
+        Status::Done if missing => actions.push(button("Download again").on_press(Message::Redownload(i.id))),
         Status::Running | Status::Queued => actions.push(button("Pause").on_press(Message::Pause(i.id))),
         Status::Paused | Status::Failed(_) => actions.push(button("Resume").on_press(Message::Resume(i.id))),
         Status::Done => actions.push(button("Show in folder").on_press_maybe(i.dest.as_ref().map(|_| Message::ShowInFolder(i.id)))),
@@ -79,7 +81,11 @@ fn item_row(i: &Item, selected: bool) -> Element<'_, Message> {
     actions = actions.push(button("Remove").on_press(Message::Remove(i.id))).push(button("Delete").on_press(Message::Delete(i.id)));
 
     let body = column![
-        row![text(&i.name).size(15).width(Fill), text(format::status_label(&i.status)).size(13)].align_y(Alignment::Center),
+        row![
+            text(&i.name).size(15).width(Fill),
+            text(if missing { "File missing".to_string() } else { format::status_label(&i.status) }).size(13),
+        ]
+        .align_y(Alignment::Center),
         progress_bar(0.0..=100.0, percent).girth(6),
         row![text(detail).size(12).width(Fill), actions].align_y(Alignment::Center),
     ]

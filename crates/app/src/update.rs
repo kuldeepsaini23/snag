@@ -18,6 +18,7 @@ pub enum Message {
     Select(ItemId),
     Pause(ItemId),
     Resume(ItemId),
+    Redownload(ItemId),
     Remove(ItemId),
     Delete(ItemId),
     ShowInFolder(ItemId),
@@ -87,6 +88,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::Added(id) | Message::Select(id) => model.selected = Some(id),
         Message::Pause(id) => return fire(&app.manager, move |m| async move { m.pause(id).await }),
         Message::Resume(id) => return fire(&app.manager, move |m| async move { m.resume(id).await }),
+        Message::Redownload(id) => return fire(&app.manager, move |m| async move { m.redownload(id).await }),
         Message::Remove(id) => return fire(&app.manager, move |m| async move { m.remove(id, false).await }),
         Message::Delete(id) => return fire(&app.manager, move |m| async move { m.remove(id, true).await }),
         Message::ShowInFolder(id) => {

@@ -216,3 +216,17 @@ async fn fresh_state_gets_extension_token() {
     let token = m.snapshot().await.settings.extension_token;
     assert_eq!(token.len(), 32, "token: {token:?}");
 }
+
+#[tokio::test]
+async fn redownload_restarts_a_finished_item() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |_| {}).await;
+    let mut rx = m.subscribe();
+    let id = m.add(s.url("/file/300000")).await;
+    let first = wait_item(&mut rx, has(id, Status::Done)).await.dest.unwrap();
+    std::fs::remove_file(&first).unwrap(); // the user (or something else) deleted the file
+    m.redownload(id).await;
+    let again = wait_item(&mut rx, has(id, Status::Done)).await;
+    assert!(std::fs::read(again.dest.unwrap()).unwrap() == data(300_000), "content mismatch");
+}

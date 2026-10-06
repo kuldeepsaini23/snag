@@ -68,6 +68,7 @@ enum Cmd {
     AddMedia(String, String, MediaFormat, oneshot::Sender<ItemId>),
     Pause(ItemId),
     Resume(ItemId),
+    Redownload(ItemId),
     Remove(ItemId, bool),
     Settings(Settings),
     Shutdown(oneshot::Sender<()>),
@@ -133,6 +134,11 @@ impl Manager {
 
     pub async fn remove(&self, id: ItemId, delete_file: bool) {
         let _ = self.tx.send(Cmd::Remove(id, delete_file));
+    }
+
+    /// Downloads a finished (or failed) item again from scratch, e.g. after its file was deleted.
+    pub async fn redownload(&self, id: ItemId) {
+        let _ = self.tx.send(Cmd::Redownload(id));
     }
 
     pub async fn update_settings(&self, s: Settings) {
@@ -274,6 +280,20 @@ impl Actor {
                 }
                 if let Some(item) = self.state.item_mut(id).filter(|i| matches!(i.status, Status::Paused | Status::Failed(_))) {
                     item.status = Status::Queued;
+                    self.updated(id);
+                    self.schedule();
+                }
+            }
+            Cmd::Redownload(id) => {
+                if self.running.contains_key(&id) {
+                    return;
+                }
+                if let Some(item) = self.state.item_mut(id) {
+                    item.status = Status::Queued;
+                    item.dest = None;
+                    item.downloaded = 0;
+                    item.total = None;
+                    item.speed_bps = 0;
                     self.updated(id);
                     self.schedule();
                 }
@@ -453,6 +473,11 @@ impl Actor {
                     }
                     item.status = match result {
                         Ok(Outcome::Completed(path)) => {
+                            // The real size: video downloads report progress per stream.
+                            if let Ok(meta) = std::fs::metadata(&path) {
+                                item.downloaded = meta.len();
+                                item.total = Some(meta.len());
+                            }
                             item.dest = Some(path);
                             Status::Done
                         }

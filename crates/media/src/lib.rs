@@ -44,6 +44,27 @@ pub struct MediaProgress {
     pub speed_bps: u64,
 }
 
+/// Turns per-stream progress (video, then audio: each restarts at 0) into one running total.
+#[derive(Debug, Default)]
+pub struct StreamProgress {
+    /// Bytes of streams already finished.
+    done: u64,
+    last: Option<MediaProgress>,
+}
+
+impl StreamProgress {
+    pub fn push(&mut self, p: MediaProgress) -> MediaProgress {
+        if let Some(last) = &self.last
+            && p.downloaded < last.downloaded
+        {
+            // The counter went back: the previous stream finished and a new one began.
+            self.done += last.total.unwrap_or(last.downloaded);
+        }
+        self.last = Some(p.clone());
+        MediaProgress { downloaded: self.done + p.downloaded, total: p.total.map(|t| self.done + t), speed_bps: p.speed_bps }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum MediaOutcome {
     Completed(PathBuf),
@@ -208,6 +229,7 @@ pub async fn download(
     });
     let mut lines = BufReader::new(child.stdout.take().expect("stdout is piped")).lines();
     let mut final_path = None;
+    let mut streams = StreamProgress::default();
     loop {
         let line = tokio::select! {
             _ = cancel.cancelled() => {
@@ -218,7 +240,7 @@ pub async fn download(
         };
         let Some(line) = line else { break };
         if let Some(p) = parse_progress_line(&line) {
-            progress.send_replace(p);
+            progress.send_replace(streams.push(p));
         } else if let Some(path) = line.strip_prefix("RDMF ") {
             final_path = Some(PathBuf::from(path.trim()));
         }
@@ -346,5 +368,26 @@ mod tests {
     fn ignores_other_lines() {
         assert_eq!(parse_progress_line("[download]  5.0% of 10MiB"), None);
         assert_eq!(parse_progress_line("RDMF C:\\a.mp4"), None);
+    }
+}
+
+#[cfg(test)]
+mod stream_tests {
+    use super::*;
+
+    fn p(downloaded: u64, total: u64) -> MediaProgress {
+        MediaProgress { downloaded, total: Some(total), speed_bps: 7 }
+    }
+
+    #[test]
+    fn progress_adds_up_separate_streams() {
+        // yt-dlp downloads video, then audio: each stream restarts its own counter.
+        let mut acc = StreamProgress::default();
+        assert_eq!(acc.push(p(100, 1000)), MediaProgress { downloaded: 100, total: Some(1000), speed_bps: 7 });
+        assert_eq!(acc.push(p(1000, 1000)).downloaded, 1000);
+        let second = acc.push(p(50, 200));
+        assert_eq!((second.downloaded, second.total), (1050, Some(1200)));
+        let done = acc.push(p(200, 200));
+        assert_eq!((done.downloaded, done.total), (1200, Some(1200)));
     }
 }
