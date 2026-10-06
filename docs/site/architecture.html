@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Snag Architecture Docs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Kalam:wght@400;700&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/roughjs@4.6.6/bundled/rough.js"></script>
+<style>
+/* Layout: sticky table of contents on the left, one reading column; diagrams use the full column. */
+:root {
+  --bg: #fbfaf8; --panel: #ffffff; --sunk: #f1eee9; --fg: #1e1b18; --muted: #6b645c; --line: #e0dad2;
+  --accent: #e08600; --accent-soft: #fdebcc; --blue: #2f6fb0; --blue-soft: #dce8f6; --green: #2e8a4a; --green-soft: #dcf0e1;
+  --violet: #7a4fb5; --violet-soft: #ebe1f7; --ink: #1e1b18;
+  --display: "Archivo", "Segoe UI", system-ui, sans-serif;
+  --body: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  --hand: "Kalam", "Comic Sans MS", "Segoe Print", cursive;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1a1816; --panel: #23201d; --sunk: #2b2825; --fg: #ece8e3; --muted: #a29a90; --line: #3a3530;
+    --accent: #ffa31a; --accent-soft: #46310f; --blue: #82b5ec; --blue-soft: #1e3046; --green: #66c784; --green-soft: #1d3a26;
+    --violet: #b994ea; --violet-soft: #33264a; --ink: #ece8e3; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1a1816; --panel: #23201d; --sunk: #2b2825; --fg: #ece8e3; --muted: #a29a90; --line: #3a3530;
+  --accent: #ffa31a; --accent-soft: #46310f; --blue: #82b5ec; --blue-soft: #1e3046; --green: #66c784; --green-soft: #1d3a26;
+  --violet: #b994ea; --violet-soft: #33264a; --ink: #ece8e3; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 var(--body); padding-inline: 20px; padding-block: 28px 80px; }
+.shell { max-width: 1120px; margin: 0 auto; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px; }
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 20px); align-self: start; display: grid; gap: 4px; font-size: 14px; }
+nav.toc .brand { font: 800 18px/1.2 var(--display); margin-bottom: 10px; }
+nav.toc a { color: var(--muted); text-decoration: none; padding: 5px 10px; border-radius: 7px; }
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--fg); background: var(--sunk); outline: none; }
+nav.toc .back { margin-top: 14px; font-size: 13px; color: var(--accent); }
+main { display: grid; gap: 64px; min-width: 0; }
+@media (max-width: 860px) {
+  .shell { grid-template-columns: 1fr; gap: 24px; }
+  nav.toc { position: static; display: flex; flex-wrap: wrap; gap: 6px; }
+  nav.toc .brand { width: 100%; margin: 0; }
+  nav.toc a { background: var(--sunk); }
+}
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: clamp(2rem, 4.5vw, 2.8rem); font-weight: 800; letter-spacing: -0.02em; }
+h2 { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.01em; }
+h3 { font-size: 1.05rem; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+section { display: grid; gap: 16px; scroll-margin-top: 20px; min-width: 0; }
+.eyebrow { font: 600 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.lede { font-size: 1.12rem; color: var(--muted); }
+code { font-family: var(--mono); font-size: .86em; background: var(--sunk); padding: 1px 5px; border-radius: 4px; }
+.board { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px; overflow-x: auto; }
+.board svg { display: block; width: 100%; height: auto; }
+.board.min svg { min-width: 760px; }
+.caption { font: 400 15px/1.4 var(--hand); color: var(--muted); padding: 2px 6px 0; }
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 12px/1.2 var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); background: var(--sunk); }
+tr:last-child td { border-bottom: 0; }
+td:first-child { white-space: nowrap; }
+.chip { display: inline-block; font: 600 11px/1 var(--mono); padding: 4px 6px; border-radius: 5px; }
+.c-ext { background: var(--violet-soft); color: var(--violet); }
+.c-app { background: var(--accent-soft); color: var(--accent); }
+.c-dl { background: var(--blue-soft); color: var(--blue); }
+.c-store { background: var(--green-soft); color: var(--green); }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 6px; align-content: start; }
+.card p { font-size: 14.5px; color: var(--muted); }
+dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 10px 20px; }
+dt { font-family: var(--mono); font-size: 14px; font-weight: 600; }
+dd { margin: 0; color: var(--muted); }
+@media (max-width: 560px) { dl { grid-template-columns: 1fr; gap: 2px; } dd { margin-bottom: 10px; } }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="toc" aria-label="Contents">
+    <div class="brand">Snag docs</div>
+    <a href="#overview">Overview</a>
+    <a href="#map">System map</a>
+    <a href="#parts">The parts</a>
+    <a href="#flow">A download, start to end</a>
+    <a href="#engine">Fast file downloads</a>
+    <a href="#streams">Streams &amp; repair</a>
+    <a href="#bridge">Extension ↔ app API</a>
+    <a href="#storage">Where things are saved</a>
+    <a href="#glossary">Glossary</a>
+    <a class="back" href="index.html">← How Snag catches a video</a>
+  </nav>
+
+  <main>
+    <header style="display:grid; gap:12px">
+      <div class="eyebrow">Architecture</div>
+      <h1>How Snag is built</h1>
+      <p class="lede">A Windows download manager in Rust, plus a browser extension. This page explains the pieces, how they talk to each other, and where your files and settings live.</p>
+    </header>
+
+    <section id="overview">
+      <div class="eyebrow">Overview</div>
+      <h2>Three places, one job</h2>
+      <div class="cards">
+        <div class="card"><span class="chip c-ext">BROWSER</span><h3>The extension</h3><p>Spots videos and files in your tabs, shows the Download button and menu, and hands links to the app.</p></div>
+        <div class="card"><span class="chip c-app">YOUR PC</span><h3>The Snag app</h3><p>One program (<code>snag.exe</code>) with the window, the tray icon and a small private server only your PC can reach.</p></div>
+        <div class="card"><span class="chip c-dl">THE INTERNET</span><h3>The websites</h3><p>Snag downloads straight from them over its own connections, with your cookies so they treat it like your browser.</p></div>
+      </div>
+    </section>
+
+    <section id="map">
+      <div class="eyebrow">System map</div>
+      <h2>Everything on one board</h2>
+      <p>Arrows show who asks whom. Purple lives in the browser, orange is the app's brain and window, blue does the downloading, green is what ends up on disk.</p>
+      <div class="board min"><svg id="d-map" viewBox="0 0 1000 640" role="img" aria-label="System map of Snag"></svg></div>
+      <div class="caption">The extension never downloads anything itself. It only passes links to the app on 127.0.0.1.</div>
+    </section>
+
+    <section id="parts">
+      <div class="eyebrow">The parts</div>
+      <h2>Who does what</h2>
+      <p>The app is split into small libraries (Rust “crates”), each with one job. The window only shows things; the Manager makes every decision.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Part</th><th>Job</th><th>Built with</th></tr></thead>
+        <tbody>
+          <tr><td><span class="chip c-ext">extension</span></td><td>Sniffer (watches what tabs load), page button and quality menu, popup, “Grab all”, right-click menu, catching browser downloads.</td><td>Manifest V3, plain JS</td></tr>
+          <tr><td><span class="chip c-app">app</span></td><td>The window, tray icon, notifications, clipboard watch, animations, settings.</td><td>iced 0.14</td></tr>
+          <tr><td><span class="chip c-app">bridge</span></td><td>The private server for the extension (<code>127.0.0.1:47321</code>) and the opt-in phone page on your Wi-Fi (<code>:47330</code>).</td><td>axum</td></tr>
+          <tr><td><span class="chip c-app">core</span></td><td>The Manager: list of downloads, queues and schedules, retries, cookies, deciding where each link goes, saving state.</td><td>tokio actor</td></tr>
+          <tr><td><span class="chip c-dl">engine</span></td><td>Plain files: splits them into parts, downloads the parts in parallel, resumes after a pause or crash.</td><td>reqwest</td></tr>
+          <tr><td><span class="chip c-dl">media</span></td><td>Videos and audio through yt-dlp, image galleries through gallery-dl, and the disguised-stream repair.</td><td>yt-dlp, gallery-dl, ffmpeg</td></tr>
+          <tr><td><span class="chip c-dl">torrent</span></td><td>Magnet links and .torrent files.</td><td>librqbit</td></tr>
+          <tr><td><span class="chip c-app">cli</span></td><td>A command-line version of the engine, for testing.</td><td>Rust</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="flow">
+      <div class="eyebrow">A download, start to end</div>
+      <h2>Clicking a NOW row</h2>
+      <p>The same path every download from the browser takes. Numbers follow the order things happen.</p>
+      <div class="board min"><svg id="d-flow" viewBox="0 0 1000 560" role="img" aria-label="Sequence of a download from the browser to disk"></svg></div>
+      <div class="caption">Steps 1–3 happen while you watch. Steps 4–8 happen after one click.</div>
+    </section>
+
+    <section id="engine">
+      <div class="eyebrow">Fast file downloads</div>
+      <h2>Eight parts at once</h2>
+      <p>For a normal file (a ZIP, an installer, a direct MP4), the engine asks the server for the size, splits the file into up to 8 parts and downloads them side by side with <code>Range</code> requests. Progress is written next to the file in a small <code>.rdmstate</code> note, so a pause, a crash or a restart continues where it stopped.</p>
+      <div class="board min"><svg id="d-engine" viewBox="0 0 1000 330" role="img" aria-label="A file split into eight parts downloaded in parallel"></svg></div>
+    </section>
+
+    <section id="streams">
+      <div class="eyebrow">Streams &amp; repair</div>
+      <h2>Playlists of clips</h2>
+      <p>Streaming sites send a playlist (<code>.m3u8</code>) listing hundreds of short clips. yt-dlp fetches them in order and joins them. If a site wrapped each clip in a fake picture to fool downloaders, Snag strips the wrapping afterwards so the file plays.</p>
+      <div class="board min"><svg id="d-stream" viewBox="0 0 1000 300" role="img" aria-label="A stream playlist, its clips, and the repair step"></svg></div>
+    </section>
+
+    <section id="bridge">
+      <div class="eyebrow">Extension ↔ app API</div>
+      <h2>What the extension can ask</h2>
+      <p>Every request except <code>/ping</code> and <code>/pair</code> must carry the pairing token. The server only listens on <code>127.0.0.1</code>, so other computers can't reach it, and websites can't read its answers.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Route</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code>GET /ping</code></td><td>“Are you there?” Answers with whether the extension is paired and the accent colour.</td></tr>
+          <tr><td><code>POST /pair</code></td><td>One-click connect: Snag asks you “Allow?”, then hands over the token. Only browser extensions may ask.</td></tr>
+          <tr><td><code>POST /add</code></td><td>Add a link. Snag decides: file, video page, image gallery or torrent.</td></tr>
+          <tr><td><code>POST /probe</code></td><td>Read a video page with yt-dlp and return its qualities (used by the menu and the prefetch).</td></tr>
+          <tr><td><code>POST /add-media</code></td><td>Add a video in the chosen quality, with cookies and Referer. Used by NOW rows and quality rows.</td></tr>
+          <tr><td><code>POST /add-batch</code></td><td>Add many links at once (“Grab all from this page”).</td></tr>
+          <tr><td><code>POST /focus</code>, <code>/quit</code></td><td>Bring the window forward; close Snag cleanly.</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="storage">
+      <div class="eyebrow">Where things are saved</div>
+      <h2>Your disk</h2>
+      <div class="board min"><svg id="d-storage" viewBox="0 0 1000 330" role="img" aria-label="Folders Snag uses"></svg></div>
+      <dl>
+        <dt>state.json</dt><dd>The download list, queues and settings. Written safely (temp file, then swap).</dd>
+        <dt>snag.log</dt><dd>Errors and notices, kept under 1 MB. Handy for bug reports.</dd>
+        <dt>bin\</dt><dd>yt-dlp and gallery-dl, fetched on first use. yt-dlp updates itself weekly.</dd>
+        <dt>cookies\</dt><dd>Short-lived cookie files for yt-dlp, deleted as soon as a download ends and wiped at start.</dd>
+        <dt>*.rdmpart / *.rdmstate</dt><dd>An unfinished file and its progress note. Both disappear when the file is complete.</dd>
+      </dl>
+    </section>
+
+    <section id="glossary">
+      <div class="eyebrow">Glossary</div>
+      <h2>Words on this page</h2>
+      <dl>
+        <dt>Sniffer</dt><dd>The part of the extension that looks at the addresses tabs load and keeps the ones that are media.</dd>
+        <dt>Referer</dt><dd>“I came from this page.” Many video servers only answer requests that say they come from their own player.</dd>
+        <dt>Cookies</dt><dd>Small notes your browser keeps for each site, like “logged in as you”. Snag borrows them so private or age-restricted videos work.</dd>
+        <dt>HLS / .m3u8</dt><dd>A streaming format: a playlist plus many short clips.</dd>
+        <dt>Range request</dt><dd>Asking a server for only part of a file (“bytes 15,000,000 to 29,999,999”). This is what makes parallel parts possible.</dd>
+        <dt>Pairing token</dt><dd>A secret shared once between the extension and the app, so only your extension can add downloads.</dd>
+        <dt>yt-dlp</dt><dd>An open-source tool that knows how to read 1,800+ video sites.</dd>
+        <dt>Prefetch</dt><dd>Reading a video page in the background as soon as it opens, so the quality list is ready when you click.</dd>
+      </dl>
+    </section>
+  </main>
+</div>
+
+<script>
+(() => {
+  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const NS = "http://www.w3.org/2000/svg";
+
+  // A small Excalidraw-style kit on top of rough.js: boxes, arrows, hand-written labels.
+  function kit(svg) {
+    while (svg.firstChild) svg.firstChild.remove();
+    const rc = window.rough ? rough.svg(svg) : null;
+    const ink = css("--ink");
+    const seed = { v: 7 };
+    const opts = (o) => ({ roughness: 1.3, bowing: 1.2, stroke: ink, strokeWidth: 1.6, seed: seed.v++, ...o });
+    const add = (node) => (svg.appendChild(node), node);
+    const text = (x, y, s, { size = 18, anchor = "middle", color = ink, weight = 400, font = "var(--hand)" } = {}) => {
+      const t = document.createElementNS(NS, "text");
+      t.setAttribute("x", x);
+      t.setAttribute("y", y);
+      t.setAttribute("text-anchor", anchor);
+      t.setAttribute("fill", color);
+      t.setAttribute("style", `font-family:${font};font-size:${size}px;font-weight:${weight}`);
+      t.textContent = s;
+      return add(t);
+    };
+    const box = (x, y, w, h, label, sub, color) => {
+      const fill = color ? css(color + "-soft") : css("--panel");
+      const stroke = color ? css(color) : ink;
+      if (rc) add(rc.rectangle(x, y, w, h, opts({ fill, fillStyle: "hachure", hachureGap: 7, fillWeight: 1.2, stroke })));
+      else {
+        const r = document.createElementNS(NS, "rect");
+        Object.entries({ x, y, width: w, height: h, rx: 8, fill, stroke }).forEach(([k, v]) => r.setAttribute(k, v));
+        add(r);
+      }
+      const lines = sub ? 2 : 1;
+      text(x + w / 2, y + h / 2 + (lines === 2 ? -4 : 6), label, { size: 19, weight: 700 });
+      if (sub) text(x + w / 2, y + h / 2 + 18, sub, { size: 14, color: css("--muted") });
+    };
+    const frame = (x, y, w, h, label, color) => {
+      const stroke = css(color);
+      if (rc) add(rc.rectangle(x, y, w, h, opts({ stroke, strokeWidth: 1.4, strokeLineDash: [8, 7], roughness: 1 })));
+      text(x + 12, y + 24, label, { anchor: "start", size: 17, color: stroke, weight: 700 });
+    };
+    const arrow = (x1, y1, x2, y2, label, { color = "--ink", dy = -10, bend = 0 } = {}) => {
+      const stroke = css(color);
+      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2 + bend;
+      if (rc) add(rc.curve([[x1, y1], [mx, my], [x2, y2]], opts({ stroke, strokeWidth: 1.8 })));
+      const ang = Math.atan2(y2 - my, x2 - mx), L = 13, sp = 0.45;
+      const hx1 = x2 - L * Math.cos(ang - sp), hy1 = y2 - L * Math.sin(ang - sp);
+      const hx2 = x2 - L * Math.cos(ang + sp), hy2 = y2 - L * Math.sin(ang + sp);
+      if (rc) {
+        add(rc.line(x2, y2, hx1, hy1, opts({ stroke, strokeWidth: 1.8 })));
+        add(rc.line(x2, y2, hx2, hy2, opts({ stroke, strokeWidth: 1.8 })));
+      }
+      if (label) text(mx, my + dy, label, { size: 15, color: css("--muted") });
+    };
+    const ellipse = (x, y, w, h, label, color) => {
+      if (rc) add(rc.ellipse(x, y, w, h, opts({ fill: css(color + "-soft"), fillStyle: "cross-hatch", hachureGap: 9, stroke: css(color) })));
+      text(x, y + 6, label, { size: 18, weight: 700 });
+    };
+    return { box, frame, arrow, text, ellipse, rc, opts, add, ink };
+  }
+
+  function drawMap() {
+    const k = kit(document.getElementById("d-map"));
+    k.frame(20, 20, 330, 360, "Your browser", "--violet");
+    k.box(45, 60, 280, 64, "Page button + menu", "content.js · on every site", "--violet");
+    k.box(45, 150, 280, 64, "Sniffer", "background.js · watches requests", "--violet");
+    k.box(45, 240, 280, 64, "Popup · Grab all · right-click", "popup.js · grab.js", "--violet");
+    k.text(185, 350, "video player loads streams →", { size: 15, color: css("--muted") });
+
+    k.frame(420, 20, 560, 420, "Snag app (snag.exe)", "--accent");
+    k.box(450, 60, 220, 70, "Bridge", "127.0.0.1:47321", "--accent");
+    k.box(720, 60, 230, 70, "Window + tray", "iced UI · notifications", "--accent");
+    k.box(560, 175, 260, 76, "Manager (core)", "list · queues · retries · cookies", "--accent");
+    k.box(450, 300, 150, 70, "engine", "files, 8 parts", "--blue");
+    k.box(620, 300, 150, 70, "media", "yt-dlp · gallery-dl", "--blue");
+    k.box(790, 300, 160, 70, "torrent", "librqbit", "--blue");
+
+    k.arrow(325, 92, 450, 92, "links", { color: "--violet" });
+    k.arrow(325, 182, 450, 112, "", { color: "--violet" });
+    k.arrow(560, 130, 640, 175, "", { color: "--accent" });
+    k.arrow(835, 130, 770, 175, "events", { color: "--accent", dy: -8 });
+    k.arrow(640, 251, 525, 300, "");
+    k.arrow(690, 251, 695, 300, "");
+    k.arrow(760, 251, 860, 300, "");
+
+    k.ellipse(170, 520, 250, 110, "Websites", "--blue");
+    k.text(170, 552, "YouTube · CDNs · GitHub…", { size: 14, color: css("--muted") });
+    k.arrow(525, 370, 300, 500, "own connections + your cookies", { color: "--blue", dy: 26, bend: 30 });
+    k.arrow(185, 465, 185, 385, "", { color: "--violet" });
+
+    k.box(700, 505, 270, 90, "Your disk", "Downloads\\Snag · %APPDATA%\\Snag", "--green");
+    k.arrow(695, 370, 790, 505, "files", { color: "--green", dy: 4 });
+    k.arrow(690, 251, 720, 505, "", { color: "--green", bend: 60 });
+    k.box(430, 520, 200, 64, "Phone page", "Wi-Fi :47330 (opt-in)", "--accent");
+    k.arrow(530, 520, 545, 440, "", { color: "--accent" });
+  }
+
+  function drawFlow() {
+    const k = kit(document.getElementById("d-flow"));
+    const lanes = [["Website", 120, "--blue"], ["Browser tab", 360, "--violet"], ["Extension", 600, "--violet"], ["Snag app", 860, "--accent"]];
+    lanes.forEach(([name, x, c]) => {
+      k.box(x - 90, 16, 180, 50, name, "", c);
+      if (k.rc) k.add(k.rc.line(x, 70, x, 545, k.opts({ stroke: css("--line"), strokeLineDash: [6, 8], roughness: 0.6 })));
+    });
+    const step = (n, from, to, label, color, y) => {
+      const x1 = lanes[from][1], x2 = lanes[to][1];
+      if (from === to) {
+        k.arrow(x1 + 6, y - 10, x1 + 6, y + 18, "", { color, bend: 0 });
+        k.text(x1 + (x1 > 700 ? -16 : 18), y + 8, `${n}. ${label}`, { anchor: x1 > 700 ? "end" : "start", size: 16 });
+        return;
+      }
+      k.arrow(x1, y, x2, y, "", { color });
+      k.text((x1 + x2) / 2, y - 10, `${n}. ${label}`, { size: 16 });
+    };
+    step(1, 1, 0, "play → GET master.m3u8", "--blue", 112);
+    step(2, 1, 2, "“tab got a playlist”", "--violet", 168);
+    step(3, 2, 1, "show Download · NOW", "--violet", 224);
+    step(4, 2, 3, "POST /add-media + cookies + Referer", "--accent", 280);
+    step(5, 3, 0, "GET playlist, then clip 1…173", "--blue", 336);
+    step(6, 0, 3, "clips arrive", "--blue", 392);
+    step(7, 3, 3, "join + repair", "--accent", 440);
+    step(8, 3, 3, "file in Downloads ✓", "--green", 496);
+  }
+
+  function drawEngine() {
+    const k = kit(document.getElementById("d-engine"));
+    k.ellipse(120, 165, 190, 110, "Server", "--blue");
+    k.text(120, 197, "supports Range ✓", { size: 14, color: css("--muted") });
+    const x0 = 330, w = 620, parts = 8, pw = w / parts;
+    for (let i = 0; i < parts; i++) {
+      const done = [1, 0.7, 1, 0.45, 0.85, 1, 0.6, 0.35][i];
+      if (k.rc) {
+        k.add(k.rc.rectangle(x0 + i * pw + 3, 140, pw - 6, 54, k.opts({ stroke: css("--blue") })));
+        k.add(k.rc.rectangle(x0 + i * pw + 3, 140, (pw - 6) * done, 54, k.opts({ fill: css("--blue-soft"), fillStyle: "solid", stroke: "none" })));
+      }
+      k.text(x0 + i * pw + pw / 2, 222, `${i * 15}–${(i + 1) * 15}`, { size: 14, color: css("--muted") });
+      k.arrow(215, 165, x0 + i * pw + pw / 2, 136, "", { color: "--blue", bend: -40 + i * 4 });
+    }
+    k.text(x0 + w / 2, 250, "MB of a 120 MB file · each part on its own connection", { size: 15, color: css("--muted") });
+    k.text(x0 + w / 2, 290, "movie.mp4.rdmpart  +  movie.mp4.rdmstate  →  movie.mp4", { size: 16, font: "var(--mono)" });
+    k.text(x0 + w / 2, 60, "Range: bytes=15000000-29999999", { size: 15, font: "var(--mono)", color: css("--blue") });
+  }
+
+  function drawStream() {
+    const k = kit(document.getElementById("d-stream"));
+    k.box(30, 100, 190, 90, "master.m3u8", "the playlist", "--blue");
+    for (let i = 0; i < 6; i++) {
+      const x = 270 + i * 82;
+      k.box(x, 72, 70, 50, i === 5 ? "…" : `clip ${i + 1}`, "", "--blue");
+      if (k.rc && i < 5) k.add(k.rc.rectangle(x, 132, 70, 22, k.opts({ fill: css("--accent-soft"), fillStyle: "zigzag", hachureGap: 5, stroke: css("--accent") })));
+    }
+    k.text(495, 182, "each clip wrapped in a fake 1×1 PNG", { size: 15, color: css("--accent") });
+    k.arrow(220, 145, 268, 100, "", { color: "--blue" });
+    k.arrow(770, 112, 820, 112, "", { color: "--blue" });
+    k.box(825, 70, 150, 90, "join", "173 clips → 1 file", "--accent");
+    k.arrow(900, 160, 900, 205, "", { color: "--accent" });
+    k.box(780, 210, 200, 72, "strip wrapping", "→ playable .ts", "--green");
+  }
+
+  function drawStorage() {
+    const k = kit(document.getElementById("d-storage"));
+    k.frame(20, 20, 450, 290, "%APPDATA%\\Snag", "--green");
+    [["state.json", "list · queues · settings"], ["snag.log", "errors, last 1 MB"], ["bin\\", "yt-dlp · gallery-dl"], ["cookies\\", "temporary, auto-deleted"]].forEach(([a, b], i) => {
+      k.box(45 + (i % 2) * 210, 60 + Math.floor(i / 2) * 120, 190, 90, a, b, "--green");
+    });
+    k.frame(520, 20, 460, 290, "Downloads\\Snag", "--blue");
+    [["Videos", "mp4 · ts"], ["Music", "mp3"], ["Images", "galleries"], ["Archives · Documents · Programs", ""]].forEach(([a, b], i) => {
+      if (i < 3) k.box(545 + i * 145, 60, 130, 80, a, b, "--blue");
+      else k.box(545, 170, 420, 70, a, "sorted by type", "--blue");
+    });
+    k.text(750, 290, "unfinished: name.rdmpart + name.rdmstate", { size: 15, font: "var(--mono)", color: css("--muted") });
+  }
+
+  function drawAll() {
+    drawMap();
+    drawFlow();
+    drawEngine();
+    drawStream();
+    drawStorage();
+  }
+  // Redraw when fonts arrive (labels are measured in the hand font) and when the theme changes.
+  drawAll();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawAll);
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawAll);
+  new MutationObserver(drawAll).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+})();
+</script>
+</body>
+</html>
