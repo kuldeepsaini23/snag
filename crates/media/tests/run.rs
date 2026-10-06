@@ -54,6 +54,46 @@ async fn self_update_reports_last_line() {
     assert_eq!(self_update(&fake()).await, Ok("yt-dlp is up to date (fake)".to_string()));
 }
 
+/// Real yt-dlp + network: --limit-rate keeps the speed near the limit.
+/// Run with: cargo test -p rdm-media --test run real_limit -- --ignored --nocapture
+#[tokio::test]
+#[ignore]
+async fn real_limit_rate_holds() {
+    let ytdlp = PathBuf::from(std::env::var("APPDATA").unwrap()).join(r"rdm\bin\yt-dlp.exe");
+    let dir = tempfile::tempdir().unwrap();
+    let (tx, mut rx) = watch::channel(MediaProgress::default());
+    let cancel = CancellationToken::new();
+    let limit = 512 * 1024;
+    let opts = MediaOptions { limit_bps: limit, temp_dir: Some(dir.path().join("parts")), ..Default::default() };
+    let watcher = tokio::spawn(async move {
+        let started = Instant::now();
+        let mut speeds = Vec::new();
+        while rx.changed().await.is_ok() {
+            let p = rx.borrow_and_update().clone();
+            if started.elapsed() > Duration::from_secs(4) && p.speed_bps > 0 {
+                speeds.push(p.speed_bps);
+            }
+        }
+        speeds
+    });
+    let stop = cancel.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(12)).await;
+        stop.cancel();
+    });
+    let r = download(&ytdlp, "https://www.youtube.com/watch?v=aqz-KE-bpKQ", &MediaFormat::Video { max_height: 1080 }, dir.path(), &opts, cancel, &tx).await;
+    drop(tx);
+    let speeds = watcher.await.unwrap();
+    assert_eq!(r, Ok(MediaOutcome::Paused));
+    let avg = speeds.iter().sum::<u64>() / speeds.len().max(1) as u64;
+    println!("samples={} avg={avg} max={:?}", speeds.len(), speeds.iter().max());
+    assert!(!speeds.is_empty());
+    assert!(avg < limit * 13 / 10, "average {avg} B/s over a {limit} B/s limit");
+    assert!(dir.path().join("parts").exists(), "partial files are in the temp folder");
+    let in_home: Vec<_> = std::fs::read_dir(dir.path()).unwrap().map(|e| e.unwrap().file_name()).filter(|n| n != "parts").collect();
+    assert!(in_home.is_empty(), "nothing partial in the output folder: {in_home:?}");
+}
+
 fn count(image: &str) -> usize {
     let out = std::process::Command::new("tasklist").args(["/FO", "CSV", "/NH", "/FI", &format!("IMAGENAME eq {image}")]).output().unwrap();
     String::from_utf8_lossy(&out.stdout).lines().filter(|l| l.starts_with('"')).count()

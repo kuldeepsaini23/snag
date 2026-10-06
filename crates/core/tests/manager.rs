@@ -187,6 +187,12 @@ async fn real_media_download_mp4_and_mp3() {
     assert_eq!(done[&audio].extension().unwrap(), "mp3");
     assert!(done[&video].starts_with(dir.path().join("dl").join("Videos")));
     assert!(done[&audio].starts_with(dir.path().join("dl").join("Music")));
+    // Partial files went to each item's own temp folder, which is gone now.
+    for folder in ["Videos", "Music"] {
+        wait_gone(&dir.path().join("dl").join(folder).join(".rdm-parts")).await;
+        let names: Vec<_> = std::fs::read_dir(dir.path().join("dl").join(folder)).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(names.len(), 1, "only the finished file is left in {folder}: {names:?}");
+    }
 }
 
 #[tokio::test]
