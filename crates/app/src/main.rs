@@ -3,6 +3,7 @@ mod format;
 mod queues;
 #[cfg(debug_assertions)]
 mod snap;
+mod notify;
 mod state;
 mod tray;
 mod ui;

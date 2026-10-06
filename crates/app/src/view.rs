@@ -683,4 +683,49 @@ mod tests {
         assert_eq!(paused, vec![ItemId(1), ItemId(3)], "running and queued");
         assert_eq!(m.resume_all_ids(), vec![ItemId(4)], "paused and failed");
     }
+
+    fn finish(m: &mut Model, id: u64, status: Status) {
+        let mut it = m.items.iter().find(|i| i.id == ItemId(id)).cloned().unwrap();
+        it.status = status;
+        m.apply(Event::Updated(it));
+    }
+
+    #[test]
+    fn notification_only_on_transition() {
+        let mut m = model();
+        finish(&mut m, 1, Status::Done);
+        let notes = m.take_notes();
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].title, "Download finished");
+        assert_eq!(notes[0].body, "Rust Async.mp4");
+        finish(&mut m, 1, Status::Done);
+        assert!(m.take_notes().is_empty(), "an update to an already finished item says nothing");
+        finish(&mut m, 3, Status::Failed("HTTP 404".into()));
+        let failed = m.take_notes();
+        assert_eq!(failed[0].title, "Download failed");
+        assert_eq!(failed[0].body, "paper.pdf: HTTP 404");
+        m.settings.notify = false;
+        finish(&mut m, 4, Status::Done);
+        assert!(m.take_notes().is_empty(), "notifications can be turned off");
+    }
+
+    #[test]
+    fn notifications_batch_bursts() {
+        let mut m = Model::default();
+        for id in 1..=5 {
+            m.apply(Event::Added(item(id, &format!("clip {id}.mp4"), Category::Video, Status::Running)));
+        }
+        for id in 1..=5 {
+            finish(&mut m, id, Status::Done);
+        }
+        let notes = m.take_notes();
+        assert_eq!(notes.len(), 1, "a finished playlist is one notification, not five");
+        assert_eq!(notes[0].title, "5 downloads finished");
+        assert!(m.take_notes().is_empty());
+        finish(&mut m, 1, Status::Running);
+        finish(&mut m, 1, Status::Done);
+        finish(&mut m, 2, Status::Running);
+        finish(&mut m, 2, Status::Done);
+        assert_eq!(m.take_notes().len(), 2, "a couple are shown one by one");
+    }
 }

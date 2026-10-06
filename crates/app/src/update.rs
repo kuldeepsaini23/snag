@@ -67,6 +67,9 @@ pub enum Message {
     KeepDownloading,
     PauseAll,
     ResumeAll,
+    /// Show the notifications collected since the last flush.
+    FlushNotes,
+    DraftNotify(bool),
     // List
     SetFilter(Filter),
     SetLibrary(Library),
@@ -141,6 +144,7 @@ pub fn boot(manager: Manager, bridge_status: String, data_dir: PathBuf) -> (App,
     let m = manager.clone();
     let model = Model { bridge_status, ..Model::default() };
     let tray = crate::tray::create();
+    crate::notify::register(&data_dir);
     (App { model, manager, data_dir, tray }, Task::perform(async move { m.snapshot().await }, Message::Loaded))
 }
 
@@ -231,6 +235,18 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::QuitAnyway => return iced::exit(),
         Message::KeepDownloading => model.keep_downloading(),
+        Message::FlushNotes => {
+            let notes = model.take_notes();
+            if !notes.is_empty() {
+                return Task::perform(
+                    async move {
+                        let _ = tokio::task::spawn_blocking(move || notes.iter().for_each(crate::notify::show)).await;
+                    },
+                    |_| Message::Done,
+                );
+            }
+        }
+        Message::DraftNotify(v) => model.draft.notify = v,
         Message::PauseAll => {
             let ids = model.pause_all_ids();
             return fire(&app.manager, move |m| async move {
@@ -463,6 +479,10 @@ pub fn subscription(app: &App) -> Subscription<Message> {
         window::close_requests().map(|_| Message::HideWindow),
         crate::tray::subscription(),
     ];
+    // Notifications go out in batches, so a finished playlist is one toast.
+    if !app.model.notes.is_empty() {
+        subs.push(iced::time::every(std::time::Duration::from_secs(2)).map(|_| Message::FlushNotes));
+    }
     #[cfg(debug_assertions)]
     subs.push(crate::snap::subscription());
     if app.model.settings.clipboard_watch {

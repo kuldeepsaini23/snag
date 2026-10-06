@@ -103,6 +103,16 @@ impl Picker {
     }
 }
 
+/// A Windows notification to show.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Note {
+    pub title: String,
+    pub body: String,
+}
+
+/// More than this many at once become a single summary notification.
+const NOTE_BURST: usize = 3;
+
 /// Settings as typed into the form (numbers stay text until saved).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Draft {
@@ -116,6 +126,7 @@ pub struct Draft {
     pub clipboard_watch: bool,
     pub ask_quality: bool,
     pub preferred_quality: Option<MediaFormat>,
+    pub notify: bool,
     /// "#rrggbb" as typed (Custom colour).
     pub accent: String,
 }
@@ -132,6 +143,7 @@ impl Draft {
             clipboard_watch: s.clipboard_watch,
             ask_quality: s.ask_quality,
             preferred_quality: s.preferred_quality.clone(),
+            notify: s.notify,
             accent: s.accent.clone(),
         }
     }
@@ -160,6 +172,7 @@ impl Draft {
             clipboard_watch: self.clipboard_watch,
             ask_quality: self.ask_quality,
             preferred_quality: self.preferred_quality.clone(),
+            notify: self.notify,
             accent: accent.to_string(),
             ..base.clone()
         })
@@ -238,6 +251,8 @@ pub struct Model {
     pub maximized: bool,
     /// Quit was asked for while downloads run: the "still downloading" sheet is up.
     pub confirm_quit: bool,
+    /// Notifications waiting to be shown (flushed in batches).
+    pub notes: Vec<Note>,
 }
 
 impl Default for Model {
@@ -270,6 +285,7 @@ impl Default for Model {
             toast: None,
             maximized: false,
             confirm_quit: false,
+            notes: Vec::new(),
         }
     }
 }
@@ -293,7 +309,18 @@ impl Model {
         match event {
             Event::Added(item) => self.items.push(item),
             Event::Updated(item) => match self.items.iter_mut().find(|i| i.id == item.id) {
-                Some(slot) => *slot = item,
+                Some(slot) => {
+                    let note = match (&slot.status, &item.status) {
+                        (old, Status::Done) if *old != Status::Done => Some(Note { title: "Download finished".into(), body: item.name.clone() }),
+                        (Status::Failed(_), Status::Failed(_)) => None,
+                        (_, Status::Failed(e)) => Some(Note { title: "Download failed".into(), body: format!("{}: {e}", item.name) }),
+                        _ => None,
+                    };
+                    if let Some(n) = note.filter(|_| self.settings.notify) {
+                        self.notes.push(n);
+                    }
+                    *slot = item;
+                }
                 None => self.items.push(item),
             },
             Event::Removed(id) => {
@@ -372,6 +399,23 @@ impl Model {
         self.notice = None;
         self.speed_open = false;
         self.screen = Screen::Settings;
+    }
+
+    /// The notifications to show now; a burst (a finished playlist) becomes one summary.
+    pub fn take_notes(&mut self) -> Vec<Note> {
+        let notes = std::mem::take(&mut self.notes);
+        if notes.len() <= NOTE_BURST {
+            return notes;
+        }
+        let failed = notes.iter().filter(|n| n.title == "Download failed").count();
+        let done = notes.len() - failed;
+        let title = match (done, failed) {
+            (d, 0) => format!("{d} downloads finished"),
+            (0, f) => format!("{f} downloads failed"),
+            (d, f) => format!("{d} downloads finished, {f} failed"),
+        };
+        let names: Vec<&str> = notes.iter().take(NOTE_BURST).map(|n| n.body.as_str()).collect();
+        vec![Note { title, body: format!("{}…", names.join(", ")) }]
     }
 
     /// Downloads that quitting would interrupt (running or waiting their turn).

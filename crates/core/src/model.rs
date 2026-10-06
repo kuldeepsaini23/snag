@@ -80,6 +80,8 @@ pub struct Settings {
     pub ask_quality: bool,
     /// Pre-selected quality; `None` = the best available.
     pub preferred_quality: Option<MediaFormat>,
+    /// Windows notifications when downloads finish or fail.
+    pub notify: bool,
 }
 
 impl Default for Settings {
@@ -97,6 +99,7 @@ impl Default for Settings {
             extension_token: String::new(),
             ask_quality: true,
             preferred_quality: None,
+            notify: true,
         }
     }
 }
