@@ -219,8 +219,19 @@ impl Manager {
         let cookies = cookie_file(&self.jar, &self.cookie_dir, &key, &url);
         let referer = self.referrers.lock().ok().and_then(|r| r.get(&url).cloned());
         let result = rdm_media::probe(&ytdlp, &url, cookies.as_deref(), referer.as_deref()).await;
-        if let Some(file) = cookies {
-            let _ = std::fs::remove_file(file);
+        let Some(file) = cookies else { return result };
+        let _ = std::fs::remove_file(file);
+        if result.is_ok() {
+            return result;
+        }
+        // Browser cookies can be stale (YouTube rotates them while the tab is open: "The page
+        // needs to be reloaded"). Try without; if that works, stop sending them for this site.
+        let retry = rdm_media::probe(&ytdlp, &url, None, referer.as_deref()).await;
+        if retry.is_ok() {
+            if let Ok(mut jar) = self.jar.lock() {
+                jar.forget(&url);
+            }
+            return retry;
         }
         result
     }

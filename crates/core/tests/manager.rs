@@ -872,3 +872,25 @@ async fn watched_channel_downloads_only_new_uploads() {
     assert_eq!(m.snapshot().await.items.len(), 1, "only the new upload");
     m.shutdown().await;
 }
+
+#[tokio::test]
+async fn stale_browser_cookies_are_dropped_and_the_page_read_without_them() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let m = manager(dir.path(), |_| {}).await;
+    let mut rx = m.subscribe();
+    m.remember_cookies(vec![Cookie {
+        domain: ".video.test".into(),
+        host_only: false,
+        path: "/".into(),
+        secure: true,
+        expiration_date: None,
+        name: "SID".into(),
+        value: "rotated".into(),
+    }]);
+    let info = m.probe_media("https://www.video.test/stale".into()).await.expect("read without the stale cookies");
+    assert_eq!(info.title, "Fake clip");
+    // The download doesn't send them again either.
+    let id = m.add_media("https://www.video.test/stale".into(), "Clip".into(), MediaFormat::Video { max_height: 480 }).await;
+    wait_item(&mut rx, has(id, Status::Done)).await;
+}

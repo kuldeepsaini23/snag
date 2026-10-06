@@ -90,6 +90,13 @@ impl Jar {
         self.cookies.retain(|c| !c.expired(now));
     }
 
+    /// Drops every cookie of `url`'s site (they stopped working, e.g. rotated by the browser).
+    pub fn forget(&mut self, url: &str) {
+        if let Some((_, host, _)) = parts(url) {
+            self.cookies.retain(|c| !c.matches_host(&host));
+        }
+    }
+
     /// Cookies a browser would send to `url`.
     pub fn for_url(&self, url: &str) -> Vec<&Cookie> {
         let Some((https, host, path)) = parts(url) else { return Vec::new() };

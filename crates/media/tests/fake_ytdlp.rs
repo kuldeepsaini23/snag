@@ -21,6 +21,11 @@ fn main() {
         println!("{}", listing.unwrap_or_else(|| r#"{"_type":"playlist","title":"Channel","entries":[]}"#.into()));
         return;
     }
+    if what == "stale" && args.iter().any(|a| a == "--cookies") {
+        // YouTube when the browser's login cookies were already rotated.
+        eprintln!("ERROR: [youtube] abc: The page needs to be reloaded.");
+        std::process::exit(1);
+    }
     if args.iter().any(|a| a == "-J") && what == "fail" {
         eprintln!("ERROR: Unsupported URL: {url}");
         std::process::exit(1);
@@ -78,6 +83,11 @@ fn main() {
             eprintln!("WARNING: something minor");
             eprintln!("ERROR: Unsupported URL: fake://fail");
             std::process::exit(1);
+        }
+        "stale" => {
+            // Without the stale cookies the download works.
+            println!("RDMP 1000 1000 NA 50");
+            println!(r"RDMF C:\out\clip.mp4");
         }
         "slow" => {
             println!("RDMP 1 100 NA 1");
