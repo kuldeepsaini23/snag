@@ -65,6 +65,10 @@ test("what the player is already playing: one instant row each", () => {
   assert.deepStrictEqual(rows.map((r) => r.kind), ["media", "file", "file"]);
   assert.strictEqual(rows[1].detail, "120 MB");
   assert.strictEqual(rows[1].url, "https://cdn.x/v/movie_720.mp4?t=9");
+  // The embedded player's page is what the video host expects as Referer.
+  const embedded = sniffedRows([{ kind: "file", url: "https://cdn.x/v.mp4", referrer: "https://player.embed.tv/e/1" }]);
+  assert.strictEqual(embedded[0].referrer, "https://player.embed.tv/e/1");
+  assert.strictEqual(rows[1].referrer, undefined);
   assert.deepStrictEqual(sniffedRows([]), []);
 });
 

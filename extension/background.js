@@ -93,7 +93,10 @@ chrome.webRequest.onResponseStarted.addListener(
     });
     if (!found) return;
     mediaOf(d.tabId).then((list) => {
-      if (!list.add({ ...found, size: found.size || size })) return;
+      // The page (or embedded player) that loaded it: video hosts check it as Referer.
+      // Firefox gives the full address; Chrome only the origin.
+      const referrer = d.documentUrl || (d.initiator && d.initiator !== "null" ? `${d.initiator}/` : undefined);
+      if (!list.add({ ...found, size: found.size || size, referrer })) return;
       chrome.storage.session.set({ [`media:${d.tabId}`]: list.items }).catch(() => {});
       showCount(d.tabId);
       // The page shows its "Download with Snag" button once it plays something.

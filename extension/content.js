@@ -136,7 +136,7 @@
         row.title = s.url;
         row.addEventListener("click", () => {
           note([el("span", "spinner"), "Starting…"]);
-          ask({ type: "send", url: s.url, kind: s.kind, referrer: location.href }).then((r) => done(r.ok ? "Downloading ✓" : r.error));
+          ask({ type: "send", url: s.url, kind: s.kind, referrer: s.referrer || location.href }).then((r) => done(r.ok ? "Downloading ✓" : r.error));
         });
         box.append(row);
       }
@@ -167,6 +167,8 @@
         pending.replaceWith(qualityList(r.info));
       } else if (items.length) {
         pending.textContent = "Pick one above: Snag can't list qualities for this page.";
+      } else if (!r.ok && /No video found/.test(r.error || "")) {
+        pending.textContent = "Play the video first, then click Download: Snag picks up what the player loads.";
       } else if (!r.ok && /reload this page|no answer|isn't running|not allowed|connect/i.test(r.error || "")) {
         done(r.error);
       } else {

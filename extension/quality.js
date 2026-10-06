@@ -33,7 +33,8 @@ function safeAccent(value) {
 /** Media the page's player already fetched (the sniffer's list) as instant download rows. */
 function sniffedRows(items) {
   return items.map((item) => {
-    if (item.kind !== "file") return { label: `Stream (${item.kind.toUpperCase()})`, detail: "", url: item.url, kind: "media" };
+    const referrer = item.referrer;
+    if (item.kind !== "file") return { label: `Stream (${item.kind.toUpperCase()})`, detail: "", url: item.url, kind: "media", referrer };
     let ext = "";
     try {
       ext = (new URL(item.url).pathname.match(/\.([a-z0-9]{2,4})$/i) || [])[1] || "";
@@ -42,7 +43,7 @@ function sniffedRows(items) {
     }
     const audio = /^(mp3|m4a|aac|ogg|oga|opus|flac|wav)$/i.test(ext);
     const label = ext ? `${ext.toUpperCase()} ${audio ? "audio" : "video"}` : "Media file";
-    return { label, detail: sizeLabel(item.size), url: item.url, kind: "file" };
+    return { label, detail: sizeLabel(item.size), url: item.url, kind: "file", referrer };
   });
 }
 

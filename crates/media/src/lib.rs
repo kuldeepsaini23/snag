@@ -158,6 +158,15 @@ pub fn is_media_url(url: &str) -> bool {
 }
 
 /// Parses `yt-dlp -J --flat-playlist` output.
+/// What yt-dlp says when a page's player builds its link in JavaScript: its generic reader then
+/// returns a piece of the script (`…/' + video_url + '`) as the "video".
+const NO_VIDEO: &str = "No video found on this page. Play the video in the browser, then use the Snag button on the page";
+
+/// A link that is really a fragment of page script (quotes, spaces, braces), not an address.
+fn is_script_fragment(url: &str) -> bool {
+    url.contains(['\'', '"', ' ', '<', '>', '{', '}', '\\'])
+}
+
 pub fn parse_probe(json: &str) -> Result<MediaInfo, String> {
     use serde_json::Value;
     let v: Value = serde_json::from_str(json).map_err(|e| format!("couldn't read yt-dlp output: {e}"))?;
@@ -167,12 +176,13 @@ pub fn parse_probe(json: &str) -> Result<MediaInfo, String> {
     let audio_mp3 = |approx_size| QualityOption { label: "Audio only (MP3)".into(), format: MediaFormat::AudioMp3, approx_size };
 
     if v["_type"] == "playlist" {
-        let entries = v["entries"]
+        let listed = v["entries"].as_array().map_or(0, Vec::len);
+        let entries: Vec<Entry> = v["entries"]
             .as_array()
             .into_iter()
             .flatten()
             .filter_map(|e| {
-                let url = e["url"].as_str().or_else(|| e["webpage_url"].as_str())?;
+                let url = e["url"].as_str().or_else(|| e["webpage_url"].as_str()).filter(|u| !is_script_fragment(u))?;
                 Some(Entry {
                     url: url.to_string(),
                     title: e["title"].as_str().unwrap_or(url).to_string(),
@@ -181,6 +191,9 @@ pub fn parse_probe(json: &str) -> Result<MediaInfo, String> {
                 })
             })
             .collect();
+        if listed > 0 && entries.is_empty() {
+            return Err(NO_VIDEO.into());
+        }
         // A flat playlist doesn't list formats: offer the usual choices.
         let mut options: Vec<_> = [1080, 720, 480]
             .into_iter()
@@ -191,6 +204,10 @@ pub fn parse_probe(json: &str) -> Result<MediaInfo, String> {
     }
 
     let formats = v["formats"].as_array().cloned().unwrap_or_default();
+    let real = |f: &Value| f["url"].as_str().is_none_or(|u| !is_script_fragment(u));
+    if !formats.is_empty() && !formats.iter().any(real) {
+        return Err(NO_VIDEO.into());
+    }
     if v["is_live"] == true || v["live_status"] == "is_live" {
         // Live: one muxed stream per height, recorded as it plays.
         let mut heights: Vec<u64> = formats.iter().filter(|f| f["vcodec"].as_str().is_some_and(|c| c != "none")).filter_map(|f| f["height"].as_u64()).collect();
@@ -549,6 +566,21 @@ mod tests {
         let list = probe_args("https://www.youtube.com/playlist?list=PL1", None, None);
         assert!(!list.contains(&"--no-playlist".to_string()), "{list:?}");
         assert_eq!(list.last().unwrap(), "https://www.youtube.com/playlist?list=PL1");
+    }
+
+    #[test]
+    fn script_fragments_are_not_videos() {
+        // yt-dlp's generic reader on a page whose player builds the link in JavaScript.
+        let page = r#"{"_type":"playlist","title":"Clip","entries":[{"url":"https://site.tv/movies/' + video_url + '"},{"url":"https://site.tv/movies/' + video_url + '"}]}"#;
+        let e = parse_probe(page).unwrap_err();
+        assert!(e.contains("No video found"), "{e}");
+        let single = r#"{"_type":"video","title":"Clip","formats":[{"url":"https://site.tv/x/' + src + '","ext":"unknown_video"}]}"#;
+        assert!(parse_probe(single).unwrap_err().contains("No video found"));
+        // Real entries next to a broken one: the broken one is dropped.
+        let mixed = r#"{"_type":"playlist","title":"L","entries":[{"url":"https://site.tv/v/1"},{"url":"https://site.tv/' + x + '"}]}"#;
+        assert_eq!(parse_probe(mixed).unwrap().entries.len(), 1);
+        // An empty playlist (a new channel) is still fine.
+        assert!(parse_probe(r#"{"_type":"playlist","title":"New","entries":[]}"#).is_ok());
     }
 
     #[test]
