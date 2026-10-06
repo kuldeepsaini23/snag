@@ -1,9 +1,11 @@
 //! Basic views with default iced widgets. The Figma pass replaces this module.
 
+use crate::choices::{Limit, Quality, QueueChoice, quality_choices, speed_presets};
 use crate::format;
+use crate::queues::DAY_LETTERS;
 use crate::state::{Model, Picker, Screen, file_missing};
 use crate::update::{App, Message};
-use iced::widget::{button, checkbox, column, container, progress_bar, row, scrollable, space, text, text_input};
+use iced::widget::{button, checkbox, column, container, pick_list, progress_bar, row, scrollable, space, text, text_input};
 use iced::{Alignment, Element, Fill};
 use rdm_core::{Item, Status};
 
@@ -11,6 +13,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
     match app.model.screen {
         Screen::Downloads => downloads(&app.model),
         Screen::Settings => settings(&app.model),
+        Screen::Queues => queues(&app.model),
         Screen::Picker => match &app.model.picker {
             Some(p) => picker(p),
             None => downloads(&app.model),
@@ -26,6 +29,7 @@ fn downloads(m: &Model) -> Element<'_, Message> {
             .padding(8)
             .width(Fill),
         button(if m.probing { "Reading…" } else { "Add" }).on_press_maybe((!m.probing).then_some(Message::Add)).padding([8, 16]),
+        button("Queues").on_press(Message::OpenQueues).padding([8, 16]),
         button("Settings").on_press(Message::OpenSettings).padding([8, 16]),
     ]
     .spacing(8);
@@ -33,18 +37,18 @@ fn downloads(m: &Model) -> Element<'_, Message> {
     let list: Element<'_, Message> = if m.items.is_empty() {
         container(text("No downloads yet. Paste a link above.").size(14)).padding(24).into()
     } else {
-        scrollable(column(m.items.iter().rev().map(|i| item_row(i, m.selected == Some(i.id), m.pending_delete == Some(i.id)))).spacing(8).padding([0, 12]))
+        scrollable(column(m.items.iter().rev().map(|i| item_row(m, i))).spacing(8).padding([0, 12]))
             .height(Fill)
             .into()
     };
 
     let (running, speed) = m.totals();
-    let footer = text(format!(
-        "{running} downloading · {} · limit {}",
-        format::speed(speed),
-        if m.settings.speed_limit_bps == 0 { "off".to_string() } else { format::speed(m.settings.speed_limit_bps) }
-    ))
-    .size(12);
+    let limit = m.settings.speed_limit_bps;
+    let footer = row![
+        text(format!("{running} downloading · {}", format::speed(speed))).size(12).width(Fill),
+        pick_list(speed_presets(limit), Some(Limit(limit)), |l: Limit| Message::QuickLimit(l.0)).text_size(12).padding([4, 8]),
+    ]
+    .align_y(Alignment::Center);
 
     let mut page = column![top].spacing(12).padding(16);
     if let Some(n) = &m.notice {
@@ -53,7 +57,8 @@ fn downloads(m: &Model) -> Element<'_, Message> {
     page.push(list).push(footer).into()
 }
 
-fn item_row(i: &Item, selected: bool, confirming_delete: bool) -> Element<'_, Message> {
+fn item_row<'a>(m: &'a Model, i: &'a Item) -> Element<'a, Message> {
+    let (selected, confirming_delete) = (m.selected == Some(i.id), m.pending_delete == Some(i.id));
     let percent = match (i.total, &i.status) {
         (_, Status::Done) => 100.0,
         (Some(t), _) if t > 0 => i.downloaded as f32 * 100.0 / t as f32,
@@ -78,6 +83,12 @@ fn item_row(i: &Item, selected: bool, confirming_delete: bool) -> Element<'_, Me
         Status::Paused | Status::Failed(_) => actions.push(button("Resume").on_press(Message::Resume(i.id))),
         Status::Done => actions.push(button("Show in folder").on_press_maybe(i.dest.as_ref().map(|_| Message::ShowInFolder(i.id)))),
     };
+    if m.queues.len() > 1 {
+        let choices: Vec<QueueChoice> = m.queues.iter().map(|q| QueueChoice { id: q.id, name: q.name.clone() }).collect();
+        let current = choices.iter().find(|c| c.id == i.queue).cloned();
+        let id = i.id;
+        actions = actions.push(pick_list(choices, current, move |c: QueueChoice| Message::MoveToQueue(id, c.id)).text_size(13).padding([4, 8]));
+    }
     // Delete sits apart from Remove, is red, and needs a second click.
     let delete = if confirming_delete { "Click again: delete file" } else { "Delete file" };
     actions = actions
@@ -88,7 +99,14 @@ fn item_row(i: &Item, selected: bool, confirming_delete: bool) -> Element<'_, Me
     let body = column![
         row![
             text(&i.name).size(15).width(Fill),
-            text(if missing { "File missing".to_string() } else { format::status_label(&i.status) }).size(13),
+            text(if missing {
+                "File missing".to_string()
+            } else if m.waiting_for_schedule(i) {
+                "Waiting for schedule".to_string()
+            } else {
+                format::status_label(&i.status)
+            })
+            .size(13),
         ]
         .align_y(Alignment::Center),
         progress_bar(0.0..=100.0, percent).girth(6),
@@ -115,6 +133,20 @@ fn settings(m: &Model) -> Element<'_, Message> {
         checkbox(d.sort_into_folders).label("Sort into category folders (Videos, Music, …)").on_toggle(Message::DraftSort),
         checkbox(d.start_immediately).label("Start downloads immediately").on_toggle(Message::DraftStart),
         checkbox(d.clipboard_watch).label("Watch the clipboard for links").on_toggle(Message::DraftClipboard),
+        text("Videos").size(18),
+        row![
+            text("Quality").size(13),
+            pick_list(quality_choices(), Some(Quality(d.preferred_quality.clone())), |q: Quality| Message::DraftQuality(q.0)).padding([6, 10]),
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center),
+        checkbox(d.ask_quality).label("Ask every time (show the quality list with this one selected)").on_toggle(Message::DraftAsk),
+        row![
+            button(if m.updating_ytdlp { "Updating…" } else { "Update yt-dlp" }).on_press_maybe((!m.updating_ytdlp).then_some(Message::UpdateYtdlp)),
+            text("It also updates itself once a week. Update now if a site stops working.").size(12),
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center),
         text("Chrome extension").size(18),
         text(&m.bridge_status).size(13),
         column![
@@ -141,6 +173,58 @@ fn settings(m: &Model) -> Element<'_, Message> {
         space::horizontal(),
     ]
     .spacing(8));
+    scrollable(page).into()
+}
+
+fn queues(m: &Model) -> Element<'_, Message> {
+    let mut page = column![
+        text("Queues").size(22),
+        text("A queue with a schedule only downloads inside its time window. Move downloads between queues from the list.").size(13),
+    ]
+    .spacing(14)
+    .padding(20)
+    .max_width(640);
+    for (i, d) in m.queue_drafts.iter().enumerate() {
+        let mut head = row![text_input("Name", &d.name).on_input(move |v| Message::QueueName(i, v)).padding(6).width(Fill)]
+            .spacing(8)
+            .align_y(Alignment::Center);
+        if d.id != 0 {
+            head = head
+                .push(text("At once").size(13))
+                .push(text_input("1", &d.max_concurrent).on_input(move |v| Message::QueueMax(i, v)).padding(6).width(50))
+                .push(button("Delete").style(button::danger).on_press(Message::DeleteQueue(i)));
+        }
+        let mut card = column![head, checkbox(d.scheduled).label("Run on a schedule").on_toggle(move |v| Message::QueueScheduled(i, v))].spacing(10);
+        if d.scheduled {
+            card = card.push(
+                row![
+                    text("From").size(13),
+                    text_input("23:00", &d.start).on_input(move |v| Message::QueueStart(i, v)).padding(6).width(70),
+                    text("to").size(13),
+                    text_input("until midnight", &d.stop).on_input(move |v| Message::QueueStop(i, v)).padding(6).width(120),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center),
+            );
+            let days = DAY_LETTERS
+                .iter()
+                .enumerate()
+                .fold(row![].spacing(12), |r, (day, letter)| r.push(checkbox(d.days[day]).label(*letter).on_toggle(move |v| Message::QueueDay(i, day, v))));
+            card = card.push(days);
+        }
+        page = page.push(container(card).padding(12).width(Fill).style(container::rounded_box));
+    }
+    page = page.push(button("Add queue").on_press(Message::AddQueue));
+    if let Some(n) = &m.notice {
+        page = page.push(text(n).size(13));
+    }
+    page = page.push(
+        row![
+            button("Save").on_press(Message::SaveQueues).padding([8, 20]),
+            button("Cancel").on_press(Message::CloseQueues).padding([8, 20]),
+        ]
+        .spacing(8),
+    );
     scrollable(page).into()
 }
 

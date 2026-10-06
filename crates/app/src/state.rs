@@ -1,4 +1,5 @@
-use rdm_core::{AppState, Event, Item, ItemId, MediaFormat, MediaInfo, Settings, Status};
+use crate::queues::QueueDraft;
+use rdm_core::{AppState, Event, Item, ItemId, MediaFormat, MediaInfo, Queue, Settings, Status};
 use std::path::PathBuf;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -6,6 +7,7 @@ pub enum Screen {
     Downloads,
     Settings,
     Picker,
+    Queues,
 }
 
 /// Quality choice for a video/audio link (or a whole playlist).
@@ -35,6 +37,8 @@ pub struct Draft {
     pub sort_into_folders: bool,
     pub start_immediately: bool,
     pub clipboard_watch: bool,
+    pub ask_quality: bool,
+    pub preferred_quality: Option<MediaFormat>,
 }
 
 impl Draft {
@@ -47,6 +51,8 @@ impl Draft {
             sort_into_folders: s.sort_into_folders,
             start_immediately: s.start_immediately,
             clipboard_watch: s.clipboard_watch,
+            ask_quality: s.ask_quality,
+            preferred_quality: s.preferred_quality.clone(),
         }
     }
 
@@ -68,6 +74,8 @@ impl Draft {
             sort_into_folders: self.sort_into_folders,
             start_immediately: self.start_immediately,
             clipboard_watch: self.clipboard_watch,
+            ask_quality: self.ask_quality,
+            preferred_quality: self.preferred_quality.clone(),
             ..base.clone()
         })
     }
@@ -125,6 +133,11 @@ pub struct Model {
     pub bridge_status: String,
     /// Item whose Delete was clicked once and waits for confirmation.
     pub pending_delete: Option<ItemId>,
+    pub queues: Vec<Queue>,
+    /// The Queues screen's form.
+    pub queue_drafts: Vec<QueueDraft>,
+    /// "Update yt-dlp" is running.
+    pub updating_ytdlp: bool,
 }
 
 impl Default for Model {
@@ -144,6 +157,9 @@ impl Default for Model {
             clipboard_primed: false,
             bridge_status: String::new(),
             pending_delete: None,
+            queues: AppState::default().queues,
+            queue_drafts: Vec::new(),
+            updating_ytdlp: false,
         }
     }
 }
@@ -152,6 +168,7 @@ impl Model {
     /// Replaces everything with a full snapshot from the manager.
     pub fn load(&mut self, state: AppState) {
         self.items = state.items;
+        self.queues = state.queues;
         self.draft = Draft::from_settings(&state.settings);
         self.settings = state.settings;
         if self.selected.is_some_and(|id| !self.items.iter().any(|i| i.id == id)) {
@@ -178,7 +195,8 @@ impl Model {
                 self.screen = Screen::Picker;
             }
             Event::Notice(text) => self.notice = Some(text),
-            Event::Focus | Event::Queues(_) => {}
+            Event::Focus => {}
+            Event::Queues(queues) => self.queues = queues,
             Event::Settings(s) => {
                 self.draft = Draft::from_settings(&s);
                 self.settings = s;
@@ -192,6 +210,12 @@ impl Model {
             .iter()
             .filter(|i| i.status == Status::Running)
             .fold((0, 0), |(n, speed), i| (n + 1, speed + i.speed_bps))
+    }
+
+    /// Queued, but its queue's schedule doesn't allow it to run right now.
+    pub fn waiting_for_schedule(&self, item: &Item) -> bool {
+        let schedule = self.queues.iter().find(|q| q.id == item.queue).and_then(|q| q.schedule.as_ref());
+        item.status == Status::Queued && schedule.is_some_and(|s| !s.is_active(rdm_core::Now::local()))
     }
 
     pub fn dest_of(&self, id: ItemId) -> Option<PathBuf> {
@@ -241,6 +265,39 @@ mod tests {
         assert_eq!(m.items[0].status, Status::Running);
         assert_eq!(m.items[0].speed_bps, 10);
         assert_eq!(m.items.len(), 2);
+    }
+
+    #[test]
+    fn queues_event_updates_model() {
+        let mut m = Model::default();
+        assert_eq!(m.queues.len(), 1, "Main is there from the start");
+        let night = Queue { id: 1, name: "Night".into(), max_concurrent: 1, schedule: None };
+        m.apply(Event::Queues(vec![m.queues[0].clone(), night.clone()]));
+        assert_eq!(m.queues[1], night);
+        let mut state = AppState::default();
+        state.queues.push(night);
+        let mut fresh = Model::default();
+        fresh.load(state.clone());
+        assert_eq!(fresh.queues, state.queues, "a snapshot brings the queues too");
+    }
+
+    #[test]
+    fn waiting_for_schedule_only_when_queue_is_off_now() {
+        let mut m = Model::default();
+        let never = rdm_core::Schedule { start: 0, stop: None, days: [false; 7] };
+        m.queues.push(Queue { id: 1, name: "Never".into(), max_concurrent: 1, schedule: Some(never) });
+        let mut queued = item(1, Status::Queued, 0);
+        assert!(!m.waiting_for_schedule(&queued), "Main has no schedule");
+        queued.queue = 1;
+        assert!(m.waiting_for_schedule(&queued));
+        assert!(!m.waiting_for_schedule(&Item { queue: 1, ..item(2, Status::Paused, 0) }), "paused isn't waiting");
+    }
+
+    #[test]
+    fn draft_keeps_quality_preference() {
+        let s = Settings { ask_quality: false, preferred_quality: Some(MediaFormat::Video { max_height: 720 }), ..Settings::default() };
+        let d = Draft::from_settings(&s);
+        assert_eq!(d.to_settings(&Settings::default()).unwrap(), s);
     }
 
     #[test]

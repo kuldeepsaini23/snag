@@ -1,6 +1,7 @@
-use crate::state::{Draft, Model, Picker, Screen, clipboard_link, explorer_select_arg};
+use crate::queues::{QueueDraft, drafts_to_queues};
+use crate::state::{Draft, Model, Screen, clipboard_link, explorer_select_arg};
 use iced::{Subscription, Task};
-use rdm_core::{AppState, Event, ItemId, Manager, MediaInfo};
+use rdm_core::{AppState, Event, ItemId, Manager, MediaFormat, MediaInfo, QueueId};
 use std::future::Future;
 use std::hash::{Hash, Hasher};
 use tokio::sync::broadcast::error::RecvError;
@@ -45,6 +46,24 @@ pub enum Message {
     DraftClipboard(bool),
     CopyToken,
     NewToken,
+    OpenQueues,
+    CloseQueues,
+    SaveQueues,
+    AddQueue,
+    DeleteQueue(usize),
+    QueueName(usize, String),
+    QueueMax(usize, String),
+    QueueScheduled(usize, bool),
+    QueueStart(usize, String),
+    QueueStop(usize, String),
+    QueueDay(usize, usize, bool),
+    MoveToQueue(ItemId, QueueId),
+    /// Footer speed-limit list (bytes/s, 0 = none).
+    QuickLimit(u64),
+    DraftQuality(Option<MediaFormat>),
+    DraftAsk(bool),
+    UpdateYtdlp,
+    YtdlpUpdated(Result<String, String>),
     Done,
 }
 
@@ -142,8 +161,8 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             match result {
                 Ok(info) if !info.options.is_empty() => {
                     model.notice = None;
-                    model.picker = Some(Picker { url, info, choice: 0 });
-                    model.screen = Screen::Picker;
+                    // Same path as links from the browser: picker, or straight in with the preferred quality.
+                    return fire(&app.manager, move |m| async move { m.offer_media(url, info).await });
                 }
                 Ok(_) => model.notice = Some("No downloadable video or audio found on that page.".into()),
                 Err(e) => model.notice = Some(format!("Couldn't read that link: {e}")),
@@ -190,9 +209,67 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             let settings = rdm_core::Settings { extension_token: rdm_core::new_token(), ..model.settings.clone() };
             return fire(&app.manager, move |m| async move { m.update_settings(settings).await });
         }
+        Message::OpenQueues => {
+            model.queue_drafts = model.queues.iter().map(QueueDraft::from_queue).collect();
+            model.notice = None;
+            model.screen = Screen::Queues;
+        }
+        Message::CloseQueues => {
+            model.notice = None;
+            model.screen = Screen::Downloads;
+        }
+        Message::SaveQueues => match drafts_to_queues(&model.queue_drafts) {
+            Ok(queues) => {
+                model.notice = None;
+                model.screen = Screen::Downloads;
+                return fire(&app.manager, move |m| async move { m.set_queues(queues).await });
+            }
+            Err(e) => model.notice = Some(e),
+        },
+        Message::AddQueue => {
+            let fresh = QueueDraft::new(&model.queue_drafts);
+            model.queue_drafts.push(fresh);
+        }
+        Message::DeleteQueue(i) => {
+            if model.queue_drafts.get(i).is_some_and(|d| d.id != 0) {
+                model.queue_drafts.remove(i);
+            }
+        }
+        Message::QueueName(i, v) => edit_queue(model, i, |d| d.name = v),
+        Message::QueueMax(i, v) => edit_queue(model, i, |d| d.max_concurrent = v),
+        Message::QueueScheduled(i, v) => edit_queue(model, i, |d| d.scheduled = v),
+        Message::QueueStart(i, v) => edit_queue(model, i, |d| d.start = v),
+        Message::QueueStop(i, v) => edit_queue(model, i, |d| d.stop = v),
+        Message::QueueDay(i, day, v) => edit_queue(model, i, |d| d.days[day % 7] = v),
+        Message::MoveToQueue(id, queue) => return fire(&app.manager, move |m| async move { m.move_to_queue(id, queue).await }),
+        Message::QuickLimit(bps) => {
+            let settings = rdm_core::Settings { speed_limit_bps: bps, ..model.settings.clone() };
+            return fire(&app.manager, move |m| async move { m.update_settings(settings).await });
+        }
+        Message::DraftQuality(q) => model.draft.preferred_quality = q,
+        Message::DraftAsk(v) => model.draft.ask_quality = v,
+        Message::UpdateYtdlp => {
+            model.updating_ytdlp = true;
+            model.notice = Some("Updating yt-dlp…".into());
+            let m = app.manager.clone();
+            return Task::perform(async move { m.update_ytdlp().await }, Message::YtdlpUpdated);
+        }
+        Message::YtdlpUpdated(result) => {
+            model.updating_ytdlp = false;
+            model.notice = Some(match result {
+                Ok(said) => said,
+                Err(e) => format!("yt-dlp update failed: {e}"),
+            });
+        }
         Message::Done => {}
     }
     Task::none()
+}
+
+fn edit_queue(model: &mut Model, i: usize, change: impl FnOnce(&mut QueueDraft)) {
+    if let Some(d) = model.queue_drafts.get_mut(i) {
+        change(d);
+    }
 }
 
 /// Opens Explorer with the file selected; if the file isn't there, opens its folder.
