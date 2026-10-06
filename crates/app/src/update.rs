@@ -227,7 +227,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             Err(e) => model.notice = Some(e),
         },
         Message::AddQueue => {
-            let fresh = QueueDraft::new(&model.queue_drafts);
+            let fresh = QueueDraft::new(&model.queue_drafts, &model.queues);
             model.queue_drafts.push(fresh);
         }
         Message::DeleteQueue(i) => {

@@ -53,8 +53,9 @@ impl QueueDraft {
     }
 
     /// A fresh queue (night downloads, every day) with the next free id.
-    pub fn new(existing: &[QueueDraft]) -> Self {
-        let id = existing.iter().map(|d| d.id).max().map_or(1, |m| m + 1);
+    /// Never reuses the id of a saved queue: a queue deleted on this screen still owns its items until saved.
+    pub fn new(existing: &[QueueDraft], saved: &[Queue]) -> Self {
+        let id = existing.iter().map(|d| d.id).chain(saved.iter().map(|q| q.id)).max().map_or(1, |m| m + 1);
         let schedule = Schedule { start: 23 * 60, stop: Some(7 * 60), days: [true; 7] };
         Self::from_queue(&Queue { id, name: format!("Queue {id}"), max_concurrent: 1, schedule: Some(schedule) })
     }
@@ -161,9 +162,17 @@ mod tests {
     }
 
     #[test]
+    fn new_queue_never_reuses_a_saved_id() {
+        // "Night" (id 4) was deleted on this screen but isn't saved yet: its items still say queue 4.
+        let saved = vec![main(), Queue { id: 4, ..night() }];
+        let drafts = vec![QueueDraft::from_queue(&main())];
+        assert_eq!(QueueDraft::new(&drafts, &saved).id, 5);
+    }
+
+    #[test]
     fn new_queue_gets_next_id() {
         let drafts = vec![QueueDraft::from_queue(&main()), QueueDraft::from_queue(&Queue { id: 4, ..night() })];
-        let fresh = QueueDraft::new(&drafts);
+        let fresh = QueueDraft::new(&drafts, &[]);
         assert_eq!(fresh.id, 5);
         assert!(!fresh.name.trim().is_empty());
         assert!(drafts_to_queues(&[fresh]).is_ok(), "a new queue is valid as it comes");

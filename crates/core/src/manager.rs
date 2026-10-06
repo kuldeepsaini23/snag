@@ -123,6 +123,8 @@ impl Manager {
         };
         let jar = Arc::new(Mutex::new(Jar::default()));
         let cookie_dir = state_path.parent().unwrap_or(Path::new(".")).join("cookies");
+        // Cookie files left by a run that was killed or crashed: never leave sessions on disk.
+        let _ = std::fs::remove_dir_all(&cookie_dir);
         let actor = Actor::new(state_path, events.clone(), tools.clone(), jar.clone(), cookie_dir.clone());
         tokio::spawn(actor.run(rx));
         Manager { tx, events, tools, jar, cookie_dir }
@@ -289,6 +291,8 @@ struct Running {
     cancel: CancellationToken,
     progress: watch::Receiver<Progress>,
     stop: Stop,
+    /// The `--limit-rate` its yt-dlp runs with (videos only; 0 = none).
+    limit_bps: u64,
 }
 
 /// Messages from download tasks back to the actor.
@@ -555,12 +559,41 @@ impl Actor {
             }
         }
         let running: HashSet<ItemId> = self.running.keys().copied().collect();
-        for id in pick_next(&self.state, &running, now) {
-            self.start(id);
+        let picked = pick_next(&self.state, &running, now);
+        // Every download gets an equal share of the speed limit. Videos with a bigger share
+        // than that are restarted with the smaller one (yt-dlp continues its partial files).
+        let limit = self.state.settings.speed_limit_bps;
+        let share = if limit == 0 { 0 } else { (limit / (running.len() + picked.len()).max(1) as u64).max(1) };
+        if limit > 0 {
+            for (id, r) in self.running.iter_mut() {
+                let video = self.state.item(*id).is_some_and(|i| matches!(i.kind, Kind::Media(_)));
+                if video && r.stop == Stop::None && (r.limit_bps == 0 || r.limit_bps > share) {
+                    r.stop = Stop::Schedule;
+                    r.cancel.cancel();
+                }
+            }
         }
+        for id in picked {
+            self.start(id, share);
+        }
+        self.balance_http_limit();
     }
 
-    fn start(&mut self, id: ItemId) {
+    /// File downloads share what the videos leave of the speed limit.
+    fn balance_http_limit(&self) {
+        let limit = self.state.settings.speed_limit_bps;
+        if limit == 0 {
+            self.limiter.set_limit(0);
+            return;
+        }
+        let videos: u64 = self.running.values().map(|r| r.limit_bps).sum();
+        // While videos restart with smaller shares the sum can briefly exceed the limit; never set 0 (= unlimited).
+        let floor = limit / self.running.len().max(1) as u64;
+        self.limiter.set_limit(limit.saturating_sub(videos).max(floor).max(1));
+    }
+
+    /// `share`: this download's part of the speed limit (0 = no limit).
+    fn start(&mut self, id: ItemId, share: u64) {
         let settings = self.state.settings.clone();
         let Some(item) = self.state.item_mut(id) else { return };
         item.status = Status::Running;
@@ -576,9 +609,10 @@ impl Actor {
 
         let cancel = CancellationToken::new();
         let (progress_tx, progress_rx) = watch::channel(Progress::default());
-        self.running.insert(id, Running { cancel: cancel.clone(), progress: progress_rx, stop: Stop::None });
+        let video = matches!(kind, Kind::Media(_));
+        self.running.insert(id, Running { cancel: cancel.clone(), progress: progress_rx, stop: Stop::None, limit_bps: if video { share } else { 0 } });
         if let Kind::Media(format) = kind {
-            self.start_media(id, url, format, work_dir, cancel, progress_tx);
+            self.start_media(id, url, format, work_dir, share, cancel, progress_tx);
             return;
         }
 
@@ -629,12 +663,10 @@ impl Actor {
         if headers.is_empty() { self.client.clone() } else { client_with(headers) }
     }
 
-    fn start_media(&mut self, id: ItemId, url: String, format: MediaFormat, work_dir: Option<PathBuf>, cancel: CancellationToken, progress_tx: watch::Sender<Progress>) {
+    #[allow(clippy::too_many_arguments)]
+    fn start_media(&mut self, id: ItemId, url: String, format: MediaFormat, work_dir: Option<PathBuf>, limit_bps: u64, cancel: CancellationToken, progress_tx: watch::Sender<Progress>) {
         let settings = &self.state.settings;
         let dir = media_dir(settings, &format);
-        // yt-dlp can't share the engine's limiter: each running download gets an equal share.
-        let limit = settings.speed_limit_bps;
-        let limit_bps = if limit == 0 { 0 } else { (limit / self.running.len().max(1) as u64).max(1) };
         let cookies = cookie_file(&self.jar, &self.cookie_dir, &id.0.to_string(), &url);
         let opts = MediaOptions { cookies: cookies.clone(), limit_bps, temp_dir: work_dir };
         let (tools, msg_tx) = (self.tools.clone(), self.msg_tx.clone());

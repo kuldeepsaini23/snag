@@ -552,3 +552,61 @@ async fn update_ytdlp_reports_what_it_said() {
     assert_eq!(m.update_ytdlp().await, Ok("yt-dlp is up to date (fake)".to_string()));
     assert!(dir.path().join("bin").join("yt-dlp.checked").exists(), "the weekly check starts over");
 }
+
+
+#[tokio::test]
+async fn leftover_cookie_files_are_wiped_at_start() {
+    let dir = tempfile::tempdir().unwrap();
+    let cookies = dir.path().join("cookies");
+    std::fs::create_dir_all(&cookies).unwrap();
+    std::fs::write(cookies.join("probe-3.txt"), "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tsecret").unwrap();
+    let m = Manager::start(dir.path().join("state.json"));
+    m.snapshot().await;
+    let left = std::fs::read_dir(&cookies).map(|d| d.count()).unwrap_or(0);
+    assert_eq!(left, 0, "cookies from a crashed or killed run must not stay on disk");
+}
+
+/// The --limit-rate each running video's yt-dlp got (read from the fake's record in its temp folder).
+fn video_limits(dl: &Path) -> Vec<u64> {
+    let Ok(dirs) = std::fs::read_dir(dl.join(".rdm-parts")) else { return Vec::new() };
+    dirs.filter_map(|d| std::fs::read_to_string(d.ok()?.path().join("fake-args.txt")).ok())
+        .filter_map(|args| {
+            let lines: Vec<&str> = args.lines().collect();
+            let i = lines.iter().position(|l| *l == "--limit-rate")?;
+            lines.get(i + 1)?.parse().ok()
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn videos_together_stay_within_the_speed_limit() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let limit = 300 * 1024;
+    let m = manager(dir.path(), |s| {
+        s.speed_limit_bps = limit;
+        s.max_concurrent = 3;
+    })
+    .await;
+    let mut rx = m.subscribe();
+    let mut ids = Vec::new();
+    for n in 0..3 {
+        ids.push(m.add_media(format!("https://v.test/{n}/slow"), format!("clip {n}"), MediaFormat::Video { max_height: 480 }).await);
+    }
+    for id in &ids {
+        wait_item(&mut rx, |i| i.id == *id && i.status == Status::Running).await;
+    }
+    // Earlier starts are restarted with a smaller share as more videos join.
+    let settled = tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            let limits = video_limits(&dir.path().join("dl"));
+            if limits.len() == 3 && limits.iter().sum::<u64>() <= limit {
+                return limits;
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    })
+    .await;
+    assert!(settled.is_ok(), "three videos together exceed {limit} B/s: {:?}", video_limits(&dir.path().join("dl")));
+    m.shutdown().await;
+}

@@ -32,21 +32,16 @@ pub struct Jar {
 }
 
 /// (https?, host, path) of an http(s) URL.
+/// Parsed exactly the way the HTTP client will parse it, so the host we match cookies
+/// against is the host the request really goes to (e.g. `\` counts as `/`).
 fn parts(url: &str) -> Option<(bool, String, String)> {
-    let (https, rest) = match url.split_once("://")? {
-        (scheme, rest) if scheme.eq_ignore_ascii_case("https") => (true, rest),
-        (scheme, rest) if scheme.eq_ignore_ascii_case("http") => (false, rest),
+    let url = rdm_engine::Url::parse(url).ok()?;
+    let https = match url.scheme() {
+        "https" => true,
+        "http" => false,
         _ => return None,
     };
-    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
-    let authority = &rest[..end];
-    let host_port = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
-    let host = host_port.split(':').next()?.to_ascii_lowercase();
-    if host.is_empty() {
-        return None;
-    }
-    let path = rest[end..].split(['?', '#']).next().filter(|p| p.starts_with('/')).unwrap_or("/");
-    Some((https, host, path.to_string()))
+    Some((https, url.host_str()?.to_ascii_lowercase(), url.path().to_string()))
 }
 
 impl Cookie {
@@ -174,6 +169,10 @@ mod tests {
         assert!(j.header("https://evil.test/").is_none());
         assert!(j.netscape("https://evil.test/").is_none());
         assert!(names(&j, "not a url").is_empty());
+        // Browsers and reqwest treat `\` like `/`: this request goes to evil.test, not youtube.com.
+        assert!(names(&j, "https://evil.test\\@www.youtube.com/f.zip").is_empty());
+        assert!(j.header("https://evil.test\\@www.youtube.com/f.zip").is_none());
+        assert!(j.netscape("https://evil.test\\@www.youtube.com/f.zip").is_none());
     }
 
     #[test]

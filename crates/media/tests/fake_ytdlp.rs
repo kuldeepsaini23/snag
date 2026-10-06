@@ -51,5 +51,9 @@ fn record(args: &[String]) {
         text.push_str("\nCOOKIES:\n");
         text.push_str(&std::fs::read_to_string(file).unwrap_or_default());
     }
+    if let Some(temp) = args.iter().find_map(|a| a.strip_prefix("temp:")) {
+        let _ = std::fs::create_dir_all(temp);
+        let _ = std::fs::write(std::path::Path::new(temp).join("fake-args.txt"), &text);
+    }
     let _ = std::fs::write(std::path::Path::new(&home).join("fake-args.txt"), text);
 }

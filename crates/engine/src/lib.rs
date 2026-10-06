@@ -12,7 +12,7 @@ pub use error::EngineError;
 pub use info::RemoteInfo;
 pub use limiter::RateLimiter;
 pub use probe::probe;
-pub use reqwest::{Client, header};
+pub use reqwest::{Client, Url, header};
 pub use tokio_util::sync::CancellationToken;
 
 use std::time::Duration;
