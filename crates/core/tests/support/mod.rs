@@ -26,7 +26,8 @@ impl TestServer {
         let app = Router::new()
             .route("/file/{size}", get(|Path(size): Path<usize>, h: HeaderMap| async move { serve(&h, size, "test.bin", None) }))
             .route("/slow/{size}", get(|Path(size): Path<usize>, h: HeaderMap| async move { serve(&h, size, "test.bin", Some(Duration::from_millis(10))) }))
-            .route("/named/{name}/{size}", get(|Path((name, size)): Path<(String, usize)>, h: HeaderMap| async move { serve(&h, size, &name, None) }));
+            .route("/named/{name}/{size}", get(|Path((name, size)): Path<(String, usize)>, h: HeaderMap| async move { serve(&h, size, &name, None) }))
+            .route("/needs-cookie/{size}", get(|Path(size): Path<usize>, h: HeaderMap| async move { needs_cookie(&h, size) }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -36,6 +37,32 @@ impl TestServer {
     pub fn url(&self, path: &str) -> String {
         format!("{}{}", self.base, path)
     }
+}
+
+/// A logged-in download: every request must carry the browser's cookie and referrer.
+fn needs_cookie(headers: &HeaderMap, size: usize) -> Response {
+    let has = |name: header::HeaderName, value: &str| headers.get(name).and_then(|v| v.to_str().ok()) == Some(value);
+    if !(has(header::COOKIE, "sid=1") && has(header::REFERER, "https://site.test/page")) {
+        return Response::builder().status(StatusCode::FORBIDDEN).body(Body::empty()).unwrap();
+    }
+    serve(headers, size, "private.bin", None)
+}
+
+/// Puts the test stand-in for yt-dlp where the manager looks for it (`<data dir>/bin/yt-dlp.exe`).
+/// It is std-only, so it is compiled straight with rustc once per test run.
+pub fn install_fake_ytdlp(data_dir: &std::path::Path) {
+    static FAKE: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    let fake = FAKE.get_or_init(|| {
+        let out = std::env::temp_dir().join(format!("rdm-core-fake-ytdlp-{}.exe", std::process::id()));
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../media/tests/fake_ytdlp.rs");
+        let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".into());
+        let status = std::process::Command::new(rustc).args(["--edition", "2024", "-o"]).arg(&out).arg(&src).status().unwrap();
+        assert!(status.success(), "couldn't compile the fake yt-dlp");
+        out
+    });
+    let bin = data_dir.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::copy(fake, bin.join("yt-dlp.exe")).unwrap();
 }
 
 /// Range-capable file of `size` deterministic bytes, optionally slowed per 16 KiB chunk.

@@ -172,13 +172,13 @@ impl Model {
                     self.selected = None;
                 }
             }
-            Event::PickMedia { url, info } => {
+            Event::PickMedia { url, info, choice } => {
                 self.notice = None;
-                self.picker = Some(Picker { url, info, choice: 0 });
+                self.picker = Some(Picker { url, info, choice });
                 self.screen = Screen::Picker;
             }
             Event::Notice(text) => self.notice = Some(text),
-            Event::Focus => {}
+            Event::Focus | Event::Queues(_) => {}
             Event::Settings(s) => {
                 self.draft = Draft::from_settings(&s);
                 self.settings = s;
@@ -219,6 +219,8 @@ mod tests {
             queue: 0,
             added: 0,
             kind: Default::default(),
+            referrer: None,
+            work_dir: None,
         }
     }
 
@@ -328,7 +330,7 @@ mod tests {
     #[test]
     fn pick_media_event_opens_picker() {
         let mut m = Model::default();
-        m.apply(Event::PickMedia { url: "https://youtu.be/x".into(), info: info(vec![]) });
+        m.apply(Event::PickMedia { url: "https://youtu.be/x".into(), info: info(vec![]), choice: 0 });
         assert_eq!(m.screen, Screen::Picker);
         let p = m.picker.expect("picker open");
         assert_eq!(p.url, "https://youtu.be/x");

@@ -1,10 +1,10 @@
 mod support;
 
-use rdm_core::{Event, Item, ItemId, Manager, Settings, Status};
+use rdm_core::{Cookie, Event, Item, ItemId, Kind, Manager, MediaFormat, MediaInfo, Queue, QualityOption, Schedule, Settings, Status};
 use std::collections::HashSet;
 use std::path::Path;
 use std::time::Duration;
-use support::{TestServer, data};
+use support::{TestServer, data, install_fake_ytdlp};
 use tokio::sync::broadcast;
 
 async fn manager(dir: &Path, tweak: impl FnOnce(&mut Settings)) -> Manager {
@@ -198,7 +198,7 @@ async fn offer_media_asks_the_ui_to_pick() {
     m.offer_media("https://youtu.be/x".into(), info.clone()).await;
     let got = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
-            if let Ok(Event::PickMedia { url, info }) = rx.recv().await {
+            if let Ok(Event::PickMedia { url, info, .. }) = rx.recv().await {
                 return (url, info);
             }
         }
@@ -298,4 +298,251 @@ async fn pause_does_not_undo_a_pending_remove() {
     .await
     .expect("still removed");
     assert!(m.snapshot().await.items.is_empty());
+}
+
+
+/// Waits for the first event `pick` accepts.
+async fn wait_event<T>(rx: &mut broadcast::Receiver<Event>, pick: impl Fn(Event) -> Option<T>) -> T {
+    tokio::time::timeout(Duration::from_secs(20), async {
+        loop {
+            match rx.recv().await {
+                Ok(e) => {
+                    if let Some(t) = pick(e) {
+                        return t;
+                    }
+                }
+                Err(broadcast::error::RecvError::Lagged(_)) => {}
+                Err(e) => panic!("event channel closed: {e}"),
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for event")
+}
+
+fn never() -> Schedule {
+    Schedule { start: 0, stop: None, days: [false; 7] }
+}
+
+fn main_queue() -> Queue {
+    Queue { id: 0, name: "Main".into(), max_concurrent: usize::MAX, schedule: None }
+}
+
+/// Writes a state.json (downloads into `<dir>/dl`, no category folders) and starts a manager on it.
+fn start_with(dir: &Path, items: serde_json::Value, queues: serde_json::Value) -> Manager {
+    let state = serde_json::json!({
+        "next_id": 10, "items": items, "queues": queues,
+        "settings": {"download_dir": dir.join("dl"), "sort_into_folders": false, "extension_token": "t"}
+    });
+    std::fs::write(dir.join("state.json"), state.to_string()).unwrap();
+    Manager::start(dir.join("state.json"))
+}
+
+fn media_item(id: u64, url: &str, status: &str, work_dir: Option<&Path>) -> serde_json::Value {
+    let mut v = serde_json::json!({"id": id, "url": url, "name": format!("video {id}"), "category": "Video", "status": status,
+        "dest": null, "downloaded": 0, "total": null, "queue": 0, "added": 0, "kind": {"Media": {"Video": {"max_height": 480}}}});
+    if let Some(w) = work_dir {
+        v["work_dir"] = serde_json::json!(w);
+    }
+    v
+}
+
+async fn wait_gone(path: &Path) {
+    let gone = tokio::time::timeout(Duration::from_secs(10), async {
+        while path.exists() {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await;
+    assert!(gone.is_ok(), "{} still exists", path.display());
+}
+
+#[tokio::test]
+async fn set_queues_keeps_main_and_emits() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |_| {}).await;
+    let mut rx = m.subscribe();
+    let night = Queue { id: 1, name: "Night".into(), max_concurrent: 2, schedule: Some(Schedule { start: 23 * 60, stop: Some(7 * 60), days: [true; 7] }) };
+    m.set_queues(vec![night.clone()]).await; // Main left out on purpose
+    let queues = wait_event(&mut rx, |e| match e {
+        Event::Queues(q) => Some(q),
+        _ => None,
+    })
+    .await;
+    assert_eq!(queues, vec![main_queue(), night]);
+    assert_eq!(m.snapshot().await.queues, queues);
+}
+
+#[tokio::test]
+async fn deleting_queue_moves_items_to_main() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let item = serde_json::json!({"id": 1, "url": s.url("/file/200000"), "name": "test.bin", "category": "Other", "status": "Queued",
+        "dest": null, "downloaded": 0, "total": null, "queue": 1, "added": 0});
+    let queues = serde_json::json!([main_queue(), {"id": 1, "name": "Never", "max_concurrent": 1, "schedule": never()}]);
+    let m = start_with(dir.path(), serde_json::json!([item]), queues);
+    let mut rx = m.subscribe();
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert_eq!(m.snapshot().await.items[0].status, Status::Queued, "its queue never runs");
+    m.set_queues(vec![main_queue()]).await;
+    let done = wait_item(&mut rx, has(ItemId(1), Status::Done)).await;
+    assert_eq!(done.queue, 0, "moved to Main and downloaded");
+}
+
+#[tokio::test]
+async fn move_to_queue_and_schedule_holds_it() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |s| s.start_immediately = false).await;
+    let mut rx = m.subscribe();
+    m.set_queues(vec![main_queue(), Queue { id: 1, name: "Never".into(), max_concurrent: 1, schedule: Some(never()) }]).await;
+    let id = m.add(s.url("/file/200000")).await;
+    m.move_to_queue(id, 99).await; // unknown queue: ignored
+    m.move_to_queue(id, 1).await;
+    m.resume(id).await;
+    wait_item(&mut rx, |i| i.id == id && i.queue == 1 && i.status == Status::Queued).await;
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    assert_eq!(m.snapshot().await.items[0].status, Status::Queued, "held by the queue's schedule");
+    m.move_to_queue(id, 0).await;
+    wait_item(&mut rx, has(id, Status::Done)).await;
+}
+
+fn three_options() -> MediaInfo {
+    let video = |h: u32| QualityOption { label: format!("{h}p"), format: MediaFormat::Video { max_height: h }, approx_size: None };
+    MediaInfo {
+        title: "Clip".into(),
+        duration: None,
+        options: vec![video(1080), video(720), QualityOption { label: "MP3".into(), format: MediaFormat::AudioMp3, approx_size: None }],
+        entries: vec![],
+    }
+}
+
+#[tokio::test]
+async fn offer_media_asks_with_preferred_choice() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |s| s.preferred_quality = Some(MediaFormat::Video { max_height: 720 })).await;
+    let mut rx = m.subscribe();
+    m.offer_media("https://youtu.be/x".into(), three_options()).await;
+    let choice = wait_event(&mut rx, |e| match e {
+        Event::PickMedia { choice, .. } => Some(choice),
+        _ => None,
+    })
+    .await;
+    assert_eq!(choice, 1, "720p is pre-selected");
+}
+
+#[tokio::test]
+async fn offer_media_without_asking_adds_items() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |s| {
+        s.ask_quality = false;
+        s.start_immediately = false;
+        s.preferred_quality = Some(MediaFormat::AudioMp3);
+    })
+    .await;
+    let mut rx = m.subscribe();
+    let mut info = three_options();
+    info.entries = vec![
+        rdm_core::Entry { url: "https://youtu.be/a".into(), title: "A".into() },
+        rdm_core::Entry { url: "https://youtu.be/b".into(), title: "B".into() },
+    ];
+    m.offer_media("https://youtube.com/playlist?list=1".into(), info).await;
+    wait_event(&mut rx, |e| matches!(e, Event::Notice(_)).then_some(())).await;
+    let items = m.snapshot().await.items;
+    let got: Vec<_> = items.iter().map(|i| (i.url.as_str(), i.name.as_str(), &i.kind)).collect();
+    let mp3 = Kind::Media(MediaFormat::AudioMp3);
+    assert_eq!(got, vec![("https://youtu.be/a", "A", &mp3), ("https://youtu.be/b", "B", &mp3)]);
+}
+
+#[tokio::test]
+async fn old_media_item_without_work_dir_loads() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let m = start_with(dir.path(), serde_json::json!([media_item(1, "fake://ok", "Paused", None)]), serde_json::json!([main_queue()]));
+    let mut rx = m.subscribe();
+    assert_eq!(m.snapshot().await.items.len(), 1, "an item from before work_dir existed still loads");
+    m.resume(ItemId(1)).await;
+    wait_item(&mut rx, has(ItemId(1), Status::Done)).await;
+    let parts = dir.path().join("dl").join(".rdm-parts");
+    let args = std::fs::read_to_string(dir.path().join("dl").join("fake-args.txt")).unwrap();
+    assert!(args.contains(&format!("temp:{}", parts.join("1").display())), "{args}");
+    wait_gone(&parts).await; // finished: its partial files are cleaned up
+}
+
+#[tokio::test]
+async fn removing_media_item_deletes_its_parts_only() {
+    let dir = tempfile::tempdir().unwrap();
+    let dl = dir.path().join("dl");
+    let (one, two) = (dl.join(".rdm-parts").join("1"), dl.join(".rdm-parts").join("2"));
+    for d in [&one, &two] {
+        std::fs::create_dir_all(d).unwrap();
+        std::fs::write(d.join("v.f137.mp4.part"), b"partial").unwrap();
+    }
+    std::fs::write(dl.join("done.mp4"), b"finished video").unwrap();
+    let mut done = media_item(3, "https://youtu.be/c", "Done", None);
+    done["dest"] = serde_json::json!(dl.join("done.mp4"));
+    let items = serde_json::json!([media_item(1, "https://youtu.be/a", "Paused", Some(&one)), media_item(2, "https://youtu.be/b", "Paused", Some(&two)), done]);
+    let m = start_with(dir.path(), items, serde_json::json!([main_queue()]));
+    let mut rx = m.subscribe();
+    m.remove(ItemId(1), false).await;
+    wait_event(&mut rx, |e| matches!(e, Event::Removed(ItemId(1))).then_some(())).await;
+    wait_gone(&one).await;
+    assert!(two.join("v.f137.mp4.part").exists(), "another item's parts stay");
+    assert!(dl.join("done.mp4").exists(), "finished videos stay");
+}
+
+#[tokio::test]
+async fn http_item_sends_browser_cookies_and_referrer() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |_| {}).await;
+    let mut rx = m.subscribe();
+    m.remember_cookies(vec![Cookie {
+        domain: "127.0.0.1".into(),
+        host_only: true,
+        path: "/".into(),
+        secure: false,
+        expiration_date: None,
+        name: "sid".into(),
+        value: "1".into(),
+    }]);
+    let id = m.add_with(s.url("/needs-cookie/300000"), Some("https://site.test/page".into())).await;
+    let item = wait_item(&mut rx, |i| i.id == id && matches!(i.status, Status::Done | Status::Failed(_))).await;
+    assert_eq!(item.status, Status::Done);
+    assert_eq!(item.referrer.as_deref(), Some("https://site.test/page"));
+    assert!(std::fs::read(item.dest.unwrap()).unwrap() == data(300_000), "content mismatch");
+}
+
+#[tokio::test]
+async fn media_limit_and_cookies_reach_ytdlp() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let m = manager(dir.path(), |s| s.speed_limit_bps = 100 * 1024).await;
+    let mut rx = m.subscribe();
+    m.remember_cookies(vec![Cookie {
+        domain: ".video.test".into(),
+        host_only: false,
+        path: "/".into(),
+        secure: true,
+        expiration_date: None,
+        name: "login".into(),
+        value: "yes".into(),
+    }]);
+    let id = m.add_media("https://www.video.test/ok".into(), "Clip".into(), MediaFormat::Video { max_height: 480 }).await;
+    wait_item(&mut rx, has(id, Status::Done)).await;
+    let args = std::fs::read_to_string(dir.path().join("dl").join("fake-args.txt")).unwrap();
+    assert!(args.contains("--limit-rate\n102400"), "{args}");
+    assert!(args.contains(".video.test\tTRUE\t/\tTRUE\t0\tlogin\tyes"), "{args}");
+    let cookies = dir.path().join("cookies");
+    let left = std::fs::read_dir(&cookies).map(|d| d.count()).unwrap_or(0);
+    assert_eq!(left, 0, "cookie files are deleted once yt-dlp is done");
+}
+
+#[tokio::test]
+async fn update_ytdlp_reports_what_it_said() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let m = manager(dir.path(), |_| {}).await;
+    assert_eq!(m.update_ytdlp().await, Ok("yt-dlp is up to date (fake)".to_string()));
+    assert!(dir.path().join("bin").join("yt-dlp.checked").exists(), "the weekly check starts over");
 }

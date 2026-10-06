@@ -46,6 +46,12 @@ pub struct Item {
     pub added: i64,
     #[serde(default)]
     pub kind: Kind,
+    /// Page the download was started from (sent as Referer).
+    #[serde(default)]
+    pub referrer: Option<String>,
+    /// Video downloads: yt-dlp's partial files live here until the final file is moved out.
+    #[serde(default)]
+    pub work_dir: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -70,6 +76,10 @@ pub struct Settings {
     pub start_immediately: bool,
     /// Shared secret the browser extension sends with every request.
     pub extension_token: String,
+    /// Show the quality picker for every video; otherwise use `preferred_quality` straight away.
+    pub ask_quality: bool,
+    /// Pre-selected quality; `None` = the best available.
+    pub preferred_quality: Option<MediaFormat>,
 }
 
 impl Default for Settings {
@@ -85,6 +95,8 @@ impl Default for Settings {
             clipboard_watch: true,
             start_immediately: true,
             extension_token: String::new(),
+            ask_quality: true,
+            preferred_quality: None,
         }
     }
 }

@@ -59,6 +59,8 @@ mod tests {
             queue,
             added: 0,
             kind: Default::default(),
+            referrer: None,
+            work_dir: None,
         }
     }
 
