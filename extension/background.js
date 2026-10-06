@@ -1,18 +1,18 @@
-// RDM extension background: finds the desktop app on 127.0.0.1 and hands it links.
+// Snag extension background: finds the desktop app on 127.0.0.1 and hands it links.
 // Chrome runs it as a service worker; Firefox loads catch-rules.js before it (see build.js).
 
 if (typeof importScripts === "function") importScripts("catch-rules.js");
 
 const PORTS = [47321, 47322, 47323, 47324, 47325, 47326];
 const DEFAULTS = { token: "", catchDownloads: true, minSizeMB: 1 };
-// Downloads we gave back to Chrome because RDM couldn't take them: don't catch them again.
+// Downloads we gave back to Chrome because Snag couldn't take them: don't catch them again.
 const handBack = new Set();
 
 async function settings() {
   return { ...DEFAULTS, ...(await chrome.storage.local.get(Object.keys(DEFAULTS))) };
 }
 
-/** First port that answers as RDM: { port, paired } or null. */
+/** First port that answers as Snag: { port, paired } or null. */
 async function findApp(token) {
   for (const port of PORTS) {
     try {
@@ -30,7 +30,7 @@ async function findApp(token) {
   return null;
 }
 
-/** The browser's cookies for `url`, so logged-in and age-restricted downloads work in RDM. */
+/** The browser's cookies for `url`, so logged-in and age-restricted downloads work in Snag. */
 async function cookiesFor(url) {
   try {
     return await chrome.cookies.getAll({ url });
@@ -42,15 +42,15 @@ async function cookiesFor(url) {
 async function sendToApp(url, kind, referrer) {
   const { token } = await settings();
   const app = await findApp(token);
-  if (!app) throw new Error("RDM isn't running");
-  if (!app.paired) throw new Error("Not paired: paste the pairing code from RDM → Settings");
+  if (!app) throw new Error("Snag isn't running");
+  if (!app.paired) throw new Error("Not paired: paste the pairing code from Snag → Settings");
   const resp = await fetch(`http://127.0.0.1:${app.port}/add`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-RDM-Token": token },
     body: JSON.stringify({ url, kind, referrer: referrer || undefined, cookies: await cookiesFor(url) }),
   });
   const body = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new Error(body.error || `RDM answered ${resp.status}`);
+  if (!resp.ok) throw new Error(body.error || `Snag answered ${resp.status}`);
   return body;
 }
 
@@ -61,7 +61,7 @@ function flash(ok) {
   setTimeout(() => chrome.action.setBadgeText({ text: "" }), 2500);
 }
 
-// Catch new Chrome downloads and move them to RDM.
+// Catch new Chrome downloads and move them to Snag.
 chrome.downloads.onCreated.addListener(async (item) => {
   const url = item.finalUrl || item.url;
   if (handBack.has(url)) {
@@ -70,7 +70,7 @@ chrome.downloads.onCreated.addListener(async (item) => {
   }
   const s = await settings();
   if (!shouldCatch(item, s, Date.now())) return;
-  // Only take the download away from the browser when RDM is running and paired.
+  // Only take the download away from the browser when Snag is running and paired.
   const app = await findApp(s.token);
   if (!app || !app.paired) return;
 
@@ -84,8 +84,8 @@ chrome.downloads.onCreated.addListener(async (item) => {
     await sendToApp(url, "file", item.referrer);
     flash(true);
   } catch (e) {
-    // RDM unavailable: let Chrome download it after all.
-    console.warn("RDM:", e.message);
+    // Snag unavailable: let Chrome download it after all.
+    console.warn("Snag:", e.message);
     handBack.add(url);
     chrome.downloads.download({ url });
     flash(false);
@@ -93,8 +93,8 @@ chrome.downloads.onCreated.addListener(async (item) => {
 });
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({ id: "rdm-link", title: "Download with RDM", contexts: ["link", "video", "audio", "image"] });
-  chrome.contextMenus.create({ id: "rdm-page", title: "Download this page's video with RDM", contexts: ["page"] });
+  chrome.contextMenus.create({ id: "rdm-link", title: "Download with Snag", contexts: ["link", "video", "audio", "image"] });
+  chrome.contextMenus.create({ id: "rdm-page", title: "Download this page's video with Snag", contexts: ["page"] });
 });
 
 chrome.contextMenus.onClicked.addListener((info) => {
@@ -103,7 +103,7 @@ chrome.contextMenus.onClicked.addListener((info) => {
   sendToApp(url, page ? "media" : undefined, page ? undefined : info.pageUrl)
     .then(() => flash(true))
     .catch((e) => {
-      console.warn("RDM:", e.message);
+      console.warn("Snag:", e.message);
       flash(false);
     });
 });

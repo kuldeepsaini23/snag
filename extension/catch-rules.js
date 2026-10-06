@@ -1,4 +1,4 @@
-// Which Chrome download events RDM should take over. Shared by background.js and the tests.
+// Which Chrome download events Snag should take over. Shared by background.js and the tests.
 
 // Chrome replays its whole download history through downloads.onCreated when the
 // browser starts. Only downloads that are running and began moments ago are new.
@@ -22,7 +22,7 @@ function shouldCatch(item, settings, now) {
   return true;
 }
 
-/** Pages that show a single video/track, where the "Download with RDM" button makes sense. */
+/** Pages that show a single video/track, where the "Download with Snag" button makes sense. */
 function isVideoPage(hostname, pathname) {
   const on = (domain) => hostname === domain || hostname.endsWith("." + domain);
   const parts = pathname.split("/").filter(Boolean);

@@ -745,3 +745,30 @@ async fn permanent_failures_and_retry_off_stay_failed() {
     assert!(matches!(m.snapshot().await.items[0].status, Status::Failed(_)));
     m.shutdown().await;
 }
+
+#[test]
+fn old_rdm_folder_moves_to_snag_once() {
+    let appdata = tempfile::tempdir().unwrap();
+    let old = appdata.path().join("rdm");
+    std::fs::create_dir_all(old.join("bin")).unwrap();
+    std::fs::write(old.join("state.json"), "{}").unwrap();
+    let dir = rdm_core::store::data_dir(appdata.path());
+    assert_eq!(dir, appdata.path().join("Snag"));
+    assert!(dir.join("state.json").exists() && dir.join("bin").exists(), "everything moved");
+    assert!(!old.exists());
+    // Already moved: nothing happens.
+    assert_eq!(rdm_core::store::data_dir(appdata.path()), dir);
+    // Fresh install: the new folder.
+    let fresh = tempfile::tempdir().unwrap();
+    assert_eq!(rdm_core::store::data_dir(fresh.path()), fresh.path().join("Snag"));
+}
+
+#[test]
+fn old_rdm_still_running_keeps_its_folder() {
+    let appdata = tempfile::tempdir().unwrap();
+    let old = appdata.path().join("rdm");
+    std::fs::create_dir_all(&old).unwrap();
+    let _running = rdm_core::instance::lock(&old).expect("the old app holds its folder");
+    assert_eq!(rdm_core::store::data_dir(appdata.path()), old, "not moved under a running copy");
+    assert!(old.exists());
+}

@@ -33,11 +33,11 @@ pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
 
     let (title, subtitle) = match m.settings_tab {
         SettingsTab::General => ("General", "Where files go and what happens when they finish"),
-        SettingsTab::Appearance => ("Appearance", "Make RDM yours: accent colour"),
-        SettingsTab::Connections => ("Connections", "How hard RDM pushes each server"),
+        SettingsTab::Appearance => ("Appearance", "Make Snag yours: accent colour"),
+        SettingsTab::Connections => ("Connections", "How hard Snag pushes each server"),
         SettingsTab::Speed => ("Speed & Schedule", "Cap bandwidth and run queues on a schedule"),
         SettingsTab::Extension => ("Extension", "Catch downloads and videos straight from Chrome"),
-        SettingsTab::Tools => ("Tools", "Helpers RDM uses for video and audio"),
+        SettingsTab::Tools => ("Tools", "Helpers Snag uses for video and audio"),
     };
     let close = button(container(icon(Icon::X, 13)).center(Fill)).width(28).height(28).padding(0).style(style::secondary(c)).on_press(Message::CloseSettings);
     let head = row![column![text(title).size(17).font(style::SEMIBOLD), small(subtitle, c.text2)].spacing(3).width(Fill), close];
@@ -342,7 +342,7 @@ fn tools(m: &Model, c: Colors) -> Element<'_, Message> {
         section(
             "Data",
             vec![
-                line("App data", r"%APPDATA%\rdm · state.json, tools", open.into(), c),
+                line("App data", r"%APPDATA%\Snag · state.json, tools", open.into(), c),
                 line("Download history", &format!("{done} finished item{} · files stay on disk", if done == 1 { "" } else { "s" }), clear.into(), c),
             ],
             c,

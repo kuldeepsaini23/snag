@@ -15,7 +15,9 @@ use std::path::PathBuf;
 fn main() -> iced::Result {
     // The download manager runs on its own runtime, independent of the UI's.
     let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
-    let state_path = std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_default().join("rdm").join("state.json");
+    // %APPDATA%\Snag (an older %APPDATA%\rdm is moved there once).
+    let appdata = std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_default();
+    let state_path = rdm_core::store::data_dir(&appdata).join("state.json");
     // Only one RDM: a second copy would run the same downloads into the same files.
     let data_dir = state_path.parent().map(PathBuf::from).unwrap_or_default();
     // `rdm --quit`: ask the running RDM to pause, save and quit (used by the uninstaller).
@@ -52,7 +54,7 @@ fn main() -> iced::Result {
         ..Default::default()
     };
     let result = iced::application(move || update::boot(boot_manager.clone(), bridge_status.clone(), boot_dir.clone()), update::update, ui::view)
-        .title("RDM")
+        .title("Snag")
         .subscription(update::subscription)
         .theme(|app: &update::App| ui::theme::theme(&ui::theme::colors(app.model.accent_hex())))
         .font(ui::icon::INTER_REGULAR)

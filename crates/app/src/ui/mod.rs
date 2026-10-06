@@ -101,7 +101,7 @@ fn confirm_quit(m: &Model, c: Colors) -> Element<'_, Message> {
             badge,
             column![
                 text(format!("{what} still running")).size(16).font(style::SEMIBOLD),
-                text(format!("Quitting pauses {them}. RDM continues from where it stopped the next time you open it.")).size(12.5).color(c.text2),
+                text(format!("Quitting pauses {them}. Snag continues from where it stopped the next time you open it.")).size(12.5).color(c.text2),
             ]
             .spacing(4)
             .width(Fill),

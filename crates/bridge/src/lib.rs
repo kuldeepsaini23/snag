@@ -62,7 +62,7 @@ struct AddRequest {
 
 async fn add(State(manager): State<Manager>, headers: HeaderMap, Json(req): Json<AddRequest>) -> (StatusCode, Json<Value>) {
     if !authorized(&manager, &headers).await {
-        return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "not paired: paste the pairing code from RDM settings" })));
+        return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "not paired: paste the pairing code from Snag settings" })));
     }
     if !(req.url.starts_with("http://") || req.url.starts_with("https://")) {
         return (StatusCode::BAD_REQUEST, Json(json!({ "error": "only http(s) links can be downloaded" })));

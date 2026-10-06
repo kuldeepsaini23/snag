@@ -14,7 +14,7 @@ use iced::{Alignment, Element, Fill};
 pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
     let (running, speed) = m.totals();
     let subtitle = if running == 0 { "Nothing downloading".to_string() } else { format!("{running} active · {}", format::speed(speed)) };
-    let logo = container(icon(Icon::Download, 15).color(c.on_accent)).center(28).style(style::tag(c.accent, c.on_accent));
+    let logo = iced::widget::image(super::icon::logo()).width(28).height(28);
     let square = |i: Icon, on: bool, msg: Message| button(container(icon(i, 15)).center(Fill)).width(30).height(28).padding(0).style(style::icon_button(c, on)).on_press(msg);
     let title = column![text("Downloads").size(13).font(style::SEMIBOLD), tiny(subtitle, c.text3)].spacing(1);
 

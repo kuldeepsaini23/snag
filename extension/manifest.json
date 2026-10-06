@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "RDM — Download Manager",
+  "name": "Snag — Download Manager",
   "version": "0.1.4",
-  "description": "Sends downloads and videos to the RDM desktop app.",
+  "description": "Sends downloads, videos and images to the Snag desktop app.",
   "permissions": ["downloads", "storage", "contextMenus", "cookies"],
   "host_permissions": ["http://127.0.0.1/*", "<all_urls>"],
   "background": { "service_worker": "background.js" },
-  "action": { "default_popup": "popup.html", "default_title": "RDM" },
+  "action": { "default_popup": "popup.html", "default_title": "Snag", "default_icon": { "16": "icon-16.png", "32": "icon-32.png", "48": "icon-48.png", "128": "icon-128.png" } },
+  "icons": { "16": "icon-16.png", "32": "icon-32.png", "48": "icon-48.png", "128": "icon-128.png" },
   "content_scripts": [
     {
       "matches": [

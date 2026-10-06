@@ -1,4 +1,4 @@
-//! The notification-area (tray) icon: RDM keeps running there when its window is closed.
+//! The notification-area (tray) icon: Snag keeps running there when its window is closed.
 
 use crate::update::Message;
 use iced::futures::SinkExt;
@@ -21,18 +21,18 @@ pub struct Tray(#[allow(dead_code)] TrayIcon);
 pub fn create() -> Option<Tray> {
     let menu = Menu::new();
     menu.append_items(&[
-        &MenuItem::with_id(OPEN, "Open RDM", true, None),
+        &MenuItem::with_id(OPEN, "Open Snag", true, None),
         &MenuItem::with_id(PAUSE_ALL, "Pause all", true, None),
         &MenuItem::with_id(RESUME_ALL, "Resume all", true, None),
         &PredefinedMenuItem::separator(),
-        &MenuItem::with_id(QUIT, "Quit RDM", true, None),
+        &MenuItem::with_id(QUIT, "Quit Snag", true, None),
     ])
     .ok()?;
     let icon = Icon::from_rgba(ICON_32.to_vec(), 32, 32).ok()?;
     TrayIconBuilder::new()
         .with_menu(Box::new(menu))
         .with_menu_on_left_click(false)
-        .with_tooltip("RDM")
+        .with_tooltip("Snag")
         .with_icon(icon)
         .build()
         .ok()

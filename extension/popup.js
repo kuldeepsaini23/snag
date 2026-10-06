@@ -9,10 +9,10 @@ async function refreshStatus() {
   const dot = $("dot");
   dot.className = "dot";
   if (!app) {
-    $("status").textContent = "RDM isn't running";
+    $("status").textContent = "Snag isn't running";
     dot.classList.add("err");
   } else if (!app.paired) {
-    $("status").textContent = "Found RDM. Paste the pairing code";
+    $("status").textContent = "Found Snag. Paste the pairing code";
     dot.classList.add("err");
   } else {
     $("status").textContent = `Connected (port ${app.port})`;
@@ -33,7 +33,7 @@ async function init() {
 
   $("catch").addEventListener("change", async (e) => {
     await chrome.storage.local.set({ catchDownloads: e.target.checked });
-    say(e.target.checked ? "New downloads go to RDM." : "Chrome keeps its downloads.");
+    say(e.target.checked ? "New downloads go to Snag." : "Chrome keeps its downloads.");
   });
 
   $("send").addEventListener("click", async () => {
@@ -41,7 +41,7 @@ async function init() {
     if (!tab || !tab.url) return say("No page to send.");
     say("Sending…");
     const result = await chrome.runtime.sendMessage({ type: "send", url: tab.url });
-    say(result.ok ? "Sent to RDM ✓" : result.error);
+    say(result.ok ? "Sent to Snag ✓" : result.error);
   });
 
   refreshStatus();

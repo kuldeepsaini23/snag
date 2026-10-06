@@ -103,7 +103,7 @@ fn count(image: &str) -> usize {
 #[tokio::test]
 #[ignore]
 async fn real_cancel_leaves_no_processes_behind() {
-    let ytdlp = PathBuf::from(std::env::var("APPDATA").unwrap()).join("rdm").join("bin").join("yt-dlp.exe");
+    let ytdlp = PathBuf::from(std::env::var("APPDATA").unwrap()).join("Snag").join("bin").join("yt-dlp.exe");
     let before = (count("yt-dlp.exe"), count("ffmpeg.exe"));
     let dir = tempfile::tempdir().unwrap();
     let (tx, rx) = watch::channel(MediaProgress::default());

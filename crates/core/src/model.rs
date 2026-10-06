@@ -116,7 +116,7 @@ impl Default for Settings {
     fn default() -> Self {
         let home = std::env::var_os("USERPROFILE").map(PathBuf::from).unwrap_or_default();
         Self {
-            download_dir: home.join("Downloads").join("RDM"),
+            download_dir: home.join("Downloads").join("Snag"),
             sort_into_folders: true,
             connections: 8,
             max_concurrent: 3,

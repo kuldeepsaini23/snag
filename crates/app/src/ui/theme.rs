@@ -93,7 +93,7 @@ pub fn colors(accent_hex: &str) -> Colors {
 
 pub fn theme(c: &Colors) -> iced::Theme {
     iced::Theme::custom(
-        "RDM",
+        "Snag",
         Palette { background: c.canvas, text: c.text, primary: c.accent, success: c.success, warning: c.accent, danger: c.danger },
     )
 }

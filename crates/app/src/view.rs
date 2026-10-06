@@ -179,7 +179,7 @@ pub fn url_hint(m: &Model) -> &'static str {
     if m.probing {
         "Reading video info…"
     } else if m.settings.clipboard_watch {
-        "Copy any link and RDM offers to download it. Paste one here and press Enter."
+        "Copy any link and Snag offers to download it. Paste one here and press Enter."
     } else {
         "Paste a link and press Enter."
     }

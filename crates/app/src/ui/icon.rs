@@ -7,6 +7,15 @@ pub const INTER_REGULAR: &[u8] = include_bytes!("../../assets/fonts/Inter-Regula
 pub const INTER_MEDIUM: &[u8] = include_bytes!("../../assets/fonts/Inter-Medium.ttf");
 pub const INTER_SEMIBOLD: &[u8] = include_bytes!("../../assets/fonts/Inter-SemiBold.ttf");
 pub const JETBRAINS_MONO: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf");
+/// The Snag logo (Figma: Components → "Logo/Snag").
+const LOGO_64: &[u8] = include_bytes!("../../assets/logo/snag-64.png");
+
+/// One handle for the whole run: iced loads images in the background and keys them by handle,
+/// so a handle made anew every frame would never finish loading.
+pub fn logo() -> iced::widget::image::Handle {
+    static LOGO: std::sync::LazyLock<iced::widget::image::Handle> = std::sync::LazyLock::new(|| iced::widget::image::Handle::from_bytes(LOGO_64));
+    LOGO.clone()
+}
 pub const PHOSPHOR: &[u8] = include_bytes!("../../assets/fonts/Phosphor.ttf");
 pub const PHOSPHOR_FILL: &[u8] = include_bytes!("../../assets/fonts/Phosphor-Fill.ttf");
 

@@ -4,7 +4,7 @@ use crate::state::Note;
 use std::path::Path;
 
 /// The identity Windows shows toasts under (registered per user at start-up).
-pub const APP_ID: &str = "RDM.DownloadManager";
+pub const APP_ID: &str = "Snag.DownloadManager";
 
 /// Lets an unpackaged app send toasts: registers its name and icon under HKCU.
 pub fn register(data_dir: &Path) {
@@ -13,7 +13,7 @@ pub fn register(data_dir: &Path) {
     let _ = std::fs::write(&icon, ico_from_rgba(64, 64, crate::tray::ICON_64));
     let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER);
     if let Ok((key, _)) = hkcu.create_subkey(format!(r"Software\Classes\AppUserModelId\{APP_ID}")) {
-        let _ = key.set_value("DisplayName", &"RDM");
+        let _ = key.set_value("DisplayName", &"Snag");
         let _ = key.set_value("IconUri", &icon.display().to_string());
     }
 }
@@ -78,9 +78,9 @@ mod real {
     #[test]
     #[ignore]
     fn real_toast() {
-        let dir = std::env::var_os("APPDATA").map(std::path::PathBuf::from).unwrap_or_default().join("rdm");
+        let dir = rdm_core::store::data_dir(&std::env::var_os("APPDATA").map(std::path::PathBuf::from).unwrap_or_default());
         super::register(&dir);
-        let r = tauri_winrt_notification::Toast::new(super::APP_ID).title("RDM notifications work").text1("You'll see one of these when a download finishes.").show();
+        let r = tauri_winrt_notification::Toast::new(super::APP_ID).title("Snag notifications work").text1("You'll see one of these when a download finishes.").show();
         assert!(r.is_ok(), "{r:?}");
     }
 }

@@ -14,7 +14,7 @@ function firefoxManifest(base) {
   ff.background = { scripts: ["catch-rules.js", "background.js"] };
   ff.browser_specific_settings = {
     gecko: {
-      id: "rdm@download-manager",
+      id: "snag@download-manager",
       strict_min_version: "142.0",
       data_collection_permissions: { required: ["none"] },
     },

@@ -35,6 +35,24 @@ pub fn save(path: &Path, state: &AppState) -> std::io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
+/// The app's data folder: `<appdata>\Snag`. A folder from before the rename (`<appdata>\rdm`)
+/// is moved there once, but never while an old copy still runs from it (then it stays in use).
+pub fn data_dir(appdata: &Path) -> PathBuf {
+    let new = appdata.join("Snag");
+    let old = appdata.join("rdm");
+    if new.exists() || !old.exists() {
+        return new;
+    }
+    match crate::instance::lock(&old) {
+        None => return old,
+        Some(lock) => drop(lock),
+    }
+    match std::fs::rename(&old, &new) {
+        Ok(()) => new,
+        Err(_) => old,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,4 +1,4 @@
-// Floating "Download with RDM" pill on video pages. Lives in a shadow root so page
+// Floating "Download with Snag" pill on video pages. Lives in a shadow root so page
 // styles can't touch it, and follows single-page-app navigation.
 
 (() => {
@@ -21,16 +21,16 @@
         button:hover { filter: brightness(1.08); }
         button[disabled] { opacity: .7; cursor: default; }
       </style>
-      <button title="Send this video to RDM"><span>↓</span><span class="label">Download with RDM</span></button>`;
+      <button title="Send this video to Snag"><span>↓</span><span class="label">Download with Snag</span></button>`;
     const button = root.querySelector("button");
     const label = root.querySelector(".label");
     button.addEventListener("click", () => {
       button.disabled = true;
       label.textContent = "Sending…";
       chrome.runtime.sendMessage({ type: "send", url: location.href, kind: "media" }, (result) => {
-        label.textContent = result && result.ok ? "Sent to RDM ✓" : (result && result.error) || "RDM not reachable";
+        label.textContent = result && result.ok ? "Sent to Snag ✓" : (result && result.error) || "Snag not reachable";
         setTimeout(() => {
-          label.textContent = "Download with RDM";
+          label.textContent = "Download with Snag";
           button.disabled = false;
         }, 2500);
       });
