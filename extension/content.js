@@ -18,8 +18,8 @@
         :host { --accent: #ff9f0a; }
         * { box-sizing: border-box; font-family: "Inter", "Segoe UI", system-ui, sans-serif; }
         .pill {
-          position: fixed; bottom: 24px; right: 24px; z-index: 2147483647;
-          display: flex; align-items: center; gap: 7px;
+          position: fixed; z-index: 2147483647;
+          display: flex; align-items: center; gap: 7px; touch-action: none;
           padding: 9px 14px 9px 12px; border: 0; border-radius: 999px;
           background: var(--accent); color: #1a1816; cursor: pointer;
           font-size: 12.5px; font-weight: 650; line-height: 1;
@@ -28,8 +28,9 @@
         }
         .pill:hover { opacity: 1; transform: translateY(-2px); }
         .pill[disabled] { opacity: .75; cursor: default; transform: none; }
+        .pill.dragging { transition: none; cursor: grabbing; opacity: 1; transform: scale(1.04); }
         .panel {
-          position: fixed; bottom: 70px; right: 24px; z-index: 2147483647; width: 292px;
+          position: fixed; z-index: 2147483647; width: 292px;
           background: #1f1d1b; color: #ffffffe5; border: 1px solid #ffffff17; border-radius: 14px;
           box-shadow: 0 18px 50px rgba(0, 0, 0, .5); padding: 12px; font-size: 13px;
           opacity: 0; transform: translateY(8px) scale(.98); transform-origin: bottom right;
@@ -40,6 +41,9 @@
         .thumb { width: 64px; height: 36px; border-radius: 6px; object-fit: cover; background: #ffffff10; flex: none; }
         .title { font-weight: 600; font-size: 12.5px; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
         .close { margin-left: auto; background: none; border: 0; color: #ffffff80; cursor: pointer; font-size: 16px; padding: 2px 4px; }
+        .foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #ffffff12; }
+        .link { background: none; border: 0; padding: 2px 0; color: #ffffff70; font-size: 11.5px; cursor: pointer; }
+        .link:hover { color: #ffffffd0; }
         .row {
           display: flex; align-items: center; gap: 8px; width: 100%; border: 0; text-align: left;
           background: #ffffff08; color: inherit; border-radius: 9px; padding: 9px 10px; margin-top: 4px;
@@ -55,11 +59,57 @@
         @media (prefers-reduced-motion: reduce) { .pill, .panel { transition: none; } .spinner { animation: none; } }
       </style>
       <div class="panel" role="dialog" aria-label="Choose a quality"></div>
-      <button class="pill" title="Download with Snag"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M6.5 10.5 12 16l5.5-5.5M5 20h14"/></svg><span class="label">Download</span></button>`;
+      <button class="pill" title="Download with Snag (drag to move it to another corner)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M6.5 10.5 12 16l5.5-5.5M5 20h14"/></svg><span class="label">Download</span></button>`;
     const pill = root.querySelector(".pill");
     const panel = root.querySelector(".panel");
 
     chrome.storage.local.get(["accent"]).then(({ accent }) => host.style.setProperty("--accent", safeAccent(accent)));
+
+    // The corner the user chose (popup, or by dragging the button); the menu opens beside it.
+    const place = (corner) => {
+      Object.assign(pill.style, cornerPosition(corner));
+      const pos = cornerPosition(corner);
+      const above = pos.bottom !== "auto";
+      Object.assign(panel.style, {
+        top: above ? "auto" : "70px",
+        bottom: above ? "70px" : "auto",
+        left: pos.left,
+        right: pos.right,
+        transformOrigin: `${above ? "bottom" : "top"} ${pos.left !== "auto" ? "left" : "right"}`,
+      });
+    };
+    chrome.storage.local.get(["buttonCorner"]).then(({ buttonCorner }) => place(buttonCorner));
+    chrome.storage.onChanged.addListener((changes) => {
+      if (changes.buttonCorner) place(changes.buttonCorner.newValue);
+      if (changes.accent) host.style.setProperty("--accent", safeAccent(changes.accent.newValue));
+    });
+
+    // Drag the button anywhere; it settles in the nearest corner and stays there on every site.
+    let drag = null;
+    let dragged = false;
+    pill.addEventListener("pointerdown", (e) => {
+      drag = { x: e.clientX, y: e.clientY, moved: false };
+      pill.setPointerCapture(e.pointerId);
+    });
+    pill.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 6) return;
+      drag.moved = true;
+      close();
+      pill.classList.add("dragging");
+      const r = pill.getBoundingClientRect();
+      Object.assign(pill.style, { top: `${e.clientY - r.height / 2}px`, left: `${e.clientX - r.width / 2}px`, bottom: "auto", right: "auto" });
+    });
+    pill.addEventListener("pointerup", (e) => {
+      if (drag && drag.moved) {
+        dragged = true;
+        pill.classList.remove("dragging");
+        const corner = nearestCorner(e.clientX, e.clientY, window.innerWidth, window.innerHeight);
+        place(corner);
+        chrome.storage.local.set({ buttonCorner: corner }).catch(() => {});
+      }
+      drag = null;
+    });
 
     const el = (tag, cls, text) => {
       const e = document.createElement(tag);
@@ -101,6 +151,18 @@
       x.addEventListener("click", close);
       head.append(x);
       return head;
+    };
+
+    const footer = () => {
+      const foot = el("div", "foot");
+      const hide = el("button", "link", `Hide on ${siteKey(location.hostname)}`);
+      hide.title = "Turn it back on from the Snag extension's popup";
+      hide.addEventListener("click", async () => {
+        const { hiddenSites } = await chrome.storage.local.get(["hiddenSites"]);
+        await chrome.storage.local.set({ hiddenSites: hideSite(hiddenSites, location.hostname) });
+      });
+      foot.append(hide, el("span", "link", "Drag the button to move it"));
+      return foot;
     };
 
     // Snag's qualities for the page (ready at once when the prefetch finished).
@@ -150,6 +212,10 @@
     };
 
     pill.addEventListener("click", async () => {
+      if (dragged) {
+        dragged = false;
+        return;
+      }
       if (panel.classList.contains("open")) return close();
       const status = await askQuick({ type: "status" });
       if (status.ok === false) return done(status.error);
@@ -163,7 +229,7 @@
       if (items.length) panel.append(sniffedList(items));
       const pending = el("div", "note");
       pending.append(el("span", "spinner"), status.app.paired ? "Finding all qualities…" : "Click Allow in the Snag window…");
-      panel.append(pending);
+      panel.append(pending, footer());
       panel.classList.add("open");
 
       const r = await ask({ type: "probe", url: location.href });
@@ -194,6 +260,17 @@
     if (!on && existing) existing.remove();
   }
   let prefetched = "";
+  let hiddenSites = [];
+  chrome.storage.local.get(["hiddenSites"]).then((s) => {
+    hiddenSites = s.hiddenSites || [];
+    sync();
+  });
+  chrome.storage.onChanged.addListener((changes) => {
+    if (changes.hiddenSites) {
+      hiddenSites = changes.hiddenSites.newValue || [];
+      sync();
+    }
+  });
   function sync() {
     // Cut off by an extension update: leave the page to the new copy of this script.
     if (!chrome.runtime?.id) return clearInterval(timer);
@@ -201,7 +278,7 @@
       lastUrl = location.href;
       mediaSeen = 0;
     }
-    const on = isVideoPage(location.hostname, location.pathname) || mediaSeen > 0;
+    const on = (isVideoPage(location.hostname, location.pathname) || mediaSeen > 0) && !isHiddenOn(location.hostname, hiddenSites);
     show(on);
     // Snag starts reading the page now, so the qualities are ready by the time you click.
     if (on && prefetched !== location.href) {

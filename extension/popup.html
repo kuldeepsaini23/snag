@@ -58,6 +58,9 @@
       .q-title { font-weight: 600; font-size: 12.5px; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .q-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: var(--raised); margin-top: 4px; transition: filter .12s; }
       .q-row:hover { filter: brightness(1.2); }
+      select { background: var(--bg); color: var(--t1); border: 1px solid var(--line); border-radius: 7px; padding: 4px 6px; font: inherit; font-size: 12px; }
+      .chip { display: inline-flex; align-items: center; gap: 4px; background: var(--raised); border-radius: 6px; padding: 2px 4px 2px 7px; margin: 2px 4px 2px 0; color: var(--t2); }
+      .chip button { background: none; padding: 0 3px; color: var(--t3); font-weight: 400; }
       .q-row .detail { margin-left: auto; color: var(--t2); font-weight: 400; font-size: 12px; }
     </style>
   </head>
@@ -87,6 +90,24 @@
       <input id="catch" type="checkbox" />
     </div>
 
+    <div class="card">
+      <label>Download button on pages</label>
+      <div class="toggle" style="margin-bottom: 8px">
+        <div id="site-label">Show on this site</div>
+        <input id="site-on" type="checkbox" />
+      </div>
+      <div class="toggle">
+        <div>Position</div>
+        <select id="corner">
+          <option value="bottom-right">Bottom right</option>
+          <option value="bottom-left">Bottom left</option>
+          <option value="top-right">Top right</option>
+          <option value="top-left">Top left</option>
+        </select>
+      </div>
+      <div id="hidden-list" class="hint" style="margin-top: 8px"></div>
+    </div>
+
     <div id="media" class="card">
       <label>Media on this page</label>
       <div id="media-list"></div>
@@ -103,6 +124,7 @@
     <div id="message"></div>
 
     <script src="quality.js"></script>
+    <script src="pill.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

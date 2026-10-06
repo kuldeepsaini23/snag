@@ -33,6 +33,47 @@ function mediaName(item) {
   }
 }
 
+/** Where the page button sits, and the sites it stays off. */
+async function buttonSettings(tab) {
+  let host = "";
+  try {
+    host = tab && /^https?:/.test(tab.url) ? new URL(tab.url).hostname : "";
+  } catch (_) {
+    // Not a web page.
+  }
+  const render = async () => {
+    const { hiddenSites = [], buttonCorner = "bottom-right" } = await chrome.storage.local.get(["hiddenSites", "buttonCorner"]);
+    $("corner").value = buttonCorner;
+    $("site-label").textContent = host ? `Show on ${siteKey(host)}` : "Show on this site";
+    $("site-on").disabled = !host;
+    $("site-on").checked = !host || !isHiddenOn(host, hiddenSites);
+    const list = $("hidden-list");
+    list.textContent = "";
+    if (!hiddenSites.length) return;
+    list.append("Hidden on: ");
+    for (const site of hiddenSites) {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      const undo = document.createElement("button");
+      undo.textContent = "×";
+      undo.title = `Show on ${site} again`;
+      undo.addEventListener("click", async () => {
+        await chrome.storage.local.set({ hiddenSites: hiddenSites.filter((s) => s !== site) });
+        render();
+      });
+      chip.append(site, undo);
+      list.append(chip);
+    }
+  };
+  $("site-on").addEventListener("change", async (e) => {
+    const { hiddenSites = [] } = await chrome.storage.local.get(["hiddenSites"]);
+    await chrome.storage.local.set({ hiddenSites: e.target.checked ? showSite(hiddenSites, host) : hideSite(hiddenSites, host) });
+    render();
+  });
+  $("corner").addEventListener("change", (e) => chrome.storage.local.set({ buttonCorner: e.target.value }));
+  render();
+}
+
 /** The page's qualities: pick one and Snag starts it. */
 function showQualities(tab, info, sendPage) {
   $("q-title").textContent = info.title || tab.title || "";
@@ -154,6 +195,7 @@ async function init() {
   refreshStatus();
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab) showMedia(tab);
+  buttonSettings(tab);
 }
 
 init();
