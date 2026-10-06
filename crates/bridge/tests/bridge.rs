@@ -159,11 +159,16 @@ async fn image_page_from_browser_becomes_a_gallery() {
     let dir = tempfile::tempdir().unwrap();
     let m = manager(dir.path()).await;
     let b = start(m.clone(), 48181..=48190).await.unwrap();
-    // Even sent as a plain file link (right-click on a page link), an image site goes to gallery-dl.
-    let (status, body) = post(b.port, json!({"url": "https://www.pinterest.com/pin/123/", "kind": "file"}), TOKEN).await;
+    // A page link (right-click, no kind) on an image site goes to gallery-dl.
+    let (status, body) = post(b.port, json!({"url": "https://www.pinterest.com/pin/123/"}), TOKEN).await;
     assert_eq!(status, 200, "{body}");
     let items = m.snapshot().await.items;
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].kind, rdm_core::Kind::Gallery);
     assert_eq!(items[0].category, rdm_core::Category::Image);
+    // A real file the browser was downloading (the extension already cancelled it there) stays a file.
+    let (status, body) = post(b.port, json!({"url": "https://i.imgur.com/archive.zip", "kind": "file"}), TOKEN).await;
+    assert_eq!(status, 200, "{body}");
+    let items = m.snapshot().await.items;
+    assert_eq!(items[1].kind, rdm_core::Kind::Http, "never lost to an extractor that may not know it");
 }

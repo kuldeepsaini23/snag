@@ -142,6 +142,12 @@ pub fn image_ext(bytes: &[u8]) -> Option<&'static str> {
     }
 }
 
+/// "retrying in 30s" for a failed item waiting for its automatic retry.
+pub fn retry_note(item: &Item, now_unix: i64) -> Option<String> {
+    let at = item.retry_at?;
+    Some(if at > now_unix { format!("retrying in {}s", at - now_unix) } else { "retrying now".into() })
+}
+
 /// A stopped download can take a fresh link (its old one expired).
 pub fn can_refresh(item: &Item) -> bool {
     matches!(item.status, Status::Paused | Status::Failed(_))
@@ -398,6 +404,7 @@ mod tests {
             work_dir: None,
             thumbnail: None,
             duration: None,
+            retry_at: None,
         }
     }
 
@@ -940,5 +947,67 @@ mod tests {
         assert_eq!(m.draft.download_dir, r"D:\x");
         m.close_settings().expect("valid");
         assert_eq!(m.screen, Screen::Picker, "then the quality choice shows");
+    }
+
+    #[test]
+    fn no_toast_while_a_retry_is_pending() {
+        let mut m = model();
+        let mut it = m.items.iter().find(|i| i.id == ItemId(1)).cloned().unwrap();
+        it.status = Status::Failed("HTTP Error 503".into());
+        it.retry_at = Some(100);
+        m.apply(Event::Updated(it.clone()));
+        assert!(m.take_notes_at(std::time::Instant::now()).is_empty(), "it will try again: no 'failed' yet");
+        it.retry_at = None;
+        m.apply(Event::Updated(it));
+        let notes = m.take_notes_at(std::time::Instant::now());
+        assert_eq!(notes.len(), 1, "the final failure is told");
+        assert_eq!(notes[0].title, "Download failed");
+    }
+
+    #[test]
+    fn pause_all_includes_pending_retries() {
+        let mut m = model();
+        let mut it = m.items.iter().find(|i| i.id == ItemId(4)).cloned().unwrap();
+        it.retry_at = Some(100);
+        m.apply(Event::Updated(it));
+        let mut ids = m.pause_all_ids();
+        ids.sort();
+        assert_eq!(ids, vec![ItemId(1), ItemId(3), ItemId(4)]);
+        assert!(!m.resume_all_ids().contains(&ItemId(4)), "it resumes by itself");
+    }
+
+    #[test]
+    fn retry_countdown_text() {
+        let mut it = item(1, "a.zip", Category::Archive, Status::Failed("HTTP Error 503".into()));
+        assert_eq!(retry_note(&it, 1000), None);
+        it.retry_at = Some(1030);
+        assert_eq!(retry_note(&it, 1000).as_deref(), Some("retrying in 30s"));
+        assert_eq!(retry_note(&it, 1031).as_deref(), Some("retrying now"));
+    }
+
+    #[test]
+    fn a_playlist_finishing_one_by_one_is_one_toast() {
+        let start = std::time::Instant::now();
+        let mut m = Model::default();
+        for id in 1..=5 {
+            m.apply(Event::Added(item(id, &format!("clip {id}.mp4"), Category::Video, Status::Queued)));
+        }
+        for id in 1..=4 {
+            finish(&mut m, id, Status::Running);
+            finish(&mut m, id, Status::Done);
+            assert!(m.take_notes_at(start + std::time::Duration::from_secs(id * 10)).is_empty(), "more are coming: wait");
+        }
+        finish(&mut m, 5, Status::Running);
+        finish(&mut m, 5, Status::Done);
+        let notes = m.take_notes_at(start + std::time::Duration::from_secs(50));
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].title, "5 downloads finished");
+        // A long batch still reports after a while, so nothing waits forever.
+        m.apply(Event::Added(item(9, "big.iso", Category::Archive, Status::Running)));
+        m.apply(Event::Added(item(10, "small.zip", Category::Archive, Status::Running)));
+        finish(&mut m, 10, Status::Done);
+        let t = start + std::time::Duration::from_secs(60);
+        assert!(m.take_notes_at(t).is_empty());
+        assert_eq!(m.take_notes_at(t + std::time::Duration::from_secs(121)).len(), 1, "after two minutes it's told anyway");
     }
 }

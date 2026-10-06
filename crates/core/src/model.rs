@@ -31,18 +31,26 @@ pub enum Kind {
     Gallery,
 }
 
-/// "pinterest.com · 123": a gallery's name and folder (safe as a Windows file name).
+/// "pinterest.com · wallpapers · 3fa2": a gallery's name and folder. The most telling part of
+/// the link plus a short hash of it, so two galleries never share a folder; safe as a Windows
+/// file name and short enough for long download paths.
 pub fn gallery_name(url: &str) -> String {
     let rest = url.split_once("://").map_or(url, |(_, r)| r);
-    let rest = rest.split(['?', '#']).next().unwrap_or(rest);
+    let rest = rest.split(['?', '#']).next().unwrap_or(rest).trim_end_matches('/');
     let mut parts = rest.split('/').filter(|p| !p.is_empty());
     let host = parts.next().unwrap_or("gallery");
     let host = host.strip_prefix("www.").unwrap_or(host);
-    let name = match parts.next_back() {
-        Some(last) => format!("{host} · {last}"),
+    // Skip generic tails like "photo/1": the post id or board name says more.
+    const GENERIC: [&str; 9] = ["photo", "photos", "video", "status", "p", "pin", "gallery", "a", "post"];
+    let segments: Vec<&str> = parts.collect();
+    let telling = segments.iter().rev().find(|s| !GENERIC.contains(s) && !(s.len() <= 2 && s.chars().all(|c| c.is_ascii_digit())));
+    let hash = rest.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3));
+    let label: String = match telling {
+        Some(t) => format!("{host} · {t}"),
         None => host.to_string(),
     };
-    name.chars().map(|c| if r#"<>:"/\|?*"#.contains(c) || c.is_control() { '_' } else { c }).collect::<String>().trim_end_matches(['.', ' ']).to_string()
+    let label: String = label.chars().map(|c| if r#"<>:"/\|?*"#.contains(c) || c.is_control() { '_' } else { c }).take(70).collect();
+    format!("{} · {:04x}", label.trim_end_matches(['.', ' ']), hash & 0xffff)
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -74,6 +82,10 @@ pub struct Item {
     /// Videos: length in seconds.
     #[serde(default)]
     pub duration: Option<f64>,
+    /// Failed for a temporary reason: tries again at this time (unix seconds). Not saved:
+    /// after a restart the item is simply failed.
+    #[serde(skip)]
+    pub retry_at: Option<i64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -132,7 +132,11 @@ fn item_row<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
     } else if i.status == Status::Done {
         dot_line(view::row_meta(i), c.success)
     } else if failed {
-        small(view::ellipsize(&view::row_meta(i), 90), c.danger).wrapping(Wrapping::None).into()
+        let mut text = view::row_meta(i);
+        if let Some(note) = view::retry_note(i, chrono::Utc::now().timestamp()) {
+            text = format!("{text} · {note}");
+        }
+        small(view::ellipsize(&text, 90), c.danger).wrapping(Wrapping::None).into()
     } else {
         small(view::row_meta(i), c.text3).wrapping(Wrapping::None).into()
     };
@@ -149,6 +153,7 @@ fn item_row<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
             format::speed(i.speed_bps),
             i.total.and_then(|t| format::eta(t.saturating_sub(i.downloaded), i.speed_bps)).map(|e| format!("{e} left")).unwrap_or_default(),
         ),
+        Status::Failed(_) if i.retry_at.is_some() => ("Waiting".into(), "auto-retry".into()),
         Status::Failed(_) => ("Error".into(), "retry".into()),
         Status::Paused => ("—".into(), "paused".into()),
         Status::Queued if waiting => ("Scheduled".into(), String::new()),

@@ -645,9 +645,11 @@ async fn gallery_item_saves_all_images_to_its_folder() {
     let done = wait_item(&mut rx, has(id, Status::Done)).await;
     assert_eq!(done.category, rdm_core::Category::Image);
     assert_eq!(done.kind, rdm_core::Kind::Gallery);
-    assert_eq!(done.name, "pinterest.com · ok");
+    let name = rdm_core::model::gallery_name("https://www.pinterest.com/pin/ok");
+    assert!(name.starts_with("pinterest.com · ok · "), "{name}");
+    assert_eq!(done.name, name);
     let folder = done.dest.clone().expect("the gallery's folder");
-    assert_eq!(folder, dir.path().join("dl").join("pinterest.com · ok"), "sorting is off in these tests");
+    assert_eq!(folder, dir.path().join("dl").join(&name), "sorting is off in these tests");
     assert!(folder.join("3.jpg").exists());
     assert_eq!(done.downloaded, 350, "the folder's real size");
     m.shutdown().await;
@@ -724,7 +726,8 @@ async fn temporary_failures_retry_by_themselves() {
     let mut rx = m.subscribe();
     let id = m.add_media("https://www.video.test/flaky".into(), "Clip".into(), MediaFormat::Video { max_height: 480 }).await;
     let failed = wait_item(&mut rx, |i| i.id == id && matches!(i.status, Status::Failed(_))).await;
-    assert!(matches!(&failed.status, Status::Failed(e) if e.contains("retrying")), "{:?}", failed.status);
+    assert!(failed.retry_at.is_some(), "a retry is pending: {failed:?}");
+    assert!(matches!(&failed.status, Status::Failed(e) if !e.contains("retrying")), "the reason stays clean (the UI shows the countdown)");
     wait_item(&mut rx, has(id, Status::Done)).await;
     m.shutdown().await;
 }
@@ -771,4 +774,40 @@ fn old_rdm_still_running_keeps_its_folder() {
     let _running = rdm_core::instance::lock(&old).expect("the old app holds its folder");
     assert_eq!(rdm_core::store::data_dir(appdata.path()), old, "not moved under a running copy");
     assert!(old.exists());
+}
+
+
+#[tokio::test]
+async fn pause_stops_a_pending_retry() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let m = Manager::start_with_retry(dir.path().join("state.json"), Duration::from_millis(300));
+    let mut s = m.snapshot().await.settings;
+    s.download_dir = dir.path().join("dl");
+    m.update_settings(s).await;
+    let mut rx = m.subscribe();
+    let id = m.add_media("https://www.video.test/busy".into(), "Clip".into(), MediaFormat::AudioMp3).await;
+    wait_item(&mut rx, |i| i.id == id && i.retry_at.is_some()).await;
+    m.pause(id).await;
+    let paused = wait_item(&mut rx, has(id, Status::Paused)).await;
+    assert_eq!(paused.retry_at, None);
+    tokio::time::sleep(Duration::from_millis(1200)).await;
+    assert_eq!(m.snapshot().await.items[0].status, Status::Paused, "the old timer doesn't bring it back");
+    m.shutdown().await;
+}
+
+#[test]
+fn gallery_folders_never_collide() {
+    use rdm_core::model::gallery_name;
+    let a = gallery_name("https://x.com/alice/status/111/photo/1");
+    let b = gallery_name("https://x.com/bob/status/222/photo/1");
+    assert_ne!(a, b, "different posts, different folders");
+    assert!(a.starts_with("x.com · 111"), "the post id, not 'photo/1': {a}");
+    let p1 = gallery_name("https://www.pinterest.com/alice/wallpapers/");
+    let p2 = gallery_name("https://www.pinterest.com/bob/wallpapers/");
+    assert_ne!(p1, p2);
+    assert_eq!(gallery_name("https://imgur.com/a/xyz"), gallery_name("https://imgur.com/a/xyz?utm=1"), "same page, same folder");
+    let long = gallery_name(&format!("https://imgur.com/a/{}", "x".repeat(300)));
+    assert!(long.chars().count() <= 80, "{}", long.len());
+    assert!(!gallery_name("https://imgur.com/a/b:c*d").contains([':', '*']));
 }

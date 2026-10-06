@@ -291,7 +291,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::QuitAnyway => return iced::exit(),
         Message::KeepDownloading => model.keep_downloading(),
         Message::FlushNotes => {
-            let notes = model.take_notes();
+            let notes = model.take_notes_at(std::time::Instant::now());
             if !notes.is_empty() {
                 return Task::perform(
                     async move {

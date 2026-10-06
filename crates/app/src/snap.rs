@@ -173,6 +173,7 @@ fn demo_items() -> Vec<Item> {
         work_dir: None,
         thumbnail: None,
         duration: None,
+        retry_at: None,
     };
     let video = Kind::Media(MediaFormat::Video { max_height: 1080 });
     vec![

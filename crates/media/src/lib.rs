@@ -229,7 +229,8 @@ pub fn build_args(format: &MediaFormat, out_dir: &Path, url: &str, opts: &MediaO
         }
     }
     if let (MediaFormat::Video { .. }, Some(langs)) = (format, &opts.subtitles) {
-        args.extend(["--write-subs".into(), "--write-auto-subs".into(), "--sub-langs".into(), langs.clone(), "--embed-subs".into()]);
+        // Refused subtitles (YouTube often answers 429) must not stop the video itself.
+        args.extend(["--write-subs".into(), "--write-auto-subs".into(), "--sub-langs".into(), langs.clone(), "--embed-subs".into(), "--ignore-errors".into()]);
     }
     if let Some(cookies) = &opts.cookies {
         args.extend(["--cookies".into(), cookies.display().to_string()]);
@@ -368,6 +369,11 @@ pub async fn download(
         status = child.wait() => status.map_err(|e| e.to_string())?,
     };
     let stderr = stderr_task.await.unwrap_or_default();
+    // The final file was moved into place: whatever failed after that (subtitles, embedding)
+    // doesn't undo the download.
+    if let (false, Some(path)) = (status.success(), final_path.clone()) {
+        return Ok(MediaOutcome::Completed(path));
+    }
     if !status.success() {
         return Err(error_from(&stderr).unwrap_or_else(|| format!("yt-dlp failed ({status})")));
     }
@@ -508,7 +514,7 @@ mod tests {
         let opts = MediaOptions { subtitles: Some("en.*,hi".into()), ..Default::default() };
         let video = build_args(&MediaFormat::Video { max_height: 720 }, Path::new("out"), "u", &opts);
         assert!(window(&video, ["--sub-langs", "en.*,hi"]), "{video:?}");
-        for flag in ["--write-subs", "--write-auto-subs", "--embed-subs"] {
+        for flag in ["--write-subs", "--write-auto-subs", "--embed-subs", "--ignore-errors"] {
             assert!(video.iter().any(|a| a == flag), "{flag}: {video:?}");
         }
         let mp3 = build_args(&MediaFormat::AudioMp3, Path::new("out"), "u", &opts);

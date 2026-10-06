@@ -366,8 +366,8 @@ enum Msg {
     /// Probe finished: the actor picks the final destination and replies with it.
     Resolve { id: ItemId, name: String, total: Option<u64>, reply: oneshot::Sender<PathBuf> },
     Finished { id: ItemId, result: Result<Outcome, String> },
-    /// An automatic retry's wait is over.
-    Retry(ItemId),
+    /// An automatic retry's wait is over (only the latest timer of an item counts).
+    Retry(ItemId, u64),
 }
 
 /// Automatic retries after a temporary failure: waits of base, 3×base, 9×base.
@@ -400,6 +400,9 @@ struct Actor {
     last_save: Instant,
     /// Automatic retries used per item since it last started by hand or finished.
     retries: HashMap<ItemId, u32>,
+    /// The current retry timer of each item; anything the user does cancels it.
+    retry_gen: HashMap<ItemId, u64>,
+    next_gen: u64,
     retry_base: Duration,
 }
 
@@ -427,6 +430,8 @@ impl Actor {
             dirty: needs_token,
             last_save: Instant::now(),
             retries: HashMap::new(),
+            retry_gen: HashMap::new(),
+            next_gen: 0,
             retry_base: RETRY_BASE,
         }
     }
@@ -490,6 +495,7 @@ impl Actor {
                 if let Some(item) = self.state.item_mut(id).filter(|i| i.status != Status::Done) {
                     item.url = url;
                     item.status = Status::Queued;
+                    self.cancel_retry(id);
                     self.dirty = true;
                     self.updated(id);
                     self.schedule();
@@ -519,8 +525,10 @@ impl Actor {
                     }
                     r.stop = Stop::Pause;
                     r.cancel.cancel();
-                } else if let Some(item) = self.state.item_mut(id).filter(|i| i.status == Status::Queued) {
+                } else if let Some(item) = self.state.item_mut(id).filter(|i| i.status == Status::Queued || i.retry_at.is_some()) {
+                    // Also a failed item waiting for an automatic retry: the retry is called off.
                     item.status = Status::Paused;
+                    self.cancel_retry(id);
                     self.updated(id);
                 }
             }
@@ -530,7 +538,7 @@ impl Actor {
                 }
                 if let Some(item) = self.state.item_mut(id).filter(|i| matches!(i.status, Status::Paused | Status::Failed(_))) {
                     item.status = Status::Queued;
-                    self.retries.remove(&id);
+                    self.cancel_retry(id);
                     self.updated(id);
                     self.schedule();
                 }
@@ -548,11 +556,13 @@ impl Actor {
                     item.downloaded = 0;
                     item.total = None;
                     item.speed_bps = 0;
+                    self.cancel_retry(id);
                     self.updated(id);
                     self.schedule();
                 }
             }
             Cmd::Remove(id, delete_file) => {
+                self.cancel_retry(id);
                 if let Some(r) = self.running.get_mut(&id) {
                     r.stop = Stop::Remove { delete_file };
                     r.cancel.cancel();
@@ -590,6 +600,15 @@ impl Actor {
             self.dirty = true;
         }
         self.updated(id);
+    }
+
+    /// Calls off a pending automatic retry and starts the count afresh (the user acted).
+    fn cancel_retry(&mut self, id: ItemId) {
+        self.retry_gen.remove(&id);
+        self.retries.remove(&id);
+        if let Some(item) = self.state.item_mut(id) {
+            item.retry_at = None;
+        }
     }
 
     /// Shows the picker with the preferred quality selected, or adds that quality right away.
@@ -663,6 +682,7 @@ impl Actor {
             work_dir: None,
             thumbnail: None,
             duration: None,
+            retry_at: None,
         };
         self.state.items.push(item.clone());
         self.emit(Event::Added(item));
@@ -887,12 +907,14 @@ impl Actor {
                 self.updated(id);
                 let _ = reply.send(dest);
             }
-            Msg::Retry(id) => {
-                // Still failed and not started by hand meanwhile: queue it again.
-                let waiting = self.state.item(id).is_some_and(|i| matches!(i.status, Status::Failed(_)));
-                if waiting && !self.running.contains_key(&id)
-                    && let Some(item) = self.state.item_mut(id)
-                {
+            Msg::Retry(id, generation) => {
+                // Only this item's latest timer, and only if nothing was done to it meanwhile.
+                if self.retry_gen.get(&id) != Some(&generation) || self.running.contains_key(&id) {
+                    return;
+                }
+                self.retry_gen.remove(&id);
+                if let Some(item) = self.state.item_mut(id).filter(|i| i.retry_at.is_some()) {
+                    item.retry_at = None;
                     item.status = Status::Queued;
                     self.updated(id);
                     self.schedule();
@@ -927,15 +949,20 @@ impl Actor {
                         }
                         Ok(Outcome::Paused) if r.stop == Stop::Schedule => Status::Queued,
                         Ok(Outcome::Paused) => Status::Paused,
-                        Err(e) if auto_retry && used < AUTO_RETRIES && is_transient(&e) => {
+                        // Only a download that stopped by itself (not paused, removed or shutting down).
+                        Err(e) if r.stop == Stop::None && auto_retry && used < AUTO_RETRIES && is_transient(&e) => {
                             let wait = self.retry_base * 3u32.pow(used);
                             self.retries.insert(id, used + 1);
+                            self.next_gen += 1;
+                            let generation = self.next_gen;
+                            self.retry_gen.insert(id, generation);
+                            item.retry_at = Some(chrono::Utc::now().timestamp() + wait.as_secs().max(1) as i64);
                             let msg_tx = self.msg_tx.clone();
                             tokio::spawn(async move {
                                 tokio::time::sleep(wait).await;
-                                let _ = msg_tx.send(Msg::Retry(id));
+                                let _ = msg_tx.send(Msg::Retry(id, generation));
                             });
-                            Status::Failed(format!("{e} · retrying in {}s", wait.as_secs().max(1)))
+                            Status::Failed(e)
                         }
                         Err(e) => Status::Failed(e),
                     };

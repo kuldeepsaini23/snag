@@ -156,3 +156,11 @@ async fn gallery_pause_kills_it() {
     let r = tokio::time::timeout(std::time::Duration::from_secs(10), rdm_media::gallery::download(&fake(), "fake://slow", dir.path(), &MediaOptions::default(), cancel, &tx)).await;
     assert_eq!(r, Ok(Ok(MediaOutcome::Paused)));
 }
+
+#[tokio::test]
+async fn refused_subtitles_dont_fail_a_saved_video() {
+    let dir = tempfile::tempdir().unwrap();
+    let (tx, _rx) = watch::channel(MediaProgress::default());
+    let r = download(&fake(), "fake://subfail", &MediaFormat::Video { max_height: 720 }, dir.path(), &MediaOptions::default(), CancellationToken::new(), &tx).await;
+    assert_eq!(r, Ok(MediaOutcome::Completed(PathBuf::from(r"C:\out\clip.mp4"))));
+}

@@ -71,8 +71,9 @@ async fn add(State(manager): State<Manager>, headers: HeaderMap, Json(req): Json
     if !cookies.is_empty() {
         manager.remember_cookies(cookies);
     }
-    // Image sites go to gallery-dl whatever the extension guessed (a page link would otherwise save HTML).
-    if rdm_media::gallery::is_gallery_url(&req.url) {
+    // Page links on image sites go to gallery-dl (they'd otherwise save HTML). A real file the
+    // browser was downloading (kind "file": already cancelled there) always stays a file download.
+    if req.kind.as_deref() != Some("file") && rdm_media::gallery::is_gallery_url(&req.url) {
         let id = manager.add_gallery(req.url).await;
         return (StatusCode::OK, Json(json!({ "id": id.0 })));
     }

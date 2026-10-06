@@ -106,7 +106,52 @@
 - The phone page (Task 6) does the same on its side.
 - Tests: the queue persists in `storage.local`, drains in order, nothing is lost on a failed send, no duplicates.
 
-### Task 12: verify
+### Task 12: UI polish, Mica and animations (user pick)
+- Windows 11 Mica (or acrylic on Windows 10) behind the window via `window-vibrancy` on the raw handle.
+  - The panels become slightly translucent. A toggle sits in Appearance ("Translucent window").
+  - It falls back to solid colours if it isn't supported.
+- Animations (iced 0.14 `Animation`):
+  - progress bars ease to their new value;
+  - new rows fade in;
+  - sheets scale and fade in;
+  - the popover slides;
+  - a finished row shows a short check pulse.
+  - All of them respect Windows "Show animations" off.
+
+### Task 13: UI polish, live speed graph and segment map (user pick)
+- A rolling 60 s speed history per item and in total (pure ring buffer, tested), drawn as a canvas sparkline in the right-hand panel and footer.
+- The segment map from Figma frame 01: one bar per connection showing its range and progress, from engine `Progress.segments`.
+
+### Task 14: UI polish, grid view (user pick)
+- Videos and Images get a list/grid toggle. The grid shows thumbnail cards (title, size and duration overlays, a status ring). Images use the downloaded file itself as the thumbnail.
+
+### Task 15: UI polish, light theme and drag & drop (user pick)
+- Light tokens (Figma colours mapped to a light set). Theme: Dark / Light / Follow Windows, which reads the system setting and listens for changes.
+- Dropping a link, text with links, a `.torrent` or a `.txt` list of links onto the window adds them.
+
+### Task 16: stats screen with charts (user pick)
+- Data comes from items (finished time, size, category, host) plus a small per-day counter of downloaded bytes (persisted, `#[serde(default)]`).
+- The screen opens from the sidebar ("Stats") and has a range of 7 days / 30 days / all:
+  - a bar chart of data per day;
+  - a donut of the share by category;
+  - the top 5 sites;
+  - average speed;
+  - totals.
+- All charts are drawn with iced canvas.
+- Tests: aggregation per day, category share, top sites, range filter.
+
+### Task 17: first-run tour (user pick)
+- On first launch (`Settings.tour_done = false`), a 5-step sheet:
+  1. Welcome.
+  2. Download folder.
+  3. Accent colour.
+  4. Browser extension, with the pairing code and install links for Chrome, Edge, Brave and Firefox.
+  5. Clipboard watch on/off, then "Try a link".
+- Coach-mark tooltips then point at Add URL, the speed button and the tray icon, one at a time.
+- Skip at any step. "Show the tour again" sits in Settings → General.
+- Tests: step flow, skip, the tour finishes once (persisted), settings chosen in the tour are saved.
+
+### Task 18: verify
 - Run all tests, clippy and web-ext lint, plus snapshots of the new screens.
 - Review the whole branch with a fresh opus reviewer and fix its findings.
 - Merge, rebuild the release and relaunch.

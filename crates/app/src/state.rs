@@ -127,6 +127,9 @@ pub struct Note {
 
 /// More than this many at once become a single summary notification.
 const NOTE_BURST: usize = 3;
+/// "Finished" notes wait while more downloads are under way (a playlist is one toast), but
+/// never longer than this.
+const NOTE_MAX_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
 
 /// Settings as typed into the form (numbers stay text until saved).
 #[derive(Clone, Debug, PartialEq)]
@@ -277,6 +280,8 @@ pub struct Model {
     pub confirm_quit: bool,
     /// Notifications waiting to be shown (flushed in batches).
     pub notes: Vec<Note>,
+    /// When the oldest waiting note arrived.
+    pub notes_since: Option<std::time::Instant>,
     /// Thumbnail URL → the cached image file.
     pub thumbs: HashMap<String, PathBuf>,
     /// Thumbnails being downloaded.
@@ -318,6 +323,7 @@ impl Default for Model {
             maximized: false,
             confirm_quit: false,
             notes: Vec::new(),
+            notes_since: None,
             thumbs: HashMap::new(),
             thumb_pending: HashSet::new(),
             refresh: None,
@@ -346,14 +352,18 @@ impl Model {
             Event::Added(item) => self.items.push(item),
             Event::Updated(item) => match self.items.iter_mut().find(|i| i.id == item.id) {
                 Some(slot) => {
+                    // Failures are told once they're final (not while an automatic retry is pending).
+                    let was_final_failure = matches!(slot.status, Status::Failed(_)) && slot.retry_at.is_none();
                     let note = match (&slot.status, &item.status) {
                         (old, Status::Done) if *old != Status::Done => Some(Note { title: "Download finished".into(), body: item.name.clone() }),
-                        (Status::Failed(_), Status::Failed(_)) => None,
-                        (_, Status::Failed(e)) => Some(Note { title: "Download failed".into(), body: format!("{}: {e}", item.name) }),
+                        (_, Status::Failed(e)) if item.retry_at.is_none() && !was_final_failure => {
+                            Some(Note { title: "Download failed".into(), body: format!("{}: {e}", item.name) })
+                        }
                         _ => None,
                     };
                     if let Some(n) = note.filter(|_| self.settings.notify) {
                         self.notes.push(n);
+                        self.notes_since.get_or_insert_with(std::time::Instant::now);
                     }
                     *slot = item;
                 }
@@ -454,8 +464,28 @@ impl Model {
         self.screen = Screen::Settings;
     }
 
-    /// The notifications to show now; a burst (a finished playlist) becomes one summary.
+    /// Downloads under way right now (running, or queued and allowed to run).
+    fn downloading_now(&self) -> bool {
+        self.items.iter().any(|i| i.status == Status::Running || (i.status == Status::Queued && !self.waiting_for_schedule(i)))
+    }
+
+    #[cfg(test)]
     pub fn take_notes(&mut self) -> Vec<Note> {
+        self.take_notes_at(std::time::Instant::now())
+    }
+
+    /// The notifications to show at `now`. Failures go out at once; "finished" ones wait while
+    /// more downloads are under way (up to `NOTE_MAX_WAIT`), and a burst becomes one summary.
+    pub fn take_notes_at(&mut self, now: std::time::Instant) -> Vec<Note> {
+        if self.notes.is_empty() {
+            return Vec::new();
+        }
+        let failure = self.notes.iter().any(|n| n.title == "Download failed");
+        let waited = self.notes_since.is_some_and(|t| now.saturating_duration_since(t) >= NOTE_MAX_WAIT);
+        if !failure && !waited && self.downloading_now() {
+            return Vec::new();
+        }
+        self.notes_since = None;
         let notes = std::mem::take(&mut self.notes);
         if notes.len() <= NOTE_BURST {
             return notes;
@@ -486,12 +516,14 @@ impl Model {
         self.confirm_quit = false;
     }
 
+    /// Running, queued, and failed ones waiting for an automatic retry.
     pub fn pause_all_ids(&self) -> Vec<ItemId> {
-        self.items.iter().filter(|i| matches!(i.status, Status::Running | Status::Queued)).map(|i| i.id).collect()
+        self.items.iter().filter(|i| matches!(i.status, Status::Running | Status::Queued) || i.retry_at.is_some()).map(|i| i.id).collect()
     }
 
+    /// Paused and failed ones (not those already about to retry by themselves).
     pub fn resume_all_ids(&self) -> Vec<ItemId> {
-        self.items.iter().filter(|i| matches!(i.status, Status::Paused | Status::Failed(_))).map(|i| i.id).collect()
+        self.items.iter().filter(|i| matches!(i.status, Status::Paused | Status::Failed(_)) && i.retry_at.is_none()).map(|i| i.id).collect()
     }
 
     /// Another tab of the open sheet; edits on every tab are kept until the sheet closes.
@@ -543,6 +575,7 @@ mod tests {
             work_dir: None,
             thumbnail: None,
             duration: None,
+            retry_at: None,
         }
     }
 

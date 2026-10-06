@@ -63,6 +63,7 @@ mod tests {
             work_dir: None,
             thumbnail: None,
             duration: None,
+            retry_at: None,
         }
     }
 
