@@ -128,6 +128,8 @@ pub struct Settings {
     pub keep_sharing: bool,
     /// "Send from your phone": a page on the home network (off by default).
     pub phone_sharing: bool,
+    /// The app version whose "What's new" was last seen ("" = before this was recorded).
+    pub last_seen_version: String,
 }
 
 impl Default for Settings {
@@ -151,6 +153,7 @@ impl Default for Settings {
             auto_retry: true,
             keep_sharing: false,
             phone_sharing: false,
+            last_seen_version: String::new(),
         }
     }
 }
