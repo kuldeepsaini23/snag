@@ -142,6 +142,32 @@ pub fn image_ext(bytes: &[u8]) -> Option<&'static str> {
     }
 }
 
+/// A stopped download can take a fresh link (its old one expired).
+pub fn can_refresh(item: &Item) -> bool {
+    matches!(item.status, Status::Paused | Status::Failed(_))
+}
+
+impl Model {
+    pub fn refresh_typed(&mut self, id: rdm_core::ItemId, text: String) {
+        self.refresh = Some((id, text));
+    }
+
+    /// The link to switch `id` to, if one was typed for it and it is a web link.
+    pub fn take_refresh(&mut self, id: rdm_core::ItemId) -> Option<String> {
+        let (for_id, text) = self.refresh.clone()?;
+        if for_id != id {
+            return None;
+        }
+        let link = text.trim();
+        if !(link.starts_with("http://") || link.starts_with("https://")) || link.contains(char::is_whitespace) {
+            self.notice = Some("Paste a link that starts with http:// or https://".into());
+            return None;
+        }
+        self.refresh = None;
+        Some(link.to_string())
+    }
+}
+
 /// "0:42", "42:18", "1:02:40".
 pub fn duration_label(secs: f64) -> String {
     let s = secs.max(0.0).round() as u64;
@@ -830,5 +856,22 @@ mod tests {
         assert_eq!(duration_label(42.0), "0:42");
         assert_eq!(duration_label(2538.0), "42:18");
         assert_eq!(duration_label(3760.4), "1:02:40");
+    }
+
+    #[test]
+    fn refresh_link_only_for_stopped_items_and_web_links() {
+        assert!(can_refresh(&item(1, "a", Category::Other, Status::Failed("HTTP 403".into()))));
+        assert!(can_refresh(&item(2, "a", Category::Other, Status::Paused)));
+        assert!(!can_refresh(&item(3, "a", Category::Other, Status::Running)));
+        assert!(!can_refresh(&item(4, "a", Category::Other, Status::Done)));
+        let mut m = model();
+        m.refresh_typed(ItemId(4), "  https://new.example/f.iso ".into());
+        assert_eq!(m.take_refresh(ItemId(4)), Some("https://new.example/f.iso".to_string()));
+        assert_eq!(m.take_refresh(ItemId(4)), None, "used once");
+        m.refresh_typed(ItemId(4), "not a link".into());
+        assert_eq!(m.take_refresh(ItemId(4)), None);
+        assert!(m.notice.is_some(), "says why");
+        m.refresh_typed(ItemId(4), "https://x/y".into());
+        assert_eq!(m.take_refresh(ItemId(3)), None, "typed for another item");
     }
 }

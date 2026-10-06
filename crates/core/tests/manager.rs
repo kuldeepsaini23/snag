@@ -668,3 +668,29 @@ async fn video_item_keeps_thumbnail_and_duration() {
     assert_eq!(item.thumbnail.as_deref(), Some("https://i/1.jpg"));
     again.shutdown().await;
 }
+
+#[tokio::test]
+async fn refresh_link_continues_with_the_new_url() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |_| {}).await;
+    let mut rx = m.subscribe();
+    let id = m.add(s.url("/no-such-route")).await;
+    wait_item(&mut rx, |i| i.id == id && matches!(i.status, Status::Failed(_))).await;
+    m.refresh_url(id, s.url("/file/200000")).await;
+    let done = wait_item(&mut rx, has(id, Status::Done)).await;
+    assert_eq!(done.url, s.url("/file/200000"));
+    assert_eq!(done.downloaded, 200000);
+    m.shutdown().await;
+}
+
+#[tokio::test]
+async fn refresh_link_ignores_bad_links_and_running_items() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |s| s.start_immediately = false).await;
+    let id = m.add(s.url("/file/1000")).await;
+    m.refresh_url(id, "ftp://nope".into()).await;
+    assert_eq!(m.snapshot().await.items[0].url, s.url("/file/1000"), "only http(s) links");
+    m.shutdown().await;
+}

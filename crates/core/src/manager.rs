@@ -128,6 +128,7 @@ enum Cmd {
     Snapshot(oneshot::Sender<AppState>),
     AddMedia(String, String, MediaFormat, QueueId, Option<String>, Option<f64>, oneshot::Sender<ItemId>),
     AddGallery(String, oneshot::Sender<ItemId>),
+    Refresh(ItemId, String),
     AddWith(String, Option<String>, oneshot::Sender<ItemId>),
     Offer(String, MediaInfo),
     SetQueues(Vec<Queue>),
@@ -194,6 +195,13 @@ impl Manager {
 
     pub async fn add_media(&self, url: String, title: String, format: MediaFormat) -> ItemId {
         self.add_media_to(url, title, format, 0).await
+    }
+
+    /// A fresh link for a stopped download (the old one expired): it continues from the bytes
+    /// already on disk when the file is the same, else starts over. Running items and
+    /// non-http(s) links are ignored.
+    pub async fn refresh_url(&self, id: ItemId, url: String) {
+        let _ = self.tx.send(Cmd::Refresh(id, url));
     }
 
     /// A page of images (Pinterest, Imgur, an Instagram photo post…): saved by gallery-dl.
@@ -445,6 +453,19 @@ impl Actor {
                 let id = self.push_media(url, title, format, queue);
                 self.set_meta(id, thumbnail, duration);
                 let _ = reply.send(id);
+            }
+            Cmd::Refresh(id, url) => {
+                let web = url.starts_with("http://") || url.starts_with("https://");
+                if !web || self.running.contains_key(&id) {
+                    return;
+                }
+                if let Some(item) = self.state.item_mut(id).filter(|i| i.status != Status::Done) {
+                    item.url = url;
+                    item.status = Status::Queued;
+                    self.dirty = true;
+                    self.updated(id);
+                    self.schedule();
+                }
             }
             Cmd::AddGallery(url, reply) => {
                 let name = crate::model::gallery_name(&url);

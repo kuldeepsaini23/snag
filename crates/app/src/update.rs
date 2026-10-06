@@ -70,6 +70,9 @@ pub enum Message {
     /// Show the notifications collected since the last flush.
     FlushNotes,
     DraftNotify(bool),
+    RefreshTyped(ItemId, String),
+    /// Use the typed link for this item.
+    RefreshUrl(ItemId),
     /// A thumbnail finished downloading (None: it couldn't be fetched).
     ThumbReady(String, Option<PathBuf>),
     // List
@@ -289,6 +292,13 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             }
         }
         Message::DraftNotify(v) => model.draft.notify = v,
+        Message::RefreshTyped(id, text) => model.refresh_typed(id, text),
+        Message::RefreshUrl(id) => {
+            if let Some(url) = model.take_refresh(id) {
+                model.notice = None;
+                return fire(&app.manager, move |m| async move { m.refresh_url(id, url).await });
+            }
+        }
         Message::ThumbReady(url, path) => {
             // A failed fetch stays "pending" so it isn't retried every update.
             if let Some(path) = path {

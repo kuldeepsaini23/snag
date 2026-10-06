@@ -272,6 +272,8 @@ pub struct Model {
     pub thumbs: HashMap<String, PathBuf>,
     /// Thumbnails being downloaded.
     pub thumb_pending: HashSet<String>,
+    /// "Refresh link": the item and the new link typed for it.
+    pub refresh: Option<(ItemId, String)>,
 }
 
 impl Default for Model {
@@ -307,6 +309,7 @@ impl Default for Model {
             notes: Vec::new(),
             thumbs: HashMap::new(),
             thumb_pending: HashSet::new(),
+            refresh: None,
         }
     }
 }

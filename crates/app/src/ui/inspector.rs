@@ -59,6 +59,9 @@ pub fn view<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
     if let Some(card) = problem(i, c) {
         details = details.push(card);
     }
+    if view::can_refresh(i) {
+        details = details.push(refresh_link(m, i, c));
+    }
     // Details scroll on short windows; the buttons below stay on screen.
     let details = container(details).padding(iced::Padding { right: 8.0, ..Default::default() });
     let mut panel = column![scrollable(details).height(Fill).style(style::scroll(c))].spacing(12);
@@ -112,6 +115,28 @@ fn interleave<'a>(rows: Vec<Element<'a, Message>>, c: Colors) -> Element<'a, Mes
         }
     }
     out.into()
+}
+
+/// Paste a fresh link for an expired download; the bytes already downloaded are kept.
+fn refresh_link<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
+    let typed = m.refresh.as_ref().filter(|(id, _)| *id == i.id).map_or("", |(_, t)| t.as_str());
+    let id = i.id;
+    let input = iced::widget::text_input("Paste a fresh link", typed)
+        .on_input(move |t| Message::RefreshTyped(id, t))
+        .on_submit(Message::RefreshUrl(id))
+        .size(12)
+        .padding([6, 8])
+        .style(style::input(c));
+    let go = button(row![icon(Icon::Link, 12), text("Refresh link").size(12).font(style::SEMIBOLD)].spacing(6).align_y(Alignment::Center))
+        .style(style::outline(c))
+        .padding([6, 10])
+        .on_press_maybe((!typed.trim().is_empty()).then_some(Message::RefreshUrl(id)));
+    column![
+        text("Link expired? Paste a fresh one; what's downloaded is kept.").size(11.5).color(c.text3),
+        row![input, go].spacing(6).align_y(Alignment::Center),
+    ]
+    .spacing(6)
+    .into()
 }
 
 /// A failed download or a missing file: what happened and how to fix it.
