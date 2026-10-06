@@ -55,6 +55,9 @@ pub fn view(app: &App) -> Element<'_, Message> {
     if m.confirm_quit {
         layers = layers.push(modal(confirm_quit(m, c), Message::KeepDownloading));
     }
+    if m.pair_request.is_some() {
+        layers = layers.push(modal(confirm_pair(c), Message::AnswerPair(false)));
+    }
     if m.screen == Screen::Downloads
         && let Some(t) = toast(m, c)
     {
@@ -89,6 +92,32 @@ fn resize_grips<'a>() -> Element<'a, Message> {
         ],
     ]
     .into()
+}
+
+/// A browser extension asks to connect (one-click pairing).
+fn confirm_pair<'a>(c: Colors) -> Element<'a, Message> {
+    let badge = container(icon(Icon::Browser, 22).color(c.accent)).center(44).style(style::tag(c.accent_soft, c.accent));
+    let content = column![
+        row![
+            badge,
+            column![
+                text("Connect the browser extension?").size(16).font(style::SEMIBOLD),
+                text("Your browser's Snag extension wants to send downloads here. Allow it if you just clicked Connect in the extension.").size(12.5).color(c.text2),
+            ]
+            .spacing(4)
+            .width(Fill),
+        ]
+        .spacing(14)
+        .align_y(Alignment::Center),
+        row![
+            Space::new().width(Fill),
+            button(text("Don't allow").size(12.5).font(style::SEMIBOLD)).style(style::secondary(c)).padding([8, 14]).on_press(Message::AnswerPair(false)),
+            button(text("Allow").size(12.5).font(style::SEMIBOLD)).style(style::primary(c)).padding([8, 18]).on_press(Message::AnswerPair(true)),
+        ]
+        .spacing(8),
+    ]
+    .spacing(18);
+    container(content).width(440).padding(20).style(style::sheet(c)).into()
 }
 
 /// Quit from the tray while something downloads.
@@ -167,7 +196,12 @@ fn toast(m: &Model, c: Colors) -> Option<Element<'_, Message>> {
         return Some(card(body.into()).into());
     }
     let notice = m.notice.clone()?;
-    let body = row![text(notice).size(12.5).width(Fill), close(Message::DismissNotice)].spacing(10).align_y(Alignment::Center);
+    // Text in the window can't be selected: errors get a Copy button (and go to snag.log).
+    let copy = button(row![icon(Icon::Copy, 12), text("Copy").size(11.5)].spacing(5).align_y(Alignment::Center))
+        .style(style::ghost(c))
+        .padding([4, 8])
+        .on_press(Message::CopyText(notice.clone()));
+    let body = row![text(notice).size(12.5).width(Fill), copy, close(Message::DismissNotice)].spacing(6).align_y(Alignment::Center);
     Some(card(body.into()).into())
 }
 

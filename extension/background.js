@@ -83,11 +83,33 @@ chrome.tabs.onUpdated.addListener((tabId, change) => {
 });
 chrome.tabs.onRemoved.addListener((tabId) => tabMedia.delete(tabId));
 
-async function sendToApp(url, kind, referrer) {
-  const { token } = await settings();
-  const app = await findApp(token);
+/** One-click pairing: Snag asks the user "Allow?", then hands over the code. */
+async function pair() {
+  const app = await findApp("");
   if (!app) throw new Error("Snag isn't running");
-  if (!app.paired) throw new Error("Not paired: paste the pairing code from Snag → Settings");
+  const resp = await fetch(`http://127.0.0.1:${app.port}/pair`, { method: "POST" });
+  const body = await resp.json().catch(() => ({}));
+  if (!resp.ok || !body.token) throw new Error(body.error || "Not allowed in Snag");
+  await chrome.storage.local.set({ token: body.token });
+  return body.token;
+}
+
+/** The pairing code, connecting first if there is none (Snag asks the user once). */
+async function pairedApp() {
+  const { token } = await settings();
+  let app = await findApp(token);
+  if (!app) throw new Error("Snag isn't running");
+  if (!app.paired) {
+    const fresh = await pair();
+    app = await findApp(fresh);
+    if (!app || !app.paired) throw new Error("Couldn't connect to Snag");
+    return { app, token: fresh };
+  }
+  return { app, token };
+}
+
+async function sendToApp(url, kind, referrer) {
+  const { app, token } = await pairedApp();
   const resp = await fetch(`http://127.0.0.1:${app.port}/add`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-RDM-Token": token },
@@ -100,10 +122,7 @@ async function sendToApp(url, kind, referrer) {
 
 /** "Grab all": many links from one page in one request. */
 async function sendBatch(urls, referrer) {
-  const { token } = await settings();
-  const app = await findApp(token);
-  if (!app) throw new Error("Snag isn't running");
-  if (!app.paired) throw new Error("Not paired: paste the pairing code from Snag → Settings");
+  const { app, token } = await pairedApp();
   const resp = await fetch(`http://127.0.0.1:${app.port}/add-batch`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-RDM-Token": token },
@@ -190,6 +209,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
         flash(false);
         reply({ ok: false, error: e.message });
       });
+    return true;
+  }
+  if (msg.type === "pair") {
+    pair()
+      .then(() => reply({ ok: true }))
+      .catch((e) => reply({ ok: false, error: e.message }));
     return true;
   }
   if (msg.type === "status") {

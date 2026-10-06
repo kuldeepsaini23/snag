@@ -24,7 +24,7 @@ pub async fn start(manager: Manager, ports: RangeInclusive<u16>) -> Result<Bridg
     for port in ports {
         match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
             Ok(listener) => {
-                let app = Router::new().route("/ping", get(ping)).route("/add", post(add)).route("/focus", post(focus)).route("/quit", post(quit)).route("/add-batch", post(add_batch)).with_state(manager);
+                let app = Router::new().route("/ping", get(ping)).route("/add", post(add)).route("/focus", post(focus)).route("/quit", post(quit)).route("/add-batch", post(add_batch)).route("/pair", post(pair)).with_state(manager);
                 tokio::spawn(async move {
                     let _ = axum::serve(listener, app).await;
                 });
@@ -121,6 +121,23 @@ async fn focus(State(manager): State<Manager>, headers: HeaderMap) -> (StatusCod
     }
     manager.focus().await;
     (StatusCode::OK, Json(json!({ "ok": true })))
+}
+
+/// One-click pairing: a browser extension asks, the user allows it in Snag, the extension gets
+/// the code. Only extensions can ask (websites send their own origin), and without CORS
+/// headers no website could read the answer anyway.
+async fn pair(State(manager): State<Manager>, headers: HeaderMap) -> (StatusCode, Json<Value>) {
+    let origin = headers.get("origin").and_then(|v| v.to_str().ok()).unwrap_or("");
+    let extension = ["chrome-extension://", "moz-extension://", "safari-web-extension://"].iter().any(|p| origin.starts_with(p));
+    if !extension {
+        return (StatusCode::FORBIDDEN, Json(json!({ "error": "only the Snag browser extension can connect" })));
+    }
+    if manager.request_pair().await {
+        let token = manager.snapshot().await.settings.extension_token;
+        (StatusCode::OK, Json(json!({ "token": token })))
+    } else {
+        (StatusCode::FORBIDDEN, Json(json!({ "error": "not allowed in Snag" })))
+    }
 }
 
 /// One request should never add more than this ("Grab all" on a huge page).

@@ -248,3 +248,37 @@ fn first_link_in_shared_text() {
     assert_eq!(first_link("(see https://x.test/a.zip)."), Some("https://x.test/a.zip".to_string()), "trailing punctuation dropped");
     assert_eq!(first_link("no links here"), None);
 }
+
+#[tokio::test]
+async fn extension_pairs_with_one_click_after_the_user_allows() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path()).await;
+    let b = start(m.clone(), 48211..=48220).await.unwrap();
+    let pair = |origin: &'static str| Client::new().post(format!("http://127.0.0.1:{}/pair", b.port)).header("Origin", origin).send();
+    // A website can't even ask.
+    assert_eq!(pair("https://evil.example").await.unwrap().status().as_u16(), 403);
+    // An extension asks; the app shows the question; the user allows.
+    let mut rx = m.subscribe();
+    let asking = tokio::spawn(pair("chrome-extension://abcdefghijklmnop"));
+    let id = loop {
+        if let Ok(rdm_core::Event::PairRequest(id)) = rx.recv().await {
+            break id;
+        }
+    };
+    m.answer_pair(id, true).await;
+    let resp = asking.await.unwrap().unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body: Value = serde_json::from_str(&resp.text().await.unwrap()).unwrap();
+    assert_eq!(body["token"], TOKEN);
+    // Denied: no code.
+    let asking = tokio::spawn(pair("moz-extension://1234-5678"));
+    let id = loop {
+        if let Ok(rdm_core::Event::PairRequest(id)) = rx.recv().await {
+            break id;
+        }
+    };
+    m.answer_pair(id, false).await;
+    let resp = asking.await.unwrap().unwrap();
+    assert_eq!(resp.status().as_u16(), 403);
+    assert!(!resp.text().await.unwrap().contains(TOKEN));
+}

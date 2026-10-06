@@ -299,6 +299,8 @@ pub struct Model {
     pub settings_error: Option<String>,
     /// Watched channels and playlists.
     pub watches: Vec<rdm_core::watch::Watch>,
+    /// A browser extension waits for "Allow / Don't allow".
+    pub pair_request: Option<u64>,
 }
 
 impl Default for Model {
@@ -338,6 +340,7 @@ impl Default for Model {
             refresh: None,
             settings_error: None,
             watches: Vec::new(),
+            pair_request: None,
         }
     }
 }
@@ -397,6 +400,7 @@ impl Model {
             Event::Notice(text) => self.notice = Some(text),
             Event::Focus | Event::Quit => {}
             Event::Watches(watches) => self.watches = watches,
+            Event::PairRequest(id) => self.pair_request = Some(id),
             Event::Queues(queues) => {
                 if let crate::view::Library::Queue(id) = self.library
                     && !queues.iter().any(|q| q.id == id)

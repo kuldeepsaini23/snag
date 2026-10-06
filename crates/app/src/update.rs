@@ -79,6 +79,10 @@ pub enum Message {
     DraftSubtitles(bool),
     DraftAutoRetry(bool),
     DraftKeepSharing(bool),
+    /// Puts text on the clipboard (errors, links).
+    CopyText(String),
+    /// The answer to "a browser extension wants to connect".
+    AnswerPair(bool),
     /// Phone sharing on/off (applies at once, like a switch should).
     PhoneSharing(bool),
     /// The picker's playlist/channel: download its new uploads from now on.
@@ -186,6 +190,28 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
     // Items and the picker may now show videos whose thumbnails aren't here yet.
     let thumbs = fetch_thumbs(app);
     Task::batch([task, thumbs])
+}
+
+/// Errors and notices go to `<data>/snag.log` (kept under 1 MB): text in the window can't be
+/// copied, and a bug report needs them.
+fn log_event(data_dir: &std::path::Path, event: &Event) {
+    let line = match event {
+        Event::Notice(text) => text.clone(),
+        Event::Updated(item) => match &item.status {
+            rdm_core::Status::Failed(e) => format!("{} failed: {e}", item.name),
+            _ => return,
+        },
+        _ => return,
+    };
+    let path = data_dir.join("snag.log");
+    if std::fs::metadata(&path).is_ok_and(|m| m.len() > 1024 * 1024) {
+        let _ = std::fs::rename(&path, data_dir.join("snag.old.log"));
+    }
+    let stamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = writeln!(f, "{stamp}  {line}");
+    }
 }
 
 /// Phone sharing follows its setting (and a regenerated pairing code).
@@ -308,7 +334,8 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::Core(Event::Quit) => return iced::exit(),
         Message::Core(event) => {
-            let pick = matches!(event, Event::PickMedia { .. } | Event::Focus);
+            log_event(&app.data_dir, &event);
+            let pick = matches!(event, Event::PickMedia { .. } | Event::Focus | Event::PairRequest(_));
             model.apply(event);
             if pick {
                 // The extension sent a video, or RDM was started again: bring the (maybe hidden) window forward.
@@ -351,6 +378,18 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::DraftSubtitles(v) => model.draft.subtitles = v,
         Message::DraftAutoRetry(v) => model.draft.auto_retry = v,
         Message::DraftKeepSharing(v) => model.draft.keep_sharing = v,
+        Message::CopyText(text) => {
+            model.notice = Some("Copied ✓".into());
+            return iced::clipboard::write(text);
+        }
+        Message::AnswerPair(allow) => {
+            if let Some(id) = model.pair_request.take() {
+                if allow {
+                    model.notice = Some("Browser extension connected ✓".into());
+                }
+                return fire(&app.manager, move |m| async move { m.answer_pair(id, allow).await });
+            }
+        }
         Message::PhoneSharing(on) => {
             model.draft.phone_sharing = on;
             let settings = rdm_core::Settings { phone_sharing: on, ..model.settings.clone() };
@@ -404,7 +443,9 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::FocusSearch => return operation::focus(search_input()),
         Message::ToggleSidebar => model.sidebar_open = !model.sidebar_open,
         Message::Escape => {
-            if model.confirm_quit {
+            if model.pair_request.is_some() {
+                return update(app, Message::AnswerPair(false));
+            } else if model.confirm_quit {
                 model.keep_downloading();
             } else if model.speed_open {
                 if let Some(bps) = model.close_speed() {

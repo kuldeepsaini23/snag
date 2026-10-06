@@ -43,6 +43,8 @@ pub enum Event {
     Quit,
     /// The watched channels/playlists changed.
     Watches(Vec<crate::watch::Watch>),
+    /// A browser extension asks to connect: the UI asks the user, then `answer_pair`.
+    PairRequest(u64),
 }
 
 /// Handle to the download manager. Cheap to clone; all clones talk to one actor.
@@ -57,6 +59,8 @@ pub struct Manager {
     /// Media link → the page it was found on (sent as Referer to yt-dlp). Memory only.
     referrers: Referrers,
     torrents: Arc<Torrents>,
+    /// Extensions waiting for the user's answer to "connect?".
+    pairs: Arc<Mutex<HashMap<u64, oneshot::Sender<bool>>>>,
 }
 
 type Referrers = Arc<Mutex<HashMap<String, String>>>;
@@ -203,7 +207,7 @@ impl Manager {
         actor.referrers = referrers.clone();
         actor.torrents = torrents.clone();
         tokio::spawn(actor.run(rx));
-        Manager { tx, events, tools, jar, cookie_dir, referrers, torrents }
+        Manager { tx, events, tools, jar, cookie_dir, referrers, torrents, pairs: Arc::default() }
     }
 
     /// Reads a video/audio page (title, qualities, playlist entries). Fetches yt-dlp
@@ -307,6 +311,31 @@ impl Manager {
     /// Checks every watch now (whether due or not).
     pub async fn check_watches_now(&self) {
         let _ = self.tx.send(Cmd::CheckWatches);
+    }
+
+    /// A browser extension asks to connect. The UI shows the question; this waits (up to two
+    /// minutes) for the user's answer. True = allowed.
+    pub async fn request_pair(&self) -> bool {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        let id = NEXT.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx) = oneshot::channel();
+        if let Ok(mut pairs) = self.pairs.lock() {
+            pairs.insert(id, tx);
+        }
+        let _ = self.events.send(Event::PairRequest(id));
+        let answer = tokio::time::timeout(Duration::from_secs(120), rx).await;
+        if let Ok(mut pairs) = self.pairs.lock() {
+            pairs.remove(&id);
+        }
+        matches!(answer, Ok(Ok(true)))
+    }
+
+    /// The user's answer to `Event::PairRequest(id)`.
+    pub async fn answer_pair(&self, id: u64, allow: bool) {
+        let waiting = self.pairs.lock().ok().and_then(|mut p| p.remove(&id));
+        if let Some(tx) = waiting {
+            let _ = tx.send(allow);
+        }
     }
 
     /// A magnet link or a link to a `.torrent` file.

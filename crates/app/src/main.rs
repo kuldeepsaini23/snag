@@ -9,6 +9,8 @@ mod tray;
 mod ui;
 mod update;
 mod view;
+// Wired into the views by the UI refresh (plan 9b R1–R3).
+#[allow(dead_code)]
 mod motion;
 
 use std::path::PathBuf;

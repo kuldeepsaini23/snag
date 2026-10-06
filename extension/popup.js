@@ -12,9 +12,11 @@ async function refreshStatus() {
     $("status").textContent = "Snag isn't running";
     dot.classList.add("err");
   } else if (!app.paired) {
-    $("status").textContent = "Found Snag. Paste the pairing code";
+    $("status").textContent = "Found Snag: connect to start";
     dot.classList.add("err");
+    $("connect").style.display = "block";
   } else {
+    $("connect").style.display = "none";
     $("status").textContent = `Connected (port ${app.port})`;
     dot.classList.add("ok");
   }
@@ -70,6 +72,17 @@ async function init() {
   const { token = "", catchDownloads = true } = await chrome.storage.local.get(["token", "catchDownloads"]);
   $("token").value = token;
   $("catch").checked = catchDownloads;
+
+  $("connect").addEventListener("click", async () => {
+    say("Allow it in the Snag window…");
+    const result = await chrome.runtime.sendMessage({ type: "pair" });
+    say(result.ok ? "Connected ✓" : result.error);
+    if (result.ok) {
+      const { token = "" } = await chrome.storage.local.get(["token"]);
+      $("token").value = token;
+    }
+    refreshStatus();
+  });
 
   $("save").addEventListener("click", async () => {
     await chrome.storage.local.set({ token: $("token").value.trim() });
