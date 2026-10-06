@@ -1,3 +1,4 @@
+use crate::motion::Motion;
 use crate::queues::QueueDraft;
 use crate::state::{MediaTab, Model, Screen, SettingsTab, explorer_select_arg};
 use crate::view::{Filter, Library};
@@ -7,6 +8,7 @@ use rdm_core::{AppState, Event, ItemId, Manager, MediaFormat, MediaInfo, QueueId
 use std::future::Future;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
+use std::time::Instant;
 use tokio::sync::broadcast::error::RecvError;
 
 pub struct App {
@@ -21,6 +23,11 @@ pub struct App {
     pub runtime: tokio::runtime::Handle,
     /// Phone sharing while it's switched on: the server, its link and QR code.
     pub phone: Option<(rdm_bridge::phone::Phone, String, iced::widget::qr_code::Data)>,
+    pub motion: Motion,
+    /// The instant the view draws (animations are read at it).
+    pub now: Instant,
+    /// The item the inspector shows, kept while it slides closed.
+    pub inspector_item: Option<ItemId>,
 }
 
 /// Text inputs the app focuses itself.
@@ -50,6 +57,10 @@ pub enum Message {
     Redownload(ItemId),
     Remove(ItemId),
     Delete(ItemId),
+    /// Stop an unfinished download and throw away what it downloaded (second click confirms).
+    Cancel(ItemId),
+    /// The mouse entered (true) or left a row.
+    HoverRow(ItemId, bool),
     ShowInFolder(ItemId),
     Core(Event),
     Loaded(AppState),
@@ -98,8 +109,18 @@ pub enum Message {
     SetFilter(Filter),
     SetLibrary(Library),
     Search(String),
+    /// The magnifier or Ctrl+K: open the search field and focus it.
     FocusSearch,
+    /// A click landed somewhere: does the search field still have focus?
+    CheckSearchFocus,
+    SearchFocused(bool),
     ToggleSidebar,
+    /// The sidebar's "More" group.
+    ToggleMore,
+    /// A filter tab was laid out this wide.
+    TabMeasured(usize, f32),
+    /// A frame while something animates.
+    Frame,
     /// Escape: close whatever is on top.
     Escape,
     // Speed popover
@@ -169,7 +190,9 @@ pub fn boot(manager: Manager, bridge_status: String, data_dir: PathBuf, runtime:
     let model = Model { bridge_status, ..Model::default() };
     let tray = crate::tray::create();
     crate::notify::register(&data_dir);
-    (App { model, manager, data_dir, tray, runtime, phone: None }, Task::perform(async move { m.snapshot().await }, Message::Loaded))
+    let motion = Motion::new(crate::view::motion_targets(&model), crate::motion::system_reduced_motion());
+    let app = App { model, manager, data_dir, tray, runtime, phone: None, motion, now: Instant::now(), inspector_item: None };
+    (app, Task::perform(async move { m.snapshot().await }, Message::Loaded))
 }
 
 /// Runs a manager call in the background; its result isn't needed (events report it).
@@ -185,11 +208,29 @@ fn on_window<T: Send + 'static>(action: fn(window::Id) -> Task<T>) -> Task<T> {
 }
 
 pub fn update(app: &mut App, message: Message) -> Task<Message> {
+    // A full reload puts rows in place; only rows added one by one fade in.
+    let animate = !matches!(message, Message::Loaded(_));
     let task = handle(app, message);
     sync_phone(app);
     // Items and the picker may now show videos whose thumbnails aren't here yet.
     let thumbs = fetch_thumbs(app);
+    sync_motion(app, animate);
     Task::batch([task, thumbs])
+}
+
+/// Points the animations at what the model shows now; the view reads them at `app.now`.
+fn sync_motion(app: &mut App, animate: bool) {
+    let now = Instant::now();
+    app.motion.sync(crate::view::motion_targets(&app.model), now);
+    app.motion.sync_rows(&crate::view::row_targets(&app.model), now, animate);
+    if let Some(item) = app.model.inspected() {
+        app.inspector_item = Some(item.id);
+    }
+    app.now = now;
+    #[cfg(debug_assertions)]
+    if let Some(frozen) = crate::snap::frozen() {
+        app.now = frozen;
+    }
 }
 
 /// Errors and notices go to `<data>/snag.log` (kept under 1 MB): text in the window can't be
@@ -327,6 +368,19 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
                 return fire(&app.manager, move |m| async move { m.remove(id, true).await });
             }
         }
+        Message::Cancel(id) => {
+            if model.confirm_cancel(id) {
+                // Removing an unfinished item deletes its partial data (never a finished file).
+                return fire(&app.manager, move |m| async move { m.remove(id, false).await });
+            }
+        }
+        Message::HoverRow(id, inside) => {
+            if inside {
+                model.hovered = Some(id);
+            } else if model.hovered == Some(id) {
+                model.hovered = None;
+            }
+        }
         Message::ShowInFolder(id) => {
             if let Some(path) = model.dest_of(id) {
                 reveal(&path);
@@ -440,8 +494,21 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::SetFilter(f) => model.filter = f,
         Message::SetLibrary(l) => model.library = l,
         Message::Search(s) => model.search = s,
-        Message::FocusSearch => return operation::focus(search_input()),
+        Message::FocusSearch => {
+            model.open_search();
+            return operation::focus(search_input());
+        }
+        Message::CheckSearchFocus => return operation::is_focused(search_input()).map(Message::SearchFocused),
+        Message::SearchFocused(focused) => model.search_focus(focused),
         Message::ToggleSidebar => model.sidebar_open = !model.sidebar_open,
+        Message::ToggleMore => model.more_open = !model.more_open,
+        Message::TabMeasured(i, width) => {
+            if model.tab_widths.len() <= i {
+                model.tab_widths.resize(i + 1, 0.0);
+            }
+            model.tab_widths[i] = width;
+        }
+        Message::Frame => {}
         Message::Escape => {
             if model.pair_request.is_some() {
                 return update(app, Message::AnswerPair(false));
@@ -455,8 +522,10 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
                 return update(app, Message::CloseSettings);
             } else if model.screen == Screen::Picker {
                 return update(app, Message::CancelPick);
+            } else if model.search_open && model.search.trim().is_empty() {
+                model.search_open = false;
             } else {
-                model.toast = None;
+                model.escape_downloads();
             }
         }
         Message::ToggleSpeed => {
@@ -677,6 +746,16 @@ pub fn subscription(app: &App) -> Subscription<Message> {
     // Notifications go out in batches, so a finished playlist is one toast.
     if !app.model.notes.is_empty() {
         subs.push(iced::time::every(std::time::Duration::from_secs(2)).map(|_| Message::FlushNotes));
+    }
+    // Frames only while something moves: an idle window draws nothing.
+    if app.motion.animating(Instant::now()) {
+        subs.push(window::frames().map(|_| Message::Frame));
+    }
+    // An empty search folds away once a click moves the focus elsewhere.
+    if app.model.search_open && app.model.search.trim().is_empty() {
+        subs.push(iced::event::listen_with(|event, _, _| {
+            matches!(event, iced::Event::Mouse(iced::mouse::Event::ButtonReleased(_))).then_some(Message::CheckSearchFocus)
+        }));
     }
     #[cfg(debug_assertions)]
     subs.push(crate::snap::subscription());

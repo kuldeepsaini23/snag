@@ -1,19 +1,22 @@
 //! The centre panel: URL bar, "Downloading" and "Recent" groups, empty state.
 
-use super::icon::{Icon, icon};
+use super::icon::{Icon, bold, icon};
 use super::style;
 use super::theme::Colors;
 use super::small;
 use crate::format;
+use crate::motion::{Motion, RowPose};
 use crate::state::{Model, SettingsTab, file_missing};
 use crate::update::{Message, url_input};
 use crate::view;
 use iced::widget::text::Wrapping;
-use iced::widget::{Space, button, column, container, progress_bar, row, scrollable, text, text_input};
+use iced::widget::{Space, button, column, container, mouse_area, progress_bar, row, scrollable, text, text_input};
 use iced::{Alignment, Color, Element, Fill, Length};
 use rdm_core::{Category, Item, Kind, MediaFormat, Status};
+use std::time::Instant;
 
-pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
+pub fn view<'a>(m: &'a Model, motion: &Motion, now: Instant, c: Colors) -> Element<'a, Message> {
+    let item_row = |m: &'a Model, i: &'a Item, c: Colors| item_row(m, i, motion.row(i.id.0, now), c);
     let mut page = column![url_bar(m, c)].spacing(10);
     page = page.push(container(text(view::url_hint(m)).size(12).color(c.text3)).padding([0, 2]));
 
@@ -75,7 +78,8 @@ pub fn tile<'a>(item: &Item, thumb: Option<&std::path::Path>, width: f32, height
             .width(Length::Fixed(width))
             .height(Length::Fixed(height))
             .content_fit(iced::ContentFit::Cover)
-            .border_radius(7.0);
+            .border_radius(7.0)
+            .opacity(c.alpha);
         return with_duration(picture.into(), item.duration, width, height);
     }
     let plain = plain_tile(item, width, height, glyph_size, c);
@@ -104,31 +108,45 @@ fn plain_tile<'a>(item: &Item, width: f32, height: f32, glyph_size: u16, c: Colo
         (_, Category::Program) => (c.raised, c.surface, Icon::AppWindow, c.text2),
         _ => (c.raised, c.surface, Icon::File, c.text2),
     };
-    container(icon(glyph, glyph_size).color(fg))
+    container(icon(glyph, glyph_size).color(c.fixed(fg)))
         .width(Length::Fixed(width))
         .height(Length::Fixed(height))
         .align_x(Alignment::Center)
         .align_y(Alignment::Center)
-        .style(style::tile(top, bottom, c.line))
+        .style(style::tile(c.fixed(top), c.fixed(bottom), c.line))
         .into()
 }
 
-fn item_row<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
+/// One download. `pose` (from the motion system) eases its bar, fades it in when new and pulses
+/// it once when it finishes; its buttons show only while it is hovered or selected.
+fn item_row<'a>(m: &'a Model, i: &'a Item, pose: Option<RowPose>, c: Colors) -> Element<'a, Message> {
+    let c = match pose {
+        Some(p) if p.appear < 1.0 => c.faded(p.appear),
+        _ => c,
+    };
+    let pulse = pose.map_or(0.0, |p| p.pulse);
     let failed = matches!(i.status, Status::Failed(_));
     let missing = file_missing(i);
     let waiting = m.waiting_for_schedule(i);
-    let percent = match (i.total, &i.status) {
-        (_, Status::Done) => 100.0,
-        (Some(t), _) if t > 0 => i.downloaded as f32 * 100.0 / t as f32,
+    let armed = m.pending_cancel == Some(i.id);
+    let percent = match (pose, i.total, &i.status) {
+        (_, _, Status::Done) => 100.0,
+        (Some(p), _, _) => p.progress * 100.0,
+        (None, Some(t), _) if t > 0 => i.downloaded as f32 * 100.0 / t as f32,
         _ => 0.0,
     };
 
     // Second line, coloured by state.
-    let meta: Element<'a, Message> = if missing {
+    let meta: Element<'a, Message> = if armed {
+        small("Click × again to cancel and delete what's downloaded", c.danger).wrapping(Wrapping::None).into()
+    } else if missing {
         small("File missing · download it again", c.danger).wrapping(Wrapping::None).into()
     } else if waiting {
         let start = m.queues.iter().find(|q| q.id == i.queue).and_then(|q| q.schedule.as_ref()).map(|s| crate::queues::fmt_hhmm(s.start)).unwrap_or_default();
         dot_line(format!("Scheduled {start} · {}", view::kind_label(i)), c.accent)
+    } else if i.status == Status::Done && pulse > 0.0 {
+        // Just finished: an accent check instead of the dot.
+        row![bold(Icon::Check, 11).color(c.accent), text(view::row_meta(i)).size(11.5).color(c.accent).wrapping(Wrapping::None)].spacing(5).align_y(Alignment::Center).into()
     } else if i.status == Status::Done {
         dot_line(view::row_meta(i), c.success)
     } else if failed {
@@ -174,12 +192,23 @@ fn item_row<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
         Status::Paused => (Icon::Play, Some(Message::Resume(i.id))),
         Status::Failed(_) => (Icon::ArrowClockwise, Some(Message::Resume(i.id))),
     };
-    let act = button(container(icon(glyph, 15)).center(Fill)).width(30).height(30).padding(0).style(style::ghost(c)).on_press_maybe(action);
+    let small_button = |glyph: Icon| button(container(bold(glyph, 15)).center(Fill)).width(30).height(30).padding(0);
+    // A fixed slot, so speeds and times line up whether or not the buttons show.
+    let mut actions = row![].spacing(4);
+    if view::row_actions_visible(i.id, m.hovered, m.selected) || armed {
+        actions = actions.push(small_button(glyph).style(style::ghost(c)).on_press_maybe(action));
+        if view::can_cancel(i) {
+            let cancel = small_button(Icon::X).on_press(Message::Cancel(i.id));
+            actions = actions.push(if armed { cancel.style(style::danger(c)) } else { cancel.style(style::ghost(c)) });
+        }
+    }
+    let actions = container(actions).width(64).align_x(Alignment::End);
 
     let middle = container(middle).width(Fill).clip(true);
     let thumb = i.thumbnail.as_ref().and_then(|u| m.thumbs.get(u)).map(|p| p.as_path());
-    let content = row![tile(i, thumb, 76.0, 44.0, 16, c), middle, right, act].spacing(14).align_y(Alignment::Center);
-    button(content).width(Fill).padding([9, 10]).style(style::row(c, m.selected == Some(i.id), failed)).on_press(Message::Select(i.id)).into()
+    let content = row![tile(i, thumb, 76.0, 44.0, 16, c), middle, right, actions].spacing(14).align_y(Alignment::Center);
+    let row = button(content).width(Fill).padding([9, 10]).style(style::row(c, m.selected == Some(i.id), failed, pulse)).on_press(Message::Select(i.id));
+    mouse_area(row).on_enter(Message::HoverRow(i.id, true)).on_exit(Message::HoverRow(i.id, false)).into()
 }
 
 fn dot_line<'a>(s: String, color: Color) -> Element<'a, Message> {

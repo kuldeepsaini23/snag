@@ -18,9 +18,12 @@ pub fn logo() -> iced::widget::image::Handle {
 }
 pub const PHOSPHOR: &[u8] = include_bytes!("../../assets/fonts/Phosphor.ttf");
 pub const PHOSPHOR_FILL: &[u8] = include_bytes!("../../assets/fonts/Phosphor-Fill.ttf");
+/// Toolbar, caption and sidebar icons: Regular reads thin and cheap at these sizes.
+pub const PHOSPHOR_BOLD: &[u8] = include_bytes!("../../assets/fonts/Phosphor-Bold.ttf");
 
 pub const PHOSPHOR_FONT: Font = Font::with_name("Phosphor");
 const FILL: Font = Font::with_name("Phosphor-Fill");
+pub const BOLD_FONT: Font = Font::with_name("Phosphor-Bold");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Icon {
@@ -28,6 +31,9 @@ pub enum Icon {
     ArrowClockwise,
     ArrowRight,
     Browser,
+    CaretDown,
+    CaretRight,
+    Check,
     CheckCircle,
     ClipboardText,
     Clock,
@@ -43,11 +49,9 @@ pub enum Icon {
     Gauge,
     Gear,
     Image,
-    Lightning,
     Link,
     ListNumbers,
     MagnifyingGlass,
-    Minus,
     MusicNote,
     MusicNotes,
     Palette,
@@ -69,7 +73,7 @@ pub enum Icon {
 impl Icon {
     /// Every icon (the font test checks each one).
     #[cfg(test)]
-    pub const ALL: [Icon; 40] = [Icon::AppWindow, Icon::ArrowClockwise, Icon::ArrowRight, Icon::Browser, Icon::CheckCircle, Icon::ClipboardText, Icon::Clock, Icon::Copy, Icon::Download, Icon::File, Icon::FilePdf, Icon::FileText, Icon::FileZip, Icon::FilmStrip, Icon::FolderOpen, Icon::Folder, Icon::Gauge, Icon::Gear, Icon::Image, Icon::Lightning, Icon::Link, Icon::ListNumbers, Icon::MagnifyingGlass, Icon::Minus, Icon::MusicNote, Icon::MusicNotes, Icon::Palette, Icon::Pause, Icon::Play, Icon::PlayFill, Icon::Plug, Icon::Plus, Icon::Queue, Icon::Sidebar, Icon::Square, Icon::Trash, Icon::TrayDown, Icon::WarningCircle, Icon::Wrench, Icon::X];
+    pub const ALL: [Icon; 41] = [Icon::AppWindow, Icon::ArrowClockwise, Icon::ArrowRight, Icon::Browser, Icon::CaretDown, Icon::CaretRight, Icon::Check, Icon::CheckCircle, Icon::ClipboardText, Icon::Clock, Icon::Copy, Icon::Download, Icon::File, Icon::FilePdf, Icon::FileText, Icon::FileZip, Icon::FilmStrip, Icon::FolderOpen, Icon::Folder, Icon::Gauge, Icon::Gear, Icon::Image, Icon::Link, Icon::ListNumbers, Icon::MagnifyingGlass, Icon::MusicNote, Icon::MusicNotes, Icon::Palette, Icon::Pause, Icon::Play, Icon::PlayFill, Icon::Plug, Icon::Plus, Icon::Queue, Icon::Sidebar, Icon::Square, Icon::Trash, Icon::TrayDown, Icon::WarningCircle, Icon::Wrench, Icon::X];
 
     pub fn ch(self) -> char {
         let code = match self {
@@ -77,6 +81,9 @@ impl Icon {
             Self::ArrowClockwise => 0xe036,
             Self::ArrowRight => 0xe06c,
             Self::Browser => 0xe0f4,
+            Self::CaretDown => 0xe136,
+            Self::CaretRight => 0xe13a,
+            Self::Check => 0xe182,
             Self::CheckCircle => 0xe184,
             Self::ClipboardText => 0xe198,
             Self::Clock => 0xe19a,
@@ -92,11 +99,9 @@ impl Icon {
             Self::Gauge => 0xe628,
             Self::Gear => 0xe272,
             Self::Image => 0xe2ca,
-            Self::Lightning => 0xe2de,
             Self::Link => 0xe2e2,
             Self::ListNumbers => 0xe2f6,
             Self::MagnifyingGlass => 0xe30c,
-            Self::Minus => 0xe32a,
             Self::MusicNote => 0xe33c,
             Self::MusicNotes => 0xe340,
             Self::Palette => 0xe6c8,
@@ -125,6 +130,16 @@ pub fn icon<'a>(i: Icon, size: u16) -> Text<'a> {
     text(i.ch().to_string()).font(i.font()).size(size as f32).line_height(1.0)
 }
 
+/// Toolbar, caption and sidebar icons.
+pub fn bold<'a>(i: Icon, size: u16) -> Text<'a> {
+    text(i.ch().to_string()).font(BOLD_FONT).size(size as f32).line_height(1.0)
+}
+
+/// The active filter or nav item.
+pub fn filled<'a>(i: Icon, size: u16) -> Text<'a> {
+    text(i.ch().to_string()).font(FILL).size(size as f32).line_height(1.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -135,6 +150,8 @@ mod tests {
         for i in Icon::ALL {
             let font = if i == Icon::PlayFill { PHOSPHOR_FILL } else { PHOSPHOR };
             assert!(maps(font, i.ch() as u32), "{i:?} missing");
+            assert!(maps(PHOSPHOR_BOLD, i.ch() as u32), "{i:?} missing in Bold");
+            assert!(maps(PHOSPHOR_FILL, i.ch() as u32), "{i:?} missing in Fill");
         }
         assert!(!maps(PHOSPHOR, 0x41), "plain letters are not icons");
     }

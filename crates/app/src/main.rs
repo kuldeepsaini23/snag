@@ -1,5 +1,6 @@
 mod choices;
 mod format;
+mod motion;
 mod queues;
 #[cfg(debug_assertions)]
 mod snap;
@@ -9,9 +10,6 @@ mod tray;
 mod ui;
 mod update;
 mod view;
-// Wired into the views by the UI refresh (plan 9b R1–R3).
-#[allow(dead_code)]
-mod motion;
 
 use std::path::PathBuf;
 
@@ -67,6 +65,7 @@ fn main() -> iced::Result {
         .font(ui::icon::JETBRAINS_MONO)
         .font(ui::icon::PHOSPHOR)
         .font(ui::icon::PHOSPHOR_FILL)
+        .font(ui::icon::PHOSPHOR_BOLD)
         .default_font(ui::style::INTER)
         // The Figma sizes are drawn for dense screens; at 100% Windows scaling they read small.
         .scale_factor(|_| ui::theme::UI_SCALE)
