@@ -32,6 +32,8 @@ pub struct App {
     pub bug_text: text_editor::Content,
     /// The backdrop last asked of the window: (translucent, light).
     pub backdrop_asked: Option<(bool, bool)>,
+    /// The accent the taskbar and tray icons were last drawn in.
+    pub icons_accent: Option<[u8; 4]>,
 }
 
 /// Text inputs the app focuses itself.
@@ -286,6 +288,7 @@ pub fn boot(manager: Manager, bridge_status: String, data_dir: PathBuf, runtime:
         inspector_item: None,
         bug_text: text_editor::Content::new(),
         backdrop_asked: None,
+        icons_accent: None,
     };
     // A while after start (not to slow it down), look for a newer Snag.
     let look = Task::perform(tokio::time::sleep(std::time::Duration::from_secs(8)), |_| Message::CheckUpdate);
@@ -317,8 +320,24 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
     // Items and the picker may now show videos whose thumbnails aren't here yet.
     let thumbs = fetch_thumbs(app);
     let backdrop = sync_backdrop(app);
+    let icons = sync_icons(app);
     sync_motion(app, animate);
-    Task::batch([task, thumbs, backdrop])
+    Task::batch([task, thumbs, backdrop, icons])
+}
+
+/// The taskbar and tray icons follow the accent (redrawn only when it changes).
+fn sync_icons(app: &mut App) -> Task<Message> {
+    let accent = crate::ui::colors(&app.model).accent;
+    let key = iced::Color { a: 1.0, ..accent }.into_rgba8();
+    if app.icons_accent == Some(key) {
+        return Task::none();
+    }
+    app.icons_accent = Some(key);
+    if let Some(tray) = &app.tray {
+        tray.set_icon(crate::ui::icon::tray_icon(accent));
+    }
+    let Ok(icon) = iced::window::icon::from_rgba(crate::ui::icon::taskbar_icon(accent), 64, 64) else { return Task::none() };
+    window::latest().and_then(move |id| window::set_icon(id, icon.clone()))
 }
 
 /// Mica follows the "Translucent window" setting, tinted for the theme drawn (nothing is asked

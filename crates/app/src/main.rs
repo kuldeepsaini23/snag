@@ -81,7 +81,13 @@ fn main() -> iced::Result {
         // The toolbar is the title bar (spec §2.5).
         decorations: false,
         transparent: translucent,
-        icon: iced::window::icon::from_rgba(tray::ICON_64.to_vec(), 64, 64).ok(),
+        // In the saved accent from the start (then kept in step by `update::sync_icons`).
+        icon: iced::window::icon::from_rgba(
+            ui::theme::parse_hex(&saved.accent).map(ui::icon::taskbar_icon).unwrap_or_else(|| tray::ICON_64.to_vec()),
+            64,
+            64,
+        )
+        .ok(),
         visible: !background,
         // Debug: tests that need a drawn (visible) window open it off-screen.
         #[cfg(debug_assertions)]

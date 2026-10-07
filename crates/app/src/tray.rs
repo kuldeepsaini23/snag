@@ -15,7 +15,16 @@ const RESUME_ALL: &str = "resume-all";
 const QUIT: &str = "quit";
 
 /// Keeps the icon alive (dropping it removes it from the tray).
-pub struct Tray(#[allow(dead_code)] TrayIcon);
+pub struct Tray(TrayIcon);
+
+impl Tray {
+    /// Redraws the tray icon (32×32 RGBA), e.g. in a new accent.
+    pub fn set_icon(&self, rgba: Vec<u8>) {
+        if let Ok(icon) = Icon::from_rgba(rgba, 32, 32) {
+            let _ = self.0.set_icon(Some(icon));
+        }
+    }
+}
 
 /// Must run on the UI thread (it owns the Windows message loop the icon talks to).
 pub fn create() -> Option<Tray> {
@@ -28,7 +37,7 @@ pub fn create() -> Option<Tray> {
         &MenuItem::with_id(QUIT, "Quit Snag", true, None),
     ])
     .ok()?;
-    let icon = Icon::from_rgba(ICON_32.to_vec(), 32, 32).ok()?;
+    let icon = Icon::from_rgba(ICON_32.to_vec(), 32, 32).ok()?; // replaced by the accent's at once
     TrayIconBuilder::new()
         .with_menu(Box::new(menu))
         .with_menu_on_left_click(false)

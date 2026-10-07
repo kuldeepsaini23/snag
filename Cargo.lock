@@ -5734,7 +5734,7 @@ dependencies = [
 
 [[package]]
 name = "rdm-app"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "chrono",
  "futures-util",
@@ -5760,7 +5760,7 @@ dependencies = [
 
 [[package]]
 name = "rdm-bridge"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "axum",
  "rdm-core",
@@ -5774,7 +5774,7 @@ dependencies = [
 
 [[package]]
 name = "rdm-cli"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "clap",
  "rdm-engine",
@@ -5783,7 +5783,7 @@ dependencies = [
 
 [[package]]
 name = "rdm-core"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "axum",
  "chrono",
@@ -5807,7 +5807,7 @@ dependencies = [
 
 [[package]]
 name = "rdm-engine"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "axum",
  "futures-util",
@@ -5823,7 +5823,7 @@ dependencies = [
 
 [[package]]
 name = "rdm-media"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "memchr",
  "serde",
@@ -5835,7 +5835,7 @@ dependencies = [
 
 [[package]]
 name = "rdm-torrent"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "librqbit",
  "tempfile",

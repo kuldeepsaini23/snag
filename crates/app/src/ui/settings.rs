@@ -266,7 +266,7 @@ fn appearance(m: &Model, c: Colors) -> Element<'_, Message> {
         color_picker::hue_strip(m.accent_hsv, PICKER_WIDTH, 20.0, c.surface, c),
     ]
     .spacing(2);
-    let logo = iced::widget::image(super::icon::logo(c.accent)).width(34).height(34).opacity(c.alpha);
+    let logo = iced::widget::image(super::icon::mark(c.accent)).width(34).height(34).opacity(c.alpha);
     let side = column![
         text("Custom colour").size(13).font(style::MEDIUM),
         small(desc, c.text3),

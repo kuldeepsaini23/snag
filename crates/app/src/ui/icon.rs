@@ -9,24 +9,45 @@ pub const INTER_REGULAR: &[u8] = include_bytes!("../../assets/fonts/Inter-Regula
 pub const INTER_MEDIUM: &[u8] = include_bytes!("../../assets/fonts/Inter-Medium.ttf");
 pub const INTER_SEMIBOLD: &[u8] = include_bytes!("../../assets/fonts/Inter-SemiBold.ttf");
 pub const JETBRAINS_MONO: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf");
-/// The Snag logo (Figma: Components → "Logo/Snag"), 64×64 RGBA: a #ff9f0a tile, a #1a1816 "S".
-const LOGO_RGBA: &[u8] = crate::tray::ICON_64;
-const LOGO_TILE: [f32; 3] = [255.0, 159.0, 10.0];
-const LOGO_INK: [f32; 3] = [26.0, 24.0, 22.0];
+/// A logo as two 64×64 RGBA layers: the whole tile as drawn on #ff9f0a, and the drawing alone
+/// (transparent around it).
+type Layers = (&'static [u8], &'static [u8]);
 
-/// The logo in the accent: the tile takes the accent, the "S" the text colour drawn on it.
-/// Each pixel is a blend of ink and tile (anti-aliased edges in between); the same blend of the
-/// new two colours replaces it. Transparency is kept.
-pub fn tint_logo(rgba: &[u8], accent: Color) -> Vec<u8> {
-    let ink = crate::ui::theme::on_accent(accent);
-    let (to_ink, to_tile) = ([ink.r, ink.g, ink.b].map(|v| v * 255.0), [accent.r, accent.g, accent.b].map(|v| v * 255.0));
-    let span: [f32; 3] = std::array::from_fn(|k| LOGO_TILE[k] - LOGO_INK[k]);
-    let span_len = span.iter().map(|v| v * v).sum::<f32>();
-    let mut out = rgba.to_vec();
-    for px in out.as_chunks_mut::<4>().0.iter_mut().filter(|px| px[3] > 0) {
-        let t = ((0..3).map(|k| (px[k] as f32 - LOGO_INK[k]) * span[k]).sum::<f32>() / span_len).clamp(0.0, 1.0);
+/// The engraved logo: a hook catching a download arrow (the welcome tour, the app icon).
+const LOGO: Layers = (crate::tray::ICON_64, include_bytes!("../../assets/logo-subject-64.rgba"));
+/// The bold mark of the same hook and arrow, for small places (toolbar, settings).
+const MARK: Layers = (include_bytes!("../../assets/mark-64.rgba"), include_bytes!("../../assets/mark-subject-64.rgba"));
+
+/// A logo in the accent: the tile takes the accent, the drawing keeps its own ink and paper
+/// (drawn over the tile as it is over the orange). The tile's rounded edge is kept.
+fn tint((base, subject): Layers, accent: Color) -> Vec<u8> {
+    let tile = [accent.r, accent.g, accent.b].map(|v| v * 255.0);
+    let mut out = base.to_vec();
+    let pixels = out.as_chunks_mut::<4>().0.iter_mut().zip(subject.as_chunks::<4>().0);
+    for (px, sub) in pixels.filter(|(px, _)| px[3] > 0) {
+        let a = sub[3] as f32 / 255.0;
         for k in 0..3 {
-            px[k] = (to_ink[k] + (to_tile[k] - to_ink[k]) * t).round().clamp(0.0, 255.0) as u8;
+            px[k] = (sub[k] as f32 * a + tile[k] * (1.0 - a)).round().clamp(0.0, 255.0) as u8;
+        }
+    }
+    out
+}
+
+/// The window's icon (taskbar, Alt+Tab), 64×64 RGBA: the bold mark in the accent.
+pub fn taskbar_icon(accent: Color) -> Vec<u8> {
+    tint(MARK, Color { a: 1.0, ..accent })
+}
+
+/// The tray icon, 32×32 RGBA: the taskbar icon at half size (each pixel a 2×2 average).
+pub fn tray_icon(accent: Color) -> Vec<u8> {
+    let big = taskbar_icon(accent);
+    let mut out = Vec::with_capacity(32 * 32 * 4);
+    for y in 0..32 {
+        for x in 0..32 {
+            for k in 0..4 {
+                let at = |dx: usize, dy: usize| big[((2 * y + dy) * 64 + 2 * x + dx) * 4 + k] as u32;
+                out.push(((at(0, 0) + at(1, 0) + at(0, 1) + at(1, 1) + 2) / 4) as u8);
+            }
         }
     }
     out
@@ -36,18 +57,31 @@ pub fn tint_logo(rgba: &[u8], accent: Color) -> Vec<u8> {
 /// only the last few are kept (the least recently drawn goes first).
 const LOGO_CACHE: usize = 8;
 
-static LOGOS: Mutex<Vec<([u8; 4], Handle)>> = Mutex::new(Vec::new());
+/// Which logo (bold mark or not) in which accent.
+type LogoKey = ([u8; 4], bool);
 
-/// The logo for an accent. One handle per accent colour, reused on every frame it's drawn at:
-/// iced keys uploaded images by handle, so a handle made anew every frame would be uploaded anew.
+static LOGOS: Mutex<Vec<(LogoKey, Handle)>> = Mutex::new(Vec::new());
+
+/// The engraved logo for an accent.
 pub fn logo(accent: Color) -> Handle {
+    tinted(LOGO, false, accent)
+}
+
+/// The bold mark for an accent (small sizes, where the engraving's fine lines blur).
+pub fn mark(accent: Color) -> Handle {
+    tinted(MARK, true, accent)
+}
+
+/// One handle per logo and accent colour, reused on every frame it's drawn at: iced keys uploaded
+/// images by handle, so a handle made anew every frame would be uploaded anew.
+fn tinted(layers: Layers, is_mark: bool, accent: Color) -> Handle {
     // A fading sheet draws the accent see-through; the image takes that as its opacity instead.
     let accent = Color { a: 1.0, ..accent };
-    let key = accent.into_rgba8();
-    let Ok(mut cache) = LOGOS.lock() else { return Handle::from_rgba(64, 64, tint_logo(LOGO_RGBA, accent)) };
+    let key = (accent.into_rgba8(), is_mark);
+    let Ok(mut cache) = LOGOS.lock() else { return Handle::from_rgba(64, 64, tint(layers, accent)) };
     let handle = match cache.iter().position(|(k, _)| *k == key) {
         Some(i) => cache.remove(i).1,
-        None => Handle::from_rgba(64, 64, tint_logo(LOGO_RGBA, accent)),
+        None => Handle::from_rgba(64, 64, tint(layers, accent)),
     };
     cache.push((key, handle.clone()));
     if cache.len() > LOGO_CACHE {
@@ -218,22 +252,46 @@ mod tests {
     #[test]
     fn logo_follows_the_accent() {
         let px = |rgba: &[u8], i: usize| [rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2], rgba[i * 4 + 3]];
-        let ink = (0..64 * 64).find(|&i| px(LOGO_RGBA, i) == [0x1a, 0x18, 0x16, 255]).expect("the S");
-        let tile = (0..64 * 64).find(|&i| px(LOGO_RGBA, i) == [0xff, 0x9f, 0x0a, 255]).expect("the tile");
+        let (base, subject) = LOGO;
+        let alpha = |i: usize| subject[i * 4 + 3];
+        // Inside the tile: bare orange (no drawing), and the drawing itself (fully opaque).
+        let tile = (0..64 * 64).find(|&i| base[i * 4 + 3] == 255 && alpha(i) == 0).expect("bare tile");
+        let drawing = (0..64 * 64).find(|&i| alpha(i) == 255).expect("the hook or arrow");
         let corner = 0; // transparent outside the rounded square
 
-        let orange = tint_logo(LOGO_RGBA, crate::ui::theme::parse_hex("#ff9f0a").unwrap());
-        let worst = (0..64 * 64).max_by_key(|&i| (0..4).map(|k| orange[i * 4 + k].abs_diff(LOGO_RGBA[i * 4 + k])).max()).unwrap();
-        // Faint edge pixels stray a little from the ink–tile line; a few levels is invisible.
-        assert!(orange.iter().zip(LOGO_RGBA).all(|(a, b)| a.abs_diff(*b) <= 8), "the default accent is the logo as drawn: {:?} vs {:?}", px(&orange, worst), px(LOGO_RGBA, worst));
+        let orange = tint(LOGO, crate::ui::theme::parse_hex("#ff9f0a").unwrap());
+        assert!(orange.iter().zip(base).all(|(a, b)| a.abs_diff(*b) <= 10), "the default accent is the logo as drawn");
 
-        let blue = tint_logo(LOGO_RGBA, crate::ui::theme::parse_hex("#0a84ff").unwrap());
+        let blue = tint(LOGO, crate::ui::theme::parse_hex("#0a84ff").unwrap());
         assert_eq!(px(&blue, tile), [0x0a, 0x84, 0xff, 255], "the tile takes the accent");
-        assert_eq!(px(&blue, ink), [255, 255, 255, 255], "the S takes the text colour for that accent (white on blue)");
-        assert_eq!(px(&blue, corner)[3], px(LOGO_RGBA, corner)[3], "transparency is kept");
+        assert_eq!(px(&blue, drawing)[..3], px(subject, drawing)[..3], "the engraving keeps its own ink and paper");
+        assert_eq!(px(&blue, corner)[3], 0, "transparency is kept");
+    }
 
-        let white = tint_logo(LOGO_RGBA, crate::ui::theme::parse_hex("#f5f5f7").unwrap());
-        assert_eq!(px(&white, ink), [0x1a, 0x18, 0x16, 255], "dark S on a white tile");
+    #[test]
+    fn the_small_mark_follows_the_accent_too() {
+        let px = |rgba: &[u8], i: usize| [rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2], rgba[i * 4 + 3]];
+        let (base, sub) = (MARK.0, MARK.1);
+        let tile = (0..64 * 64).find(|&i| base[i * 4 + 3] == 255 && sub[i * 4 + 3] == 0).expect("bare tile");
+        let blue = tint(MARK, crate::ui::theme::parse_hex("#0a84ff").unwrap());
+        assert_eq!(px(&blue, tile), [0x0a, 0x84, 0xff, 255]);
+        let orange = tint(MARK, crate::ui::theme::parse_hex("#ff9f0a").unwrap());
+        assert!(orange.iter().zip(base).all(|(a, b)| a.abs_diff(*b) <= 10), "the default accent is the mark as drawn");
+        assert_ne!(mark(Color::from_rgb8(1, 2, 3)).id(), logo(Color::from_rgb8(1, 2, 3)).id(), "two different images");
+    }
+
+    #[test]
+    fn taskbar_and_tray_icons_take_the_accent() {
+        let blue = crate::ui::theme::parse_hex("#0a84ff").unwrap();
+        let big = taskbar_icon(blue);
+        assert_eq!(big, tint(MARK, blue), "the window's icon is the bold mark in the accent");
+        let small = tray_icon(blue);
+        assert_eq!(small.len(), 32 * 32 * 4);
+        // Each tray pixel is the average of a 2×2 block of the big one.
+        let at = |rgba: &[u8], w: usize, x: usize, y: usize| rgba[(y * w + x) * 4 + 2] as u32;
+        let (x, y) = (16, 2);
+        let avg = (at(&big, 64, 2 * x, 2 * y) + at(&big, 64, 2 * x + 1, 2 * y) + at(&big, 64, 2 * x, 2 * y + 1) + at(&big, 64, 2 * x + 1, 2 * y + 1) + 2) / 4;
+        assert!(at(&small, 32, x, y).abs_diff(avg) <= 1);
     }
 
     #[test]

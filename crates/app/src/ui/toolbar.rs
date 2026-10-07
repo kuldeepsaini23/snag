@@ -24,7 +24,7 @@ const CAPTION_FONT: Font = Font::with_name("Segoe Fluent Icons");
 pub fn view(m: &Model, a: Anim, c: Colors) -> Element<'_, Message> {
     let (running, speed) = m.totals();
     let subtitle = if running == 0 { "Nothing downloading".to_string() } else { format!("{running} active · {}", format::speed(speed)) };
-    let logo = iced::widget::image(super::icon::logo(c.accent)).width(26).height(26);
+    let logo = iced::widget::image(super::icon::mark(c.accent)).width(26).height(26);
     let title = column![text(if m.stats_open { "Stats" } else { "Downloads" }).size(13).font(style::SEMIBOLD), tiny(subtitle, c.text3)].spacing(1);
     // The filter tabs belong to the list; the stats screen has its own range switch.
     let tabs: Element<'_, Message> = if m.stats_open { Space::new().into() } else { tabs(m, a, c) };

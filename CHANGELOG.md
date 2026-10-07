@@ -2,6 +2,12 @@
 
 Newest first. Snag shows the newest entry once after an update; the Help menu (?) has the full list.
 
+## 1.0.3 — 2026-10-08
+
+### Improved
+- A new logo: an engraved hook catching a download arrow, with a bold version for small places like the tray.
+- The taskbar and tray icons follow your accent colour, like the logo in the window.
+
 ## 1.0.2 — 2026-10-07
 
 ### Fixed
