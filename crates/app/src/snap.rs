@@ -100,6 +100,13 @@ fn apply(m: &mut Model, scene: &str) {
     let paused = m.items.iter().find(|i| i.status == Status::Paused).map(|i| i.id);
     match scene {
         "duplicate" => m.duplicate = m.items.iter().find(|i| i.status == Status::Done).cloned(),
+        "safety" => {
+            let done = m.items.iter().find(|i| i.status == Status::Done).map(|i| i.id);
+            if let Some(id) = done {
+                m.safety.insert(id, rdm_core::safety::Safety::Flagged { bad: 5, scanners: 72 });
+                m.selected = Some(id);
+            }
+        }
         "hover" => m.hovered = paused,
         "cancel" => {
             m.selected = paused;

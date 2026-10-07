@@ -480,6 +480,17 @@ pub fn speed_parts(bps: u64) -> (String, String) {
 }
 
 /// ("Today", "14:02") or ("Sep 30", "09:05") for a unix time, in local time.
+/// VirusTotal's verdict in words, and whether it is a warning.
+pub fn safety_label(verdict: &rdm_core::safety::Safety) -> (String, bool) {
+    use rdm_core::safety::Safety;
+    match verdict {
+        Safety::Clean { scanners } => (format!("Clean (0 of {scanners} scanners)"), false),
+        Safety::Flagged { bad, scanners } => (format!("Flagged by {bad} of {scanners} scanners"), true),
+        Safety::Unknown => ("Not known to VirusTotal".into(), false),
+        Safety::Failed(why) => (format!("Not checked: {why}"), false),
+    }
+}
+
 pub fn when_label(unix: i64, now: chrono::DateTime<chrono::Local>) -> (String, String) {
     use chrono::TimeZone;
     let Some(t) = chrono::Local.timestamp_opt(unix, 0).single() else { return (String::new(), "--:--".into()) };
@@ -815,6 +826,14 @@ mod tests {
         assert_eq!(speed_parts(2 * 1024 * 1024), ("2.0".to_string(), "MB/s".to_string()));
         assert_eq!(speed_parts(512 * 1024), ("512.0".to_string(), "KB/s".to_string()));
         assert_eq!(speed_parts(0), ("Unlimited".to_string(), String::new()));
+    }
+
+    #[test]
+    fn safety_in_plain_words() {
+        use rdm_core::safety::Safety;
+        assert_eq!(safety_label(&Safety::Clean { scanners: 72 }), ("Clean (0 of 72 scanners)".to_string(), false));
+        assert_eq!(safety_label(&Safety::Flagged { bad: 5, scanners: 72 }), ("Flagged by 5 of 72 scanners".to_string(), true));
+        assert!(!safety_label(&Safety::Unknown).1);
     }
 
     #[test]

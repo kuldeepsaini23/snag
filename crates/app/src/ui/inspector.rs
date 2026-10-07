@@ -39,6 +39,10 @@ pub fn view<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
         line("Speed", value(speed)),
         line("Save to", value(view::ellipsize_left(&folder.display().to_string(), 26))),
     ];
+    if let Some(verdict) = m.safety.get(&i.id) {
+        let (label, warn) = view::safety_label(verdict);
+        table.push(line("Safety", text(label).size(12.5).color(if warn { c.danger } else { c.text }).wrapping(text::Wrapping::WordOrGlyph).into()));
+    }
     if m.queues.len() > 1 {
         let choices: Vec<QueueChoice> = m.queues.iter().map(|q| QueueChoice { id: q.id, name: q.name.clone() }).collect();
         let current = choices.iter().find(|q| q.id == i.queue).cloned();
@@ -60,6 +64,14 @@ pub fn view<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
     .spacing(12);
     if let Some(card) = problem(i, c) {
         details = details.push(card);
+    }
+    if let Some(rdm_core::safety::Safety::Flagged { bad, scanners }) = m.safety.get(&i.id) {
+        let warning = column![
+            row![icon(Icon::WarningCircle, 15).color(c.danger), text("Possibly harmful").size(13).font(style::SEMIBOLD)].spacing(8).align_y(Alignment::Center),
+            text(format!("{bad} of {scanners} antivirus scanners flag this file. Don't open it unless you trust where it came from.")).size(12).color(c.text2),
+        ]
+        .spacing(6);
+        details = details.push(container(warning).padding(12).width(Fill).style(style::error_card(c)));
     }
     if view::can_refresh(i) {
         details = details.push(refresh_link(m, i, c));

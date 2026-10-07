@@ -48,6 +48,8 @@ pub enum Event {
     /// That link was downloaded before (and the file is still there): nothing was added. The UI
     /// offers Show / Download again (`redownload` of this item) / Skip.
     Duplicate(Item),
+    /// VirusTotal's verdict on a downloaded program arrived.
+    Safety(ItemId, crate::safety::Safety),
 }
 
 /// Handle to the download manager. Cheap to clone; all clones talk to one actor.
@@ -492,6 +494,8 @@ enum Msg {
     WatchListed(u32, Result<Vec<rdm_media::Entry>, String>),
     /// An automatic retry's wait is over (only the latest timer of an item counts).
     Retry(ItemId, u64),
+    /// VirusTotal answered about a finished program.
+    Safety(ItemId, crate::safety::Safety),
 }
 
 /// Automatic retries after a temporary failure: waits of base, 3×base, 9×base.
@@ -1212,6 +1216,14 @@ impl Actor {
                 }
                 self.watches_changed();
             }
+            Msg::Safety(id, verdict) => {
+                // Only while the download is still in the list.
+                if self.state.item(id).is_some() {
+                    self.state.safety.insert(id, verdict.clone());
+                    self.dirty = true;
+                    self.emit(Event::Safety(id, verdict));
+                }
+            }
             Msg::Retry(id, generation) => {
                 // Only this item's latest timer, and only if nothing was done to it meanwhile.
                 if self.retry_gen.get(&id) != Some(&generation) || self.running.contains_key(&id) {
@@ -1234,6 +1246,8 @@ impl Actor {
                 }
                 let last = r.progress.borrow().clone();
                 let auto_retry = self.state.settings.auto_retry;
+                let vt_key = self.state.settings.virustotal_key.clone();
+                let safety_tx = self.msg_tx.clone();
                 let used = self.retries.get(&id).copied().unwrap_or(0);
                 if let Some(item) = self.state.item_mut(id) {
                     item.speed_bps = 0;
@@ -1279,6 +1293,14 @@ impl Actor {
                     };
                     if item.status == Status::Done {
                         self.retries.remove(&id);
+                        // Programs get a safety check (hash only), if the user set a VirusTotal key.
+                        if let Some(path) = item.dest.clone().filter(|p| !vt_key.trim().is_empty() && crate::safety::worth_checking(p)) {
+                            tokio::spawn(async move {
+                                if let Some(verdict) = crate::safety::check(&path, &vt_key).await {
+                                    let _ = safety_tx.send(Msg::Safety(id, verdict));
+                                }
+                            });
+                        }
                     }
                     if item.status == Status::Done
                         && let Some(dir) = item.work_dir.take()
@@ -1315,6 +1337,7 @@ impl Actor {
     fn remove_now(&mut self, id: ItemId, delete_file: bool) {
         let Some(pos) = self.state.items.iter().position(|i| i.id == id) else { return };
         let item = self.state.items.remove(pos);
+        self.state.safety.remove(&id);
         if let Some(dir) = item.work_dir.clone() {
             remove_parts(dir);
         }

@@ -153,6 +153,7 @@ pub struct Draft {
     pub phone_sharing: bool,
     /// "#rrggbb" as typed (Custom colour).
     pub accent: String,
+    pub virustotal_key: String,
 }
 
 impl Draft {
@@ -173,6 +174,7 @@ impl Draft {
             auto_retry: s.auto_retry,
             keep_sharing: s.keep_sharing,
             phone_sharing: s.phone_sharing,
+            virustotal_key: s.virustotal_key.clone(),
             accent: s.accent.clone(),
         }
     }
@@ -207,6 +209,7 @@ impl Draft {
             auto_retry: self.auto_retry,
             keep_sharing: self.keep_sharing,
             phone_sharing: self.phone_sharing,
+            virustotal_key: self.virustotal_key.trim().to_string(),
             accent: accent.to_string(),
             ..base.clone()
         })
@@ -390,6 +393,8 @@ pub struct Model {
     pub pair_request: Option<u64>,
     /// "Already downloaded": the finished download a new link matched (nothing was added).
     pub duplicate: Option<Item>,
+    /// VirusTotal's verdicts on downloaded programs.
+    pub safety: std::collections::BTreeMap<ItemId, rdm_core::safety::Safety>,
     /// The toolbar search is a field (else just its magnifier).
     pub search_open: bool,
     /// Item whose Cancel was clicked once and waits for confirmation.
@@ -466,6 +471,7 @@ impl Default for Model {
             watches: Vec::new(),
             pair_request: None,
             duplicate: None,
+            safety: Default::default(),
             search_open: false,
             pending_cancel: None,
             hovered: None,
@@ -485,6 +491,7 @@ impl Model {
     /// Replaces everything with a full snapshot from the manager.
     pub fn load(&mut self, state: AppState) {
         self.items = state.items;
+        self.safety = state.safety;
         self.queues = state.queues;
         self.watches = state.watches;
         // An open settings sheet keeps what's being typed; it is saved on close.
@@ -521,6 +528,7 @@ impl Model {
             },
             Event::Removed(id) => {
                 self.items.retain(|i| i.id != id);
+                self.safety.remove(&id);
                 if self.selected == Some(id) {
                     self.selected = None;
                 }
@@ -538,6 +546,9 @@ impl Model {
             Event::Watches(watches) => self.watches = watches,
             Event::PairRequest(id) => self.pair_request = Some(id),
             Event::Duplicate(item) => self.duplicate = Some(item),
+            Event::Safety(id, verdict) => {
+                self.safety.insert(id, verdict);
+            }
             Event::Queues(queues) => {
                 if let crate::view::Library::Queue(id) = self.library
                     && !queues.iter().any(|q| q.id == id)

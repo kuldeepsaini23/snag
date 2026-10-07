@@ -130,6 +130,8 @@ pub struct Settings {
     pub phone_sharing: bool,
     /// The app version whose "What's new" was last seen ("" = before this was recorded).
     pub last_seen_version: String,
+    /// The user's own free VirusTotal API key; empty = no safety checks (nothing is sent).
+    pub virustotal_key: String,
 }
 
 impl Default for Settings {
@@ -154,6 +156,7 @@ impl Default for Settings {
             keep_sharing: false,
             phone_sharing: false,
             last_seen_version: String::new(),
+            virustotal_key: String::new(),
         }
     }
 }
@@ -167,6 +170,8 @@ pub struct AppState {
     pub settings: Settings,
     /// Watched channels and playlists.
     pub watches: Vec<crate::watch::Watch>,
+    /// VirusTotal's verdict on downloaded programs (see `safety`).
+    pub safety: std::collections::BTreeMap<ItemId, crate::safety::Safety>,
 }
 
 impl Default for AppState {
@@ -177,6 +182,7 @@ impl Default for AppState {
             queues: vec![Queue { id: 0, name: "Main".into(), max_concurrent: usize::MAX, schedule: None }],
             settings: Settings::default(),
             watches: Vec::new(),
+            safety: Default::default(),
         }
     }
 }

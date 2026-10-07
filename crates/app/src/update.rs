@@ -104,6 +104,7 @@ pub enum Message {
     WatchPicked,
     RemoveWatch(u32),
     DraftSubtitleLangs(String),
+    DraftVirusTotalKey(String),
     RefreshTyped(ItemId, String),
     /// Use the typed link for this item.
     RefreshUrl(ItemId),
@@ -502,6 +503,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::RemoveWatch(id) => return fire(&app.manager, move |m| async move { m.remove_watch(id).await }),
         Message::DraftSubtitleLangs(v) => model.draft.subtitle_langs = v,
+        Message::DraftVirusTotalKey(v) => model.draft.virustotal_key = v,
         Message::RefreshTyped(id, text) => model.refresh_typed(id, text),
         Message::RefreshUrl(id) => {
             if let Some(url) = model.take_refresh(id) {

@@ -923,3 +923,47 @@ async fn a_link_already_downloaded_is_not_added_twice() {
     let fresh = m.add(url).await;
     assert_ne!(fresh, first);
 }
+
+#[tokio::test]
+async fn downloaded_programs_are_looked_up_on_virustotal_by_hash_only() {
+    use axum::{Router, extract::Path as UrlPath, http::HeaderMap, routing::get};
+    // A stand-in for VirusTotal: every file is flagged by 3 of 70, and it must get the key.
+    let vt = Router::new().route(
+        "/api/v3/files/{hash}",
+        get(|UrlPath(hash): UrlPath<String>, h: HeaderMap| async move {
+            assert_eq!(hash.len(), 64, "only the SHA-256 is sent");
+            assert_eq!(h.get("x-apikey").and_then(|v| v.to_str().ok()), Some("my-key"));
+            r#"{"data":{"attributes":{"last_analysis_stats":{"malicious":3,"suspicious":0,"harmless":7,"undetected":60}}}}"#
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, vt).await.unwrap() });
+    // SAFETY: set before anything reads it; only this test talks to VirusTotal.
+    unsafe { std::env::set_var("SNAG_VIRUSTOTAL_URL", format!("http://{addr}")) };
+
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |s| s.virustotal_key = "my-key".into()).await;
+    let mut rx = m.subscribe();
+    let id = m.add(s.url("/named/setup.exe/5000")).await;
+    let verdict = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if let Ok(Event::Safety(item, verdict)) = rx.recv().await
+                && item == id
+            {
+                return verdict;
+            }
+        }
+    })
+    .await
+    .expect("checked after it finished");
+    assert_eq!(verdict, rdm_core::safety::Safety::Flagged { bad: 3, scanners: 70 });
+    assert_eq!(m.snapshot().await.safety.get(&id), Some(&verdict), "kept with the download");
+
+    // A video isn't a program: no lookup.
+    let clip = m.add(s.url("/named/clip.mp4/5000")).await;
+    wait_item(&mut rx, has(clip, Status::Done)).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(!m.snapshot().await.safety.contains_key(&clip));
+}

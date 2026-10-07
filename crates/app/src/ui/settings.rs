@@ -398,6 +398,24 @@ fn tools(m: &Model, c: Colors) -> Element<'_, Message> {
             c,
         ),
         section(
+            "Safety check",
+            vec![line(
+                "VirusTotal key",
+                "Checks downloaded programs with 70+ antivirus engines. Only the file's fingerprint (SHA-256) is sent. Free key: virustotal.com → Sign up → API key",
+                text_input("Paste your API key", &m.draft.virustotal_key)
+                    .on_input(Message::DraftVirusTotalKey)
+                    .on_submit(Message::CloseSettings)
+                    .secure(true)
+                    .size(12.5)
+                    .padding([7, 10])
+                    .width(220)
+                    .style(style::input(c))
+                    .into(),
+                c,
+            )],
+            c,
+        ),
+        section(
             "Data",
             vec![
                 line("App data", r"%APPDATA%\Snag · state.json, tools", open.into(), c),

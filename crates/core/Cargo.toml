@@ -13,6 +13,8 @@ serde_json.workspace = true
 chrono.workspace = true
 trash = "5"
 url = "2"
+sha2 = "0.10"
+reqwest.workspace = true
 
 [dev-dependencies]
 librqbit = { version = "9.0.1", default-features = false, features = ["default-tls"] }

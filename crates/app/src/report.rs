@@ -73,7 +73,7 @@ pub fn build(what: &str, stamp: &str, diagnostics: Option<&Diagnostics>) -> Stri
 
 /// Drops every setting whose name says it's a secret (pairing token, cookies, passwords).
 pub fn redact(value: serde_json::Value) -> serde_json::Value {
-    const SECRET: [&str; 4] = ["token", "cookie", "password", "secret"];
+    const SECRET: [&str; 5] = ["token", "cookie", "password", "secret", "key"];
     match value {
         serde_json::Value::Object(map) => map
             .into_iter()
@@ -234,8 +234,8 @@ mod tests {
         assert!(text.contains(r"%USERPROFILE%\Downloads\Snag"), "folder names stay readable");
         assert!(text.contains("https://rr3.googlevideo.com/videoplayback?…"), "the link minus its parameters");
         // Settings added later that hold secrets are dropped by name.
-        let value = serde_json::json!({ "accent": "#fff", "browser_cookies": "SID=1", "nested": { "api_token": "x", "password": "y", "keep": 1 } });
-        assert_eq!(redact(value), serde_json::json!({ "accent": "#fff", "nested": { "keep": 1 } }));
+        let value = serde_json::json!({ "accent": "#fff", "browser_cookies": "SID=1", "virustotal_key": "vt", "nested": { "api_token": "x", "password": "y", "keep": 1, "keep_sharing": true } });
+        assert_eq!(redact(value), serde_json::json!({ "accent": "#fff", "nested": { "keep": 1, "keep_sharing": true } }));
     }
 
     #[tokio::test]
