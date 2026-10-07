@@ -40,7 +40,7 @@ pub async fn start(manager: Manager, ports: RangeInclusive<u16>) -> Result<Bridg
 /// The request carries the pairing token currently in settings (read fresh, so a
 /// regenerated token takes effect at once).
 async fn authorized(manager: &Manager, headers: &HeaderMap) -> bool {
-    let token = manager.snapshot().await.settings.extension_token;
+    let token = manager.settings().await.extension_token;
     !token.is_empty() && headers.get("x-rdm-token").and_then(|v| v.to_str().ok()) == Some(token.as_str())
 }
 
@@ -49,7 +49,7 @@ async fn ping(State(manager): State<Manager>, headers: HeaderMap) -> Json<Value>
     let mut body = json!({ "app": "rdm", "version": env!("CARGO_PKG_VERSION"), "paired": paired });
     if paired {
         // The extension's button and popup follow Snag's accent colour.
-        body["accent"] = json!(manager.snapshot().await.settings.accent);
+        body["accent"] = json!(manager.settings().await.accent);
     }
     Json(body)
 }
@@ -260,7 +260,7 @@ async fn pair(State(manager): State<Manager>, headers: HeaderMap) -> (StatusCode
     }
     match manager.request_pair(origin.to_string()).await {
         PairAnswer::Allowed => {
-            let token = manager.snapshot().await.settings.extension_token;
+            let token = manager.settings().await.extension_token;
             (StatusCode::OK, Json(json!({ "token": token })))
         }
         PairAnswer::Refused => (StatusCode::FORBIDDEN, Json(json!({ "error": "not allowed in Snag" }))),

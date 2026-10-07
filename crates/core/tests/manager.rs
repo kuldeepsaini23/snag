@@ -1115,3 +1115,25 @@ async fn real_ffmpeg_fetch() {
     assert!(dir.path().join("bin").join("ffprobe.exe").exists());
     assert!(!dir.path().join("bin").join("ffmpeg-download.7z").exists(), "the archive is cleaned up");
 }
+
+#[tokio::test]
+async fn a_cancelled_probe_leaves_no_cookie_file() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let m = manager(dir.path(), |_| {}).await;
+    m.remember_cookies(vec![Cookie {
+        domain: ".videos.test".into(),
+        host_only: false,
+        path: "/".into(),
+        secure: true,
+        expiration_date: None,
+        name: "login".into(),
+        value: "yes".into(),
+    }]);
+    // The browser tab closes mid-read: the request (and this future) is dropped.
+    let probe = m.probe_media("https://videos.test/1/slowprobe".into());
+    assert!(tokio::time::timeout(Duration::from_millis(700), probe).await.is_err(), "still reading");
+    let cookies = dir.path().join("cookies");
+    let left = std::fs::read_dir(&cookies).map(|d| d.count()).unwrap_or(0);
+    assert_eq!(left, 0, "the site's cookies don't stay on disk");
+}

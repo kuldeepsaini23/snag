@@ -233,6 +233,7 @@ impl Tools {
 
 enum Cmd {
     Snapshot(oneshot::Sender<AppState>),
+    GetSettings(oneshot::Sender<Settings>),
     AddMedia(String, String, MediaFormat, QueueId, Option<String>, Option<f64>, oneshot::Sender<ItemId>),
     AddGallery(String, oneshot::Sender<ItemId>),
     AddPage(String, oneshot::Sender<ItemId>),
@@ -292,11 +293,14 @@ impl Manager {
         let _turn = self.probes.acquire().await.map_err(|e| e.to_string())?;
         static PROBES: AtomicU64 = AtomicU64::new(0);
         let key = format!("probe-{}", PROBES.fetch_add(1, Ordering::Relaxed));
-        let cookies = cookie_file(&self.jar, &self.cookie_dir, &key, &url);
+        // Deleted when this read ends, even if it's dropped half-way (the browser tab closed).
+        let cookies = cookie_file(&self.jar, &self.cookie_dir, &key, &url).map(DeleteOnDrop);
         let referer = self.referrers.lock().ok().and_then(|r| r.get(&url).cloned());
-        let result = rdm_media::probe(&ytdlp, &url, cookies.as_deref(), referer.as_deref()).await;
-        let Some(file) = cookies else { return result };
-        let _ = std::fs::remove_file(file);
+        let result = rdm_media::probe(&ytdlp, &url, cookies.as_ref().map(|f| f.0.as_path()), referer.as_deref()).await;
+        if cookies.is_none() {
+            return result;
+        }
+        drop(cookies);
         if result.is_ok() {
             return result;
         }
@@ -398,6 +402,13 @@ impl Manager {
     pub async fn snapshot(&self) -> AppState {
         let (reply, rx) = oneshot::channel();
         let _ = self.tx.send(Cmd::Snapshot(reply));
+        rx.await.unwrap_or_default()
+    }
+
+    /// Just the settings (cheap: no copy of the whole download list), e.g. per bridge request.
+    pub async fn settings(&self) -> Settings {
+        let (reply, rx) = oneshot::channel();
+        let _ = self.tx.send(Cmd::GetSettings(reply));
         rx.await.unwrap_or_default()
     }
 
@@ -568,6 +579,15 @@ fn page_file_name(title: Option<&str>, url: &str) -> String {
     let words: Vec<&str> = title.split_whitespace().collect();
     let name: String = rdm_engine::filename::sanitize(&words.join(" ")).chars().take(120).collect();
     name.trim_end_matches(['.', ' ']).to_string()
+}
+
+/// A file deleted when this goes out of scope.
+struct DeleteOnDrop(PathBuf);
+
+impl Drop for DeleteOnDrop {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
 }
 
 /// Writes the browser cookies for `url` as a cookies.txt for yt-dlp; `None` when there are none.
@@ -763,6 +783,9 @@ impl Actor {
         match cmd {
             Cmd::Snapshot(reply) => {
                 let _ = reply.send(self.state.clone());
+            }
+            Cmd::GetSettings(reply) => {
+                let _ = reply.send(self.state.settings.clone());
             }
             Cmd::AddWith(url, referrer, reply) => {
                 if let Some(id) = self.already_downloaded(&url) {
