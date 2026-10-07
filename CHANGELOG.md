@@ -2,7 +2,7 @@
 
 Newest first. Snag shows the newest entry once after an update; the Help menu (?) has the full list.
 
-## 0.1.0 — 2026-10-07
+## 1.0.0 — 2026-10-07 (first release)
 
 ### Downloads
 - Fast downloads: big files are fetched over several connections at once, and pause and resume where they stopped, even after a restart.
