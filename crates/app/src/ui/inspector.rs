@@ -98,12 +98,12 @@ pub fn view<'a>(m: &'a Model, i: &'a Item, now: Instant, c: Colors) -> Element<'
     let manage = if view::can_cancel(i) {
         // Unfinished: Cancel stops it and throws away what's downloaded (second click confirms).
         let armed = m.pending_cancel == Some(i.id);
-        let label = if armed { "Click again to cancel" } else { "Cancel download" };
+        let label = if armed { "Confirm cancel" } else { "Cancel download" };
         row![small_button(Icon::X, label, armed, Message::Cancel(i.id))]
     } else {
         // Remove keeps the file; Delete sits apart, is red and needs a second click.
         let armed = m.pending_delete == Some(i.id);
-        let label = if armed { "Click again to delete" } else { "Delete file" };
+        let label = if armed { "Confirm delete" } else { "Delete file" };
         row![small_button(Icon::X, "Remove from list", false, Message::Remove(i.id)), Space::new().width(Fill), small_button(Icon::Trash, label, armed, Message::Delete(i.id))]
     };
     panel = panel.push(manage);
@@ -114,7 +114,7 @@ pub fn view<'a>(m: &'a Model, i: &'a Item, now: Instant, c: Colors) -> Element<'
         Some(view::MainAction::Pause) => (Icon::Pause, "Pause", Some(Message::Pause(i.id))),
         Some(view::MainAction::Resume) => (Icon::Play, "Resume", Some(Message::Resume(i.id))),
         Some(view::MainAction::Redownload) => (Icon::ArrowClockwise, "Download again", Some(Message::Redownload(i.id))),
-        None => (Icon::CheckCircle, "Finished", None),
+        None => (Icon::Play, "Open", i.dest.as_ref().filter(|d| d.exists()).map(|_| Message::OpenFile(i.id))),
     };
     let wide = |glyph: Icon, label: &'a str| container(row![icon(glyph, 13), text(label).size(12.5).font(style::SEMIBOLD)].spacing(7).align_y(Alignment::Center)).center_x(Fill);
     panel = panel.push(

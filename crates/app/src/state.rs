@@ -441,6 +441,12 @@ pub struct Model {
     pub pair_request: Option<(u64, String)>,
     /// "Already downloaded": the finished download a new link matched (nothing was added).
     pub duplicate: Option<Item>,
+    /// The mouse, in window coordinates (for the right-click menu).
+    pub cursor: iced::Point,
+    /// A download's right-click menu is open at this point.
+    pub row_menu: Option<(ItemId, iced::Point)>,
+    /// The window's size (keeps the menu on screen).
+    pub window: iced::Size,
     /// VirusTotal's verdicts on downloaded programs.
     pub safety: std::collections::BTreeMap<ItemId, rdm_core::safety::Safety>,
     /// The new after-download rule being filled in (Settings → General).
@@ -539,6 +545,9 @@ impl Default for Model {
             watches: Vec::new(),
             pair_request: None,
             duplicate: None,
+            cursor: iced::Point::ORIGIN,
+            row_menu: None,
+            window: iced::Size::new(1280.0, 800.0),
             safety: Default::default(),
             rule_form: Default::default(),
             rule_error: None,

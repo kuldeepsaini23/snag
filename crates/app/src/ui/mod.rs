@@ -9,6 +9,7 @@ mod inspector;
 mod list;
 mod picker;
 mod popover;
+mod context_menu;
 mod settings;
 #[cfg(debug_assertions)] // only the debug snapshot tool scrolls it
 pub use settings::SCROLL as SETTINGS_SCROLL;
@@ -91,6 +92,8 @@ pub fn view(app: &App) -> Element<'_, Message> {
     }
     let base = container(column![toolbar::view(m, a, c), body, footer(m, app.now, c)]).style(style::window(c)).width(Fill).height(Fill);
 
+    // The mouse position, for the right-click menu (see `Message::Cursor`).
+    let base = mouse_area(base).on_move(Message::Cursor);
     let mut layers = stack![base].width(Fill).height(Fill);
     if m.speed_open {
         // A click anywhere else closes the popover.
@@ -103,6 +106,18 @@ pub fn view(app: &App) -> Element<'_, Message> {
             bottom: 0.0,
             left: 0.0,
         }));
+    }
+    if let Some((id, at)) = m.row_menu
+        && let Some(item) = m.items.iter().find(|i| i.id == id)
+    {
+        let on_disk = item.dest.as_ref().is_some_and(|d| d.exists());
+        let menu = context_menu::view(item, on_disk, c);
+        // Window coordinates are in physical-ish units; the layout is scaled by UI_SCALE.
+        let (w, h) = (m.window.width / theme::UI_SCALE, m.window.height / theme::UI_SCALE);
+        let x = at.x.min(w - context_menu::WIDTH - 8.0).max(4.0);
+        let y = at.y.min(h - 300.0).max(4.0);
+        layers = layers.push(mouse_area(Space::new().width(Fill).height(Fill)).on_press(Message::CloseMenu).on_right_press(Message::CloseMenu));
+        layers = layers.push(container(opaque(menu)).width(Fill).height(Fill).padding(Padding { top: y, right: 0.0, bottom: 0.0, left: x }));
     }
     if m.help_open {
         // Like the speed popover: a click anywhere else closes it; it drops down from the "?".

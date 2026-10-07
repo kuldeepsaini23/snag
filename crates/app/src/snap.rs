@@ -99,6 +99,7 @@ fn apply(m: &mut Model, scene: &str) {
     m.help_open = false;
     m.info = None;
     m.duplicate = None;
+    m.row_menu = None;
     m.stats_open = false;
     m.tour = None;
     m.drop_hover = false;
@@ -108,6 +109,10 @@ fn apply(m: &mut Model, scene: &str) {
     let paused = m.items.iter().find(|i| i.status == Status::Paused).map(|i| i.id);
     match scene {
         "duplicate" => m.duplicate = m.items.iter().find(|i| i.status == Status::Done).cloned(),
+        "menu" => {
+            m.row_menu = m.items.iter().find(|i| i.status == Status::Running).map(|i| (i.id, iced::Point::new(520.0, 230.0)));
+            m.selected = m.row_menu.map(|(id, _)| id);
+        }
         "safety" => {
             let done = m.items.iter().find(|i| i.status == Status::Done).map(|i| i.id);
             if let Some(id) = done {

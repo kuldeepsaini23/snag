@@ -66,6 +66,15 @@ pub enum Message {
     /// The mouse entered (true) or left a row.
     HoverRow(ItemId, bool),
     ShowInFolder(ItemId),
+    /// Opens a finished file with its usual program.
+    OpenFile(ItemId),
+    /// Where the mouse is (for the right-click menu).
+    Cursor(iced::Point),
+    /// Right-click on a download: its menu opens at the mouse.
+    RowMenu(ItemId),
+    CloseMenu,
+    /// A menu line was chosen: close the menu, then do it.
+    Menu(Box<Message>),
     Core(Event),
     Loaded(AppState),
     /// The event feed fell behind; reload the full state.
@@ -78,7 +87,7 @@ pub enum Message {
     /// Pressed on a window edge: resize from there (the window has no native frame).
     WinResize(window::Direction),
     /// The window changed size: check whether it is maximised now.
-    WinResized,
+    WinResized(iced::Size),
     WinMaximized(bool),
     /// Close button / Alt+F4: hide to the tray, keep downloading.
     HideWindow,
@@ -282,6 +291,11 @@ fn on_window<T: Send + 'static>(action: fn(window::Id) -> Task<T>) -> Task<T> {
 }
 
 pub fn update(app: &mut App, message: Message) -> Task<Message> {
+    // The mouse moved: only remembered (it comes with every move, so nothing else runs).
+    if let Message::Cursor(at) = message {
+        app.model.cursor = at;
+        return Task::none();
+    }
     // A full reload puts rows in place; only rows added one by one fade in.
     let animate = !matches!(message, Message::Loaded(_));
     let task = handle(app, message);
@@ -523,7 +537,27 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::WinDrag => return on_window(window::drag),
         Message::WinMinimize => return window::latest().and_then(|id| window::minimize(id, true)),
         Message::WinMaximize => return on_window(window::toggle_maximize),
-        Message::WinResized => return window::latest().and_then(window::is_maximized).map(Message::WinMaximized),
+        Message::RowMenu(id) => {
+            model.selected = Some(id);
+            model.row_menu = Some((id, model.cursor));
+        }
+        Message::CloseMenu => model.row_menu = None,
+        // Handled in `update` before anything else.
+        Message::Cursor(at) => model.cursor = at,
+        Message::Menu(chosen) => {
+            model.row_menu = None;
+            return update(app, *chosen);
+        }
+        Message::OpenFile(id) => {
+            if let Some(path) = model.dest_of(id).filter(|p| p.exists()) {
+                // Explorer opens a file with its usual program (and a folder in a window).
+                let _ = std::process::Command::new("explorer").arg(&path).spawn();
+            }
+        }
+        Message::WinResized(size) => {
+            model.window = size;
+            return window::latest().and_then(window::is_maximized).map(Message::WinMaximized);
+        }
         Message::WinMaximized(on) => model.maximized = on,
         Message::WinClose | Message::HideWindow => return window::latest().and_then(|id| window::set_mode(id, window::Mode::Hidden)),
         Message::TrayOpen => return show_window(),
@@ -677,6 +711,9 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::Frame => {}
         Message::Escape => {
+            if model.row_menu.take().is_some() {
+                return Task::none();
+            }
             if model.pair_request.is_some() {
                 return update(app, Message::AnswerPair(false));
             } else if model.confirm_quit {
@@ -1017,7 +1054,7 @@ pub fn subscription(app: &App) -> Subscription<Message> {
     let mut subs = vec![
         core_events(app),
         keyboard::listen().filter_map(on_key),
-        window::resize_events().map(|_| Message::WinResized),
+        window::resize_events().map(|(_, size)| Message::WinResized(size)),
         window::close_requests().map(|_| Message::HideWindow),
         crate::tray::subscription(),
     ];
