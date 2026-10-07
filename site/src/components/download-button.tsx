@@ -8,7 +8,7 @@ export function DownloadButton({ size = "lg", className }: { size?: "sm" | "lg";
     <a
       href={DOWNLOAD_URL}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-full bg-accent font-semibold text-on-accent transition-[filter,transform] hover:brightness-110 active:scale-[0.97]",
+        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-accent font-semibold text-on-accent transition-[filter,transform] hover:brightness-110 active:scale-[0.97]",
         size === "lg" ? "h-13 px-6 text-[1.05rem]" : "h-9 px-4 text-sm",
         className,
       )}
