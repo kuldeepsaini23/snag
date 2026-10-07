@@ -5,11 +5,14 @@ use serde_json::{Value, json};
 use std::path::Path;
 
 const TOKEN: &str = "0123456789abcdef0123456789abcdef";
+/// The phone page's own code (the extension's never travels over Wi-Fi).
+const PHONE: &str = "fedcba9876543210fedcba9876543210";
 
 async fn manager(dir: &Path) -> Manager {
     let m = Manager::start(dir.join("state.json"));
     let mut s = m.snapshot().await.settings;
     s.extension_token = TOKEN.into();
+    s.phone_token = PHONE.into();
     s.start_immediately = false; // keep the test offline: items are added paused
     s.download_dir = dir.join("dl");
     m.update_settings(s).await;
@@ -246,11 +249,12 @@ async fn phone_page_needs_the_token_and_adds_shared_links() {
     let get = |path: String| async move { Client::new().get(path).send().await.unwrap() };
     assert_eq!(get(format!("{base}/m")).await.status().as_u16(), 401, "no token, no page");
     assert_eq!(get(format!("{base}/m?t=wrong")).await.status().as_u16(), 401);
-    let page = get(format!("{base}/m?t={TOKEN}")).await;
+    assert_eq!(get(format!("{base}/m?t={TOKEN}")).await.status().as_u16(), 401, "the extension's code doesn't open the phone page");
+    let page = get(format!("{base}/m?t={PHONE}")).await;
     assert_eq!(page.status().as_u16(), 200);
     assert!(page.text().await.unwrap().contains("<form"), "a page to paste links into");
     // Shared text from a phone app often wraps the link in words.
-    let shared = get(format!("{base}/share?t={TOKEN}&text=Look%20at%20this%20https%3A%2F%2Fx.test%2Fa.zip%20cool")).await;
+    let shared = get(format!("{base}/share?t={PHONE}&text=Look%20at%20this%20https%3A%2F%2Fx.test%2Fa.zip%20cool")).await;
     assert_eq!(shared.status().as_u16(), 200);
     assert_eq!(get(format!("{base}/share?t=wrong&url=https%3A%2F%2Fx.test%2Fb.zip")).await.status().as_u16(), 401);
     let items = m.snapshot().await.items;
@@ -258,7 +262,7 @@ async fn phone_page_needs_the_token_and_adds_shared_links() {
     assert_eq!(items[0].url, "https://x.test/a.zip");
     phone.stop();
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-    assert!(Client::new().get(format!("{base}/m?t={TOKEN}")).send().await.is_err(), "switched off: nothing listens");
+    assert!(Client::new().get(format!("{base}/m?t={PHONE}")).send().await.is_err(), "switched off: nothing listens");
 }
 
 #[test]

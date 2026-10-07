@@ -65,7 +65,13 @@ pub fn parse_report(status: u16, body: &str) -> Safety {
 
 /// Where VirusTotal is (tests point it at a local server with `SNAG_VIRUSTOTAL_URL`).
 fn api_base() -> String {
-    std::env::var("SNAG_VIRUSTOTAL_URL").unwrap_or_else(|_| "https://www.virustotal.com".into())
+    const VIRUSTOTAL: &str = "https://www.virustotal.com";
+    // Release builds always use VirusTotal: an environment variable must not be able to send the
+    // user's key elsewhere.
+    if !cfg!(debug_assertions) {
+        return VIRUSTOTAL.into();
+    }
+    std::env::var("SNAG_VIRUSTOTAL_URL").unwrap_or_else(|_| VIRUSTOTAL.into())
 }
 
 /// Hashes `path` and asks VirusTotal about it. `None` without a key (nothing is sent).

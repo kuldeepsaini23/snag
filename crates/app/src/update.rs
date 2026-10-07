@@ -371,7 +371,7 @@ fn log_event(data_dir: &std::path::Path, event: &Event) {
 /// Phone sharing follows its setting (and a regenerated pairing code); see `crate::sharing`.
 fn sync_phone(app: &mut App) {
     let s = &app.model.settings;
-    let (on, token) = (s.phone_sharing, s.extension_token.clone());
+    let (on, token) = (s.phone_sharing, s.phone_token.clone());
     let (runtime, manager) = (&app.runtime, &app.manager);
     let serves = |(_, link, _): &Phone, token: &str| link.ends_with(token);
     if let Some(why) = app.phone.sync(on, &token, Instant::now(), serves, || start_phone(runtime, manager, &token)) {
@@ -385,7 +385,8 @@ pub type Phone = (rdm_bridge::phone::Phone, String, iced::widget::qr_code::Data)
 fn start_phone(runtime: &tokio::runtime::Handle, manager: &Manager, token: &str) -> Result<Phone, String> {
     let ip = rdm_bridge::phone::lan_ip().ok_or("Phone sharing: no home network found")?;
     for port in rdm_bridge::phone::PORTS {
-        if let Ok(phone) = rdm_bridge::phone::start_on(runtime, manager.clone(), (std::net::Ipv4Addr::UNSPECIFIED, port).into()) {
+        // Only on the home network's address, not on every network the PC is connected to.
+        if let Ok(phone) = rdm_bridge::phone::start_on(runtime, manager.clone(), std::net::SocketAddr::new(ip, port)) {
             let link = rdm_bridge::phone::page_url(ip, phone.port, token);
             let qr = iced::widget::qr_code::Data::new(&link).map_err(|e| format!("Phone sharing: {e}"))?;
             return Ok((phone, link, qr));

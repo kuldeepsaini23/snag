@@ -680,9 +680,12 @@ struct Actor {
 impl Actor {
     fn new(path: PathBuf, events: broadcast::Sender<Event>, tools: Tools, jar: Arc<Mutex<Jar>>, cookie_dir: PathBuf) -> Self {
         let mut state = store::load(&path);
-        let needs_token = state.settings.extension_token.is_empty();
-        if needs_token {
+        let needs_token = state.settings.extension_token.is_empty() || state.settings.phone_token.is_empty();
+        if state.settings.extension_token.is_empty() {
             state.settings.extension_token = crate::model::new_token();
+        }
+        if state.settings.phone_token.is_empty() {
+            state.settings.phone_token = crate::model::new_token();
         }
         let limiter = Arc::new(RateLimiter::new(state.settings.speed_limit_bps));
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();

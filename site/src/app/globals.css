@@ -1,0 +1,116 @@
+@import "tailwindcss";
+
+/* Snag's own look: warm greys with an orange accent, the same as the desktop app. */
+:root {
+  --bg: #1c1a18;
+  --surface: #242120;
+  --raised: #2e2a27;
+  --line: #3b3632;
+  --line-strong: #4d4640;
+  --text: #f4efe8;
+  --muted: #b9afa3;
+  --faint: #998f84;
+  --accent: #ff9f0a;
+  --on-accent: #1c1a18;
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+
+  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+
+  --animate-marquee: marquee var(--duration) infinite linear;
+  --animate-fill: fill var(--fill-duration, 1.6s) var(--fill-delay, 0s) cubic-bezier(0.45, 0.05, 0.25, 1) both;
+
+  @keyframes marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(calc(-100% - var(--gap)));
+    }
+  }
+
+  @keyframes fill {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+}
+
+html {
+  background: var(--bg);
+  scroll-behavior: smooth;
+  scroll-padding-top: 5rem;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* Wide, heavy Archivo for display type; body copy stays at the normal width. */
+.display {
+  font-stretch: 125%;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 0.9;
+}
+
+.heading {
+  font-stretch: 115%;
+  font-weight: 760;
+  letter-spacing: -0.015em;
+  line-height: 1.05;
+  text-wrap: balance;
+}
+
+details > summary {
+  list-style: none;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .animate-marquee {
+    animation: none !important;
+  }
+}

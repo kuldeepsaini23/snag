@@ -153,6 +153,9 @@ pub struct Settings {
     /// Draw the window with the graphics card instead of the CPU (more memory; takes effect at
     /// the next start).
     pub use_gpu: bool,
+    /// The phone page's own code (in its link and QR code): the extension's code never travels
+    /// over the home network. Settings from before it existed get one when loaded.
+    pub phone_token: String,
 }
 
 /// The window's colours: Settings → Appearance → Theme.
@@ -194,6 +197,7 @@ impl Default for Settings {
             translucent: false,
             tour_done: false,
             use_gpu: false,
+            phone_token: String::new(),
         }
     }
 }

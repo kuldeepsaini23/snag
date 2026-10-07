@@ -86,7 +86,7 @@ struct Params {
 }
 
 async fn token_ok(manager: &Manager, given: &str) -> bool {
-    let token = manager.snapshot().await.settings.extension_token;
+    let token = manager.snapshot().await.settings.phone_token;
     !token.is_empty() && given == token
 }
 
