@@ -94,10 +94,12 @@ fn apply(m: &mut Model, scene: &str) {
     m.more_open = false;
     m.help_open = false;
     m.info = None;
+    m.duplicate = None;
     freeze(scene.starts_with("mid-").then(|| Instant::now() + MID));
     // The row that shows Pause/Resume and Cancel: the paused ISO.
     let paused = m.items.iter().find(|i| i.status == Status::Paused).map(|i| i.id);
     match scene {
+        "duplicate" => m.duplicate = m.items.iter().find(|i| i.status == Status::Done).cloned(),
         "hover" => m.hovered = paused,
         "cancel" => {
             m.selected = paused;

@@ -388,6 +388,8 @@ pub struct Model {
     pub watches: Vec<rdm_core::watch::Watch>,
     /// A browser extension waits for "Allow / Don't allow".
     pub pair_request: Option<u64>,
+    /// "Already downloaded": the finished download a new link matched (nothing was added).
+    pub duplicate: Option<Item>,
     /// The toolbar search is a field (else just its magnifier).
     pub search_open: bool,
     /// Item whose Cancel was clicked once and waits for confirmation.
@@ -463,6 +465,7 @@ impl Default for Model {
             settings_error: None,
             watches: Vec::new(),
             pair_request: None,
+            duplicate: None,
             search_open: false,
             pending_cancel: None,
             hovered: None,
@@ -534,6 +537,7 @@ impl Model {
             Event::Focus | Event::Quit => {}
             Event::Watches(watches) => self.watches = watches,
             Event::PairRequest(id) => self.pair_request = Some(id),
+            Event::Duplicate(item) => self.duplicate = Some(item),
             Event::Queues(queues) => {
                 if let crate::view::Library::Queue(id) = self.library
                     && !queues.iter().any(|q| q.id == id)
@@ -706,6 +710,13 @@ mod tests {
     use super::*;
     use rdm_core::Category;
     use rdm_media::{Entry, QualityOption};
+
+    #[test]
+    fn a_duplicate_link_shows_its_earlier_download() {
+        let mut m = Model::default();
+        m.apply(Event::Duplicate(item(7, Status::Done, 0)));
+        assert_eq!(m.duplicate.as_ref().map(|i| i.id), Some(ItemId(7)));
+    }
 
     fn item(id: u64, status: Status, speed: u64) -> Item {
         Item {

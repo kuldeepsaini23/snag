@@ -16,7 +16,7 @@ mod toolbar;
 use crate::format;
 use crate::motion::Motion;
 use crate::state::{Model, Screen};
-use crate::update::{App, Message};
+use crate::update::{App, DuplicateChoice, Message};
 use crate::view;
 use icon::{Icon, icon};
 use iced::widget::{Space, button, column, container, float, mouse_area, opaque, row, scrollable, stack, text};
@@ -266,6 +266,29 @@ fn toast(m: &Model, c: Colors) -> Option<Element<'_, Message>> {
             close(Message::ToastClose),
         ]
         .spacing(12)
+        .align_y(Alignment::Center);
+        return Some(card(body.into()).into());
+    }
+    if let Some(item) = &m.duplicate {
+        let (day, time) = view::when_label(item.added, chrono::Local::now());
+        let badge = container(icon(Icon::CheckCircle, 16).color(c.accent)).center(32).style(style::tag(c.accent_soft, c.accent));
+        let choice = |label: &'static str, pick: DuplicateChoice| {
+            let b = button(text(label).size(12).font(style::SEMIBOLD)).padding([6, 10]).on_press(Message::Duplicate(pick));
+            if pick == DuplicateChoice::Show { b.style(style::accent(c)) } else { b.style(style::ghost(c)) }
+        };
+        let body = row![
+            badge,
+            column![
+                text("Already downloaded").size(13).font(style::SEMIBOLD),
+                small(format!("{day} {time} · {}", view::ellipsize(&item.name, 34)), c.text3),
+            ]
+            .spacing(2)
+            .width(Fill),
+            choice("Show file", DuplicateChoice::Show),
+            choice("Download again", DuplicateChoice::Again),
+            close(Message::Duplicate(DuplicateChoice::Skip)),
+        ]
+        .spacing(8)
         .align_y(Alignment::Center);
         return Some(card(body.into()).into());
     }

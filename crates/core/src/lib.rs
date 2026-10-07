@@ -1,5 +1,6 @@
 pub mod category;
 pub mod cookies;
+pub mod dupe;
 pub mod instance;
 pub mod manager;
 pub mod model;

@@ -359,7 +359,7 @@ pub fn motion_targets(m: &Model) -> crate::motion::Targets {
         inspector: m.inspected().is_some(),
         sheet: matches!(m.screen, crate::state::Screen::Picker | crate::state::Screen::Settings) || m.confirm_quit || m.pair_request.is_some() || m.info.is_some(),
         popover: m.speed_open || m.help_open,
-        toast: m.screen == crate::state::Screen::Downloads && (m.toast.is_some() || m.notice.is_some()),
+        toast: m.screen == crate::state::Screen::Downloads && (m.toast.is_some() || m.notice.is_some() || m.duplicate.is_some()),
         search: m.search_open,
     }
 }

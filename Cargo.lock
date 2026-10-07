@@ -5248,6 +5248,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "trash",
+ "url",
 ]
 
 [[package]]

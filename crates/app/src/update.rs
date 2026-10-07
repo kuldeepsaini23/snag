@@ -96,6 +96,8 @@ pub enum Message {
     CopyText(String),
     /// The answer to "a browser extension wants to connect".
     AnswerPair(bool),
+    /// The answer to "Already downloaded": show the file, download it again, or skip.
+    Duplicate(DuplicateChoice),
     /// Phone sharing on/off (applies at once, like a switch should).
     PhoneSharing(bool),
     /// The picker's playlist/channel: download its new uploads from now on.
@@ -248,6 +250,13 @@ fn sync_motion(app: &mut App, animate: bool) {
     if let Some(frozen) = crate::snap::frozen() {
         app.now = frozen;
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DuplicateChoice {
+    Show,
+    Again,
+    Skip,
 }
 
 /// Errors and notices go to `<data>/snag.log` (kept under 1 MB): text in the window can't be
@@ -408,7 +417,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::Core(Event::Quit) => return iced::exit(),
         Message::Core(event) => {
             log_event(&app.data_dir, &event);
-            let pick = matches!(event, Event::PickMedia { .. } | Event::Focus | Event::PairRequest(_));
+            let pick = matches!(event, Event::PickMedia { .. } | Event::Focus | Event::PairRequest(_) | Event::Duplicate(_));
             model.apply(event);
             if pick {
                 // The extension sent a video, or RDM was started again: bring the (maybe hidden) window forward.
@@ -460,6 +469,14 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::CopyText(text) => {
             model.notice = Some("Copied ✓".into());
             return iced::clipboard::write(text);
+        }
+        Message::Duplicate(choice) => {
+            let Some(item) = model.duplicate.take() else { return Task::none() };
+            return match choice {
+                DuplicateChoice::Show => update(app, Message::ShowInFolder(item.id)),
+                DuplicateChoice::Again => update(app, Message::Redownload(item.id)),
+                DuplicateChoice::Skip => Task::none(),
+            };
         }
         Message::AnswerPair(allow) => {
             if let Some(id) = model.pair_request.take() {

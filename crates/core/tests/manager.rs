@@ -894,3 +894,32 @@ async fn stale_browser_cookies_are_dropped_and_the_page_read_without_them() {
     let id = m.add_media("https://www.video.test/stale".into(), "Clip".into(), MediaFormat::Video { max_height: 480 }).await;
     wait_item(&mut rx, has(id, Status::Done)).await;
 }
+
+#[tokio::test]
+async fn a_link_already_downloaded_is_not_added_twice() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |_| {}).await;
+    let mut rx = m.subscribe();
+    let url = s.url("/file/200000");
+    let first = m.add(url.clone()).await;
+    wait_item(&mut rx, has(first, Status::Done)).await;
+    // The same file again, through a share link with tracking.
+    let again = m.add(format!("{url}?utm_source=newsletter")).await;
+    assert_eq!(again, first, "answers with the download that already exists");
+    let warned = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Ok(Event::Duplicate(item)) = rx.recv().await {
+                return item;
+            }
+        }
+    })
+    .await
+    .expect("the user is told");
+    assert_eq!(warned.id, first);
+    assert_eq!(m.snapshot().await.items.len(), 1, "nothing new in the list");
+    // A finished download whose file is gone is no duplicate: it downloads.
+    std::fs::remove_file(warned.dest.unwrap()).unwrap();
+    let fresh = m.add(url).await;
+    assert_ne!(fresh, first);
+}

@@ -45,6 +45,9 @@ pub enum Event {
     Watches(Vec<crate::watch::Watch>),
     /// A browser extension asks to connect: the UI asks the user, then `answer_pair`.
     PairRequest(u64),
+    /// That link was downloaded before (and the file is still there): nothing was added. The UI
+    /// offers Show / Download again (`redownload` of this item) / Skip.
+    Duplicate(Item),
 }
 
 /// Handle to the download manager. Cheap to clone; all clones talk to one actor.
@@ -606,11 +609,19 @@ impl Actor {
                 let _ = reply.send(self.state.clone());
             }
             Cmd::AddWith(url, referrer, reply) => {
+                if let Some(id) = self.already_downloaded(&url) {
+                    let _ = reply.send(id);
+                    return;
+                }
                 let name = filename_from(None, &url);
                 let category = Category::from_name(&name);
                 let _ = reply.send(self.push_item(url, name, category, Kind::Http, referrer, 0));
             }
             Cmd::AddMedia(url, title, format, queue, thumbnail, duration, reply) => {
+                if let Some(id) = self.already_downloaded(&url) {
+                    let _ = reply.send(id);
+                    return;
+                }
                 let id = self.push_media(url, title, format, queue);
                 self.set_meta(id, thumbnail, duration);
                 let _ = reply.send(id);
@@ -648,11 +659,19 @@ impl Actor {
                 ids.into_iter().for_each(|id| self.check_watch(id));
             }
             Cmd::AddTorrent(url, reply) => {
+                if let Some(id) = self.already_downloaded(&url) {
+                    let _ = reply.send(id);
+                    return;
+                }
                 let name = rdm_torrent::link_name(&url);
                 let category = Category::from_name(&name);
                 let _ = reply.send(self.push_item(url, name, category, Kind::Torrent, None, 0));
             }
             Cmd::AddGallery(url, reply) => {
+                if let Some(id) = self.already_downloaded(&url) {
+                    let _ = reply.send(id);
+                    return;
+                }
                 let name = crate::model::gallery_name(&url);
                 let _ = reply.send(self.push_item(url, name, Category::Image, Kind::Gallery, None, 0));
             }
@@ -742,6 +761,24 @@ impl Actor {
         }
     }
 
+    /// A finished download of the same link whose file is still on disk.
+    fn done_copy(&self, url: &str) -> Option<&Item> {
+        let wanted = crate::dupe::normalize(url);
+        self.state
+            .items
+            .iter()
+            .filter(|i| i.status == Status::Done && i.dest.as_ref().is_some_and(|d| d.exists()))
+            .find(|i| crate::dupe::normalize(&i.url) == wanted)
+    }
+
+    /// `done_copy`, and if there is one, tells the user (nothing gets added).
+    fn already_downloaded(&mut self, url: &str) -> Option<ItemId> {
+        let item = self.done_copy(url)?.clone();
+        let id = item.id;
+        self.emit(Event::Duplicate(item));
+        Some(id)
+    }
+
     fn push_media(&mut self, url: String, title: String, format: MediaFormat, queue: QueueId) -> ItemId {
         let category = if format == MediaFormat::AudioMp3 { Category::Music } else { Category::Video };
         let queue = if self.state.queue(queue).is_some() { queue } else { 0 };
@@ -805,13 +842,26 @@ impl Actor {
             return;
         }
         let label = info.options.get(choice).map(|o| o.label.clone()).unwrap_or_default();
-        let count = requests.len();
+        if let [(url, ..)] = requests.as_slice() {
+            // A single video already on disk: the duplicate warning instead of "Added".
+            if self.already_downloaded(url).is_some() {
+                return;
+            }
+        }
+        let (mut count, mut skipped) = (0, 0);
         for ((url, title, format), (thumbnail, duration)) in requests.into_iter().zip(info.request_meta()) {
+            // In a playlist, videos downloaded before are skipped quietly (counted below).
+            if self.done_copy(&url).is_some() {
+                skipped += 1;
+                continue;
+            }
             let id = self.push_media(url, title, format, 0);
             self.set_meta(id, thumbnail, duration);
+            count += 1;
         }
         let what = if count == 1 { format!("\u{201c}{}\u{201d}", info.title) } else { format!("{count} videos") };
-        self.emit(Event::Notice(format!("Added {what} ({label})")));
+        let skipped = if skipped > 0 { format!(", {skipped} already downloaded") } else { String::new() };
+        self.emit(Event::Notice(format!("Added {what} ({label}){skipped}")));
     }
 
     fn set_queues(&mut self, mut queues: Vec<Queue>) {
