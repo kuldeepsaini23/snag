@@ -17,7 +17,7 @@ export function SegmentBar({ className }: { className?: string }) {
   return (
     <div className={cn("flex gap-1.5", className)} aria-hidden="true">
       {parts.map((part, i) => (
-        <span key={i} className="h-full flex-1 overflow-hidden rounded-[3px] bg-raised">
+        <span key={i} className="h-full flex-1 overflow-hidden bg-raised">
           <span
             className="block h-full origin-left animate-fill bg-accent"
             style={
@@ -27,19 +27,6 @@ export function SegmentBar({ className }: { className?: string }) {
               } as React.CSSProperties
             }
           />
-        </span>
-      ))}
-    </div>
-  );
-}
-
-// A paused moment from the same map: how far each part has got.
-export function SegmentMap({ progress, className }: { progress: number[]; className?: string }) {
-  return (
-    <div className={cn("flex gap-1", className)} aria-hidden="true">
-      {progress.map((p, i) => (
-        <span key={i} className="h-full flex-1 overflow-hidden rounded-[3px] bg-raised">
-          <span className="block h-full bg-accent" style={{ width: `${p * 100}%` }} />
         </span>
       ))}
     </div>

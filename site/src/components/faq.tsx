@@ -1,5 +1,6 @@
 import { Plus } from "@phosphor-icons/react/dist/ssr";
 
+import { Section, SectionIntro } from "@/components/section";
 import { RELEASES_URL, REPO_URL } from "@/lib/site";
 
 const questions: { q: string; a: React.ReactNode }[] = [
@@ -50,25 +51,28 @@ const questions: { q: string; a: React.ReactNode }[] = [
 
 export function Faq() {
   return (
-    <section id="faq" className="mx-auto max-w-6xl px-4 pt-28 sm:px-6 md:pt-36">
-      <div className="grid gap-10 lg:grid-cols-[1fr_1.6fr]">
-        <h2 className="heading text-4xl md:text-6xl">Questions</h2>
-        <div className="border-t border-line">
-          {questions.map(({ q, a }) => (
-            <details key={q} className="group border-b border-line">
-              <summary className="flex cursor-pointer items-center gap-4 py-5 text-lg font-semibold transition-colors hover:text-accent">
-                {q}
-                <Plus
-                  weight="bold"
-                  className="ml-auto size-5 shrink-0 text-muted transition-transform duration-200 group-open:rotate-45"
-                  aria-hidden
-                />
-              </summary>
-              <div className="max-w-[62ch] pb-6 leading-relaxed text-muted">{a}</div>
-            </details>
-          ))}
-        </div>
+    <Section id="faq" label="04 / FAQ" note="Still wondering?">
+      <SectionIntro
+        title={
+          <>
+            Questions, <em>answered.</em>
+          </>
+        }
+      />
+      <div className="border-t border-line">
+        {questions.map(({ q, a }, i) => (
+          <details key={q} className="group border-b border-line last:border-0" data-reveal>
+            <summary className="flex cursor-pointer items-center gap-5 px-5 py-5 transition-colors hover:bg-white/[0.02] sm:px-8">
+              <span className="label w-6 shrink-0 text-faint">{String(i + 1).padStart(2, "0")}</span>
+              <span className="font-display text-lg leading-snug font-bold [font-stretch:110%]">{q}</span>
+              <span className="ml-auto grid size-8 shrink-0 place-items-center border border-line-strong text-muted">
+                <Plus weight="bold" className="size-3.5 transition-transform duration-200 group-open:rotate-45" aria-hidden />
+              </span>
+            </summary>
+            <div className="max-w-[64ch] px-5 pb-7 pl-[3.25rem] leading-relaxed text-muted sm:px-8 sm:pl-[4.75rem]">{a}</div>
+          </details>
+        ))}
       </div>
-    </section>
+    </Section>
   );
 }

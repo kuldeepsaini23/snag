@@ -1,26 +1,7 @@
-import {
-  ArrowRight,
-  ChartBar,
-  DownloadSimple,
-  FileHtml,
-  FileZip,
-  FilmStrip,
-  Images,
-  Magnet,
-  MusicNotes,
-  Palette,
-  Play,
-  ShieldCheck,
-  Sliders,
-  Subtitles,
-  Broadcast,
-  Queue,
-  Cpu,
-  Plus,
-} from "@phosphor-icons/react/dist/ssr";
+import { DownloadSimple, FileHtml, FileZip, Images, Magnet, ShieldCheck } from "@phosphor-icons/react/dist/ssr";
 
 import { AccentPicker } from "@/components/accent-picker";
-import { SegmentMap } from "@/components/segment-bar";
+import { Section, SectionIntro } from "@/components/section";
 import { Marquee } from "@/components/ui/marquee";
 import { cn } from "@/lib/utils";
 
@@ -39,225 +20,270 @@ const sites = [
   "Mixcloud",
 ];
 
-function Card({ className, children }: { className?: string; children: React.ReactNode }) {
+// One file's parts: how long each takes to fill in the looping demo.
+const loopParts = [3.2, 4.1, 2.6, 4.6, 3.6, 2.9, 4.3, 3.4];
+
+function Card({
+  label,
+  index,
+  title,
+  description,
+  wide,
+  media,
+}: {
+  label: string;
+  index: number;
+  title: string;
+  description: string;
+  wide?: boolean;
+  media: React.ReactNode;
+}) {
   return (
-    <article className={cn("relative flex flex-col overflow-hidden rounded-[22px] border border-line bg-surface", className)}>
-      {children}
+    <article
+      data-reveal
+      style={{ "--reveal-delay": index % 2 === 0 ? "0.08s" : "0s" } as React.CSSProperties}
+      className={cn("flex flex-col bg-bg", wide && "md:col-span-2")}
+    >
+      <div className="flex h-10 items-center justify-between border-b border-line px-5 sm:px-6">
+        <p className="label text-muted">{label}</p>
+        <p className="label text-faint">{String(index).padStart(2, "0")}</p>
+      </div>
+      <div
+        className={cn(
+          "relative flex items-center justify-center overflow-hidden border-b border-line bg-sunk",
+          !wide && "aspect-[16/10]",
+        )}
+      >
+        {media}
+      </div>
+      <div className="px-5 pt-6 pb-8 sm:px-6">
+        <h3 className="font-display text-xl leading-tight font-bold [font-stretch:115%] md:text-[1.35rem]">{title}</h3>
+        <p className="mt-2 max-w-[52ch] leading-relaxed text-muted">{description}</p>
+      </div>
     </article>
   );
 }
 
-function CardText({ title, children }: { title: string; children: React.ReactNode }) {
+// A screenshot filling the card's media area; `zoom` crops in on its bottom-right corner.
+function Shot({ name, alt, wide, zoom }: { name: string; alt: string; wide?: boolean; zoom?: boolean }) {
+  const [small, large] = name.startsWith("ext-") ? [720, 1280] : [760, 1382];
   return (
-    <div className="p-6 md:p-7">
-      <h3 className="heading text-xl md:text-[1.4rem]">{title}</h3>
-      <div className="mt-2 max-w-[46ch] leading-relaxed text-muted">{children}</div>
-    </div>
+    <picture className="block w-full">
+      <source
+        type="image/webp"
+        srcSet={`/images/${name}-${small}.webp ${small}w, /images/${name}-${large}.webp ${large}w`}
+        sizes={wide ? "(min-width: 1056px) 1056px, 100vw" : zoom ? "(min-width: 768px) 900px, 170vw" : "(min-width: 768px) 528px, 100vw"}
+      />
+      <img
+        src={`/images/${name}-${large}.webp`}
+        alt={alt}
+        width={large}
+        height={large === 1280 ? 800 : 864}
+        loading="lazy"
+        decoding="async"
+        className={zoom ? "absolute right-0 bottom-0 h-auto w-[170%] max-w-none" : "block h-auto w-full"}
+      />
+    </picture>
   );
 }
 
 export function Features() {
   return (
-    <section id="features" className="mx-auto max-w-6xl px-4 pt-28 sm:px-6 md:pt-36">
-      <h2 className="heading max-w-[18ch] text-4xl md:text-6xl">Everything you’d reach for IDM to do</h2>
-      <p className="mt-5 max-w-[56ch] text-lg leading-relaxed text-muted">
-        Plus the things it never did: music, galleries, torrents and whole web pages, without an account or a licence key.
-      </p>
+    <Section id="features" label="01 / Features" note="Real screenshots — captured in Snag">
+      <SectionIntro
+        title={
+          <>
+            Stop <em>waiting</em> for downloads.
+          </>
+        }
+      >
+        Everything you’d reach for IDM to do, plus music, galleries, torrents and whole web pages. No account, no
+        licence key.
+      </SectionIntro>
 
-      <div className="mt-12 grid gap-4 md:grid-cols-6">
-        {/* Speed */}
-        <Card className="md:col-span-4">
-          <CardText title="Eight connections per file">
-            Big files are split into up to eight parts that download at once. Pause whenever you like; Snag picks up
-            where it stopped, even after a restart or a crash.
-          </CardText>
-          <div className="mt-auto px-6 pb-7 md:px-7">
-            <div className="flex items-baseline justify-between text-sm">
-              <span className="font-medium">ubuntu-24.04-desktop-amd64.iso</span>
-              <span className="text-muted tabular-nums">8.4 MB/s</span>
-            </div>
-            <SegmentMap progress={[1, 1, 0.82, 1, 0.64, 0.9, 0.47, 0.71]} className="mt-3 h-5" />
-            <p className="mt-2 text-sm text-faint">Segments · 8 parallel connections</p>
-          </div>
-        </Card>
-
-        {/* Memory */}
-        <Card className="justify-between md:col-span-2">
-          <div className="p-6 md:p-7">
-            <Cpu className="size-7 text-accent" aria-hidden />
-          </div>
-          <div className="p-6 pt-0 md:p-7 md:pt-0">
-            <p className="display text-[4.5rem] text-accent tabular-nums">35 MB</p>
-            <h3 className="heading mt-3 text-xl">About this much memory</h3>
-            <p className="mt-2 leading-relaxed text-muted">Written in Rust, so it stays light while big downloads run.</p>
-          </div>
-        </Card>
-
-        {/* Video sites */}
-        <Card className="md:col-span-3">
-          <CardText title="Video and music from 1,800+ sites">
-            Pick 1080p, 720p or MP3, take a whole playlist with its subtitles, or record a live stream as it airs.
-          </CardText>
-          <ul className="flex flex-wrap gap-2 px-6 md:px-7">
-            {[
-              { icon: FilmStrip, label: "1080p, 720p…" },
-              { icon: MusicNotes, label: "MP3" },
-              { icon: Queue, label: "Playlists" },
-              { icon: Subtitles, label: "Subtitles" },
-              { icon: Broadcast, label: "Live" },
-            ].map(({ icon: Icon, label }) => (
-              <li key={label} className="flex items-center gap-1.5 rounded-full bg-raised px-3 py-1.5 text-sm">
-                <Icon className="size-4 text-accent" aria-hidden />
-                {label}
-              </li>
-            ))}
-          </ul>
-          <div className="mt-auto grid gap-1 pt-6 pb-5 [mask-image:linear-gradient(90deg,transparent,#000_12%,#000_88%,transparent)]">
-            {[sites.slice(0, 6), sites.slice(6)].map((row, i) => (
-              <Marquee key={i} reverse={i === 1} className="[--duration:40s] [--gap:0.5rem]" repeat={4}>
-                {row.map((site) => (
-                  <span key={site} className="rounded-lg border border-line px-3.5 py-2 whitespace-nowrap text-muted">
-                    {site}
+      <div className="grid gap-px border-t border-line bg-line md:grid-cols-2">
+        <Card
+          label="Speed"
+          index={1}
+          title="Eight connections per file"
+          description="Big files download in up to eight parts at once, and resume where they stopped, even after a restart or a crash."
+          media={
+            <div className="w-full px-8" aria-hidden="true">
+              <div className="flex items-baseline justify-between font-mono text-xs">
+                <span className="text-text">ubuntu-24.04-desktop-amd64.iso</span>
+                <span className="text-muted">8.4 MB/s</span>
+              </div>
+              <div className="mt-3 flex h-7 gap-1">
+                {loopParts.map((duration, i) => (
+                  <span key={i} className="h-full flex-1 bg-raised">
+                    <span
+                      className="block h-full origin-left animate-fill-loop bg-accent"
+                      style={{ "--fill-duration": `${duration}s` } as React.CSSProperties}
+                    />
                   </span>
                 ))}
-              </Marquee>
-            ))}
-          </div>
-        </Card>
-
-        {/* Extension */}
-        <Card className="md:col-span-3">
-          <CardText title="Catches what the player is playing">
-            The browser extension sees the video stream a page loads and puts a Download button on it, so it works even
-            on sites no list knows about.
-          </CardText>
-          <div className="mt-auto px-6 pb-7 md:px-7" aria-hidden="true">
-            <div className="relative aspect-[16/8] overflow-hidden rounded-xl bg-[linear-gradient(135deg,#6b4a1c,#2a2420_70%)]">
-              <Play weight="fill" className="absolute top-1/2 left-1/2 size-10 -translate-1/2 text-white/85" />
-              <div className="absolute right-3 bottom-3 flex items-center gap-1.5 rounded-full bg-accent py-1.5 pr-3.5 pl-2.5 text-sm font-semibold text-on-accent shadow-lg">
-                <DownloadSimple weight="bold" className="size-4" />
-                Download
               </div>
-              <div className="absolute inset-x-0 bottom-0 h-1 bg-white/15">
-                <div className="h-full w-[38%] bg-white/70" />
+              <p className="label mt-3 text-faint">Segments · 8 parallel connections</p>
+            </div>
+          }
+        />
+
+        <Card
+          label="Video & music"
+          index={2}
+          title="Video and music from 1,800+ sites"
+          description="Pick 1080p, 720p or MP3, take whole playlists with their subtitles, or record a live stream as it airs."
+          media={
+            <div className="w-full" aria-hidden="true">
+              <div className="grid gap-2 [mask-image:linear-gradient(90deg,transparent,#000_15%,#000_85%,transparent)]">
+                {[sites.slice(0, 6), sites.slice(6)].map((row, i) => (
+                  <Marquee key={i} reverse={i === 1} className="p-0 [--duration:36s] [--gap:0.5rem]" repeat={4}>
+                    {row.map((site) => (
+                      <span
+                        key={site}
+                        className="border border-line-strong px-4 py-2.5 font-display text-sm font-bold whitespace-nowrap text-muted [font-stretch:115%]"
+                      >
+                        {site}
+                      </span>
+                    ))}
+                  </Marquee>
+                ))}
+              </div>
+              <p className="label mt-6 text-center text-faint">1080p · 720p · MP3 · Playlists · Subtitles · Live</p>
+            </div>
+          }
+        />
+
+        <Card
+          label="Browser extension"
+          index={3}
+          title="Catches what the player is playing"
+          description="The extension sees the stream a page loads and offers every quality it found, even on sites no list knows about."
+          media={
+            <Shot
+              zoom
+              name="ext-download-menu"
+              alt="The extension's Download menu on a video page, listing the stream, MP4, 2160p, 1080p, 720p and MP3 with their sizes"
+            />
+          }
+        />
+
+        <Card
+          label="Galleries & more"
+          index={4}
+          title="More than single files"
+          description="Image galleries, torrents and magnet links, whole web pages as one offline file, and GitHub repos as a ZIP."
+          media={
+            <div className="grid w-full grid-cols-2 gap-px self-stretch bg-line" aria-hidden="true">
+              {[
+                { icon: Images, label: "Galleries" },
+                { icon: Magnet, label: "Torrents" },
+                { icon: FileHtml, label: "Web pages" },
+                { icon: FileZip, label: "Repo → ZIP" },
+              ].map(({ icon: Icon, label }) => (
+                <div key={label} className="flex flex-col items-center justify-center gap-3 bg-sunk">
+                  <Icon className="size-8 text-text" weight="light" />
+                  <span className="label text-muted">{label}</span>
+                </div>
+              ))}
+            </div>
+          }
+        />
+
+        <Card
+          label="Automation"
+          index={5}
+          title="Rules after download"
+          description="Convert to MP3, shrink videos, unpack archives or move files, by type, site or category."
+          media={
+            <div className="grid w-full max-w-sm gap-px border border-line bg-line px-0 font-mono text-xs" aria-hidden="true">
+              {[
+                ["Music", "Convert to MP3"],
+                ["Videos", "Shrink"],
+                ["Archives", "Unpack"],
+                ["Programs", "Move to a folder"],
+              ].map(([when, then]) => (
+                <div key={when} className="flex items-center gap-3 bg-sunk px-4 py-3">
+                  <span className="text-faint">IF</span>
+                  <span className="text-muted">{when}</span>
+                  <span className="ml-auto text-faint">→</span>
+                  <span className="text-text">{then}</span>
+                </div>
+              ))}
+            </div>
+          }
+        />
+
+        <Card
+          label="Safety"
+          index={6}
+          title="A safety check for programs"
+          description="Add your own free VirusTotal key and Snag looks up the programs you download. Only the file’s SHA-256 is sent."
+          media={
+            <div className="w-full max-w-sm border border-line-strong bg-bg" aria-hidden="true">
+              <div className="flex items-center gap-3 border-b border-line px-4 py-3.5">
+                <ShieldCheck weight="fill" className="size-6 text-accent" />
+                <span className="text-sm font-semibold">No engines flagged this file</span>
+              </div>
+              <div className="flex justify-between px-4 py-3 font-mono text-xs text-faint">
+                <span>SHA-256</span>
+                <span>9f2c…e41a</span>
               </div>
             </div>
-          </div>
-        </Card>
+          }
+        />
 
-        {/* More than files */}
-        <Card className="md:col-span-2">
-          <CardText title="More than files">Snag knows what to do with the links that aren’t a single file.</CardText>
-          <ul className="mt-auto grid gap-3 px-6 pb-7 text-[0.95rem] md:px-7">
-            <li className="flex gap-3">
-              <Images className="mt-0.5 size-5 shrink-0 text-accent" aria-hidden />
-              Image galleries from Pinterest, Imgur, Reddit, Instagram and X
-            </li>
-            <li className="flex gap-3">
-              <Magnet className="mt-0.5 size-5 shrink-0 text-accent" aria-hidden />
-              Torrents, from magnet links or .torrent files
-            </li>
-            <li className="flex gap-3">
-              <FileHtml className="mt-0.5 size-5 shrink-0 text-accent" aria-hidden />
-              Web pages, saved as one file you can open offline
-            </li>
-            <li className="flex gap-3">
-              <FileZip className="mt-0.5 size-5 shrink-0 text-accent" aria-hidden />
-              <span>
-                GitHub repos <ArrowRight className="inline size-3.5 align-[-0.1em]" aria-label="to" /> a ZIP of the
-                branch
-              </span>
-            </li>
-          </ul>
-        </Card>
+        <Card
+          label="Stats"
+          index={7}
+          wide
+          title="See where the gigabytes went"
+          description="What you downloaded by day, by type and by site, over the last week, month or all time."
+          media={
+            <Shot
+              name="stats"
+              wide
+              alt="Snag's stats page: data per day, a breakdown by type and the top sites"
+            />
+          }
+        />
 
-        {/* Rules */}
-        <Card className="md:col-span-2">
-          <CardText title="Rules after download">
-            Tell Snag what to do once a file lands, by type, site or category.
-          </CardText>
-          <div className="mt-auto grid gap-2 px-6 pb-7 text-sm md:px-7">
-            {[
-              ["Music", "Convert to MP3"],
-              ["Videos", "Shrink"],
-              ["Archives", "Unpack"],
-              ["Programs", "Move to a folder"],
-            ].map(([when, then]) => (
-              <div key={when} className="flex items-center gap-2 rounded-lg bg-raised px-3 py-2">
-                <Sliders className="size-4 shrink-0 text-faint" aria-hidden />
-                <span className="truncate text-muted">{when}</span>
-                <ArrowRight className="size-3.5 shrink-0 text-faint" aria-label="then" />
-                <span className="ml-auto shrink-0 font-medium">{then}</span>
+        <Card
+          label="Footprint"
+          index={8}
+          title="About 35 MB of memory"
+          description="Written in Rust, so it stays light while big downloads run in the background."
+          media={
+            <p className="font-display text-[clamp(3.5rem,10vw,5.5rem)] leading-none font-bold [font-stretch:125%]" aria-hidden="true">
+              35<span className="ml-2 text-[0.45em] text-faint">MB</span>
+            </p>
+          }
+        />
+
+        <Card
+          label="Themes"
+          index={9}
+          title="Light, dark and any accent colour"
+          description="Make Snag yours. Try it here: pick a colour and this page follows along."
+          media={
+            <div className="flex flex-col items-center gap-6 px-6">
+              <div className="flex items-center gap-3" aria-hidden="true">
+                <span className="flex items-center gap-1.5 bg-accent px-3 py-2 font-mono text-xs text-on-accent uppercase">
+                  <DownloadSimple weight="bold" className="size-3.5" />
+                  Add
+                </span>
+                <span className="relative h-5 w-9 bg-accent">
+                  <span className="absolute top-0.5 right-0.5 size-4 bg-on-accent" />
+                </span>
+                <span className="h-1.5 w-24 bg-raised">
+                  <span className="block h-full w-2/3 bg-accent" />
+                </span>
               </div>
-            ))}
-          </div>
-        </Card>
-
-        {/* VirusTotal */}
-        <Card className="md:col-span-2">
-          <CardText title="A safety check for programs">
-            Add your own free VirusTotal key and Snag looks up the programs you download. Only the file’s SHA-256
-            fingerprint is sent, never the file.
-          </CardText>
-          <div className="mt-auto px-6 pb-7 md:px-7">
-            <div className="flex items-center gap-3 rounded-xl border border-line bg-raised p-3.5">
-              <ShieldCheck weight="fill" className="size-8 shrink-0 text-accent" aria-hidden />
-              <div className="min-w-0 text-sm">
-                <p className="font-semibold">No engines flagged this file</p>
-                <p className="truncate text-faint">sha256 9f2c…e41a</p>
-              </div>
+              <AccentPicker />
             </div>
-          </div>
-        </Card>
-
-        {/* Stats */}
-        <Card className="md:col-span-4">
-          <div className="flex items-start gap-3 p-6 pb-0 md:p-7 md:pb-0">
-            <ChartBar className="mt-1 size-6 shrink-0 text-accent" aria-hidden />
-            <div>
-              <h3 className="heading text-xl md:text-[1.4rem]">Stats</h3>
-              <p className="mt-2 leading-relaxed text-muted">What you downloaded by day, by type and by site.</p>
-            </div>
-          </div>
-          <div className="mt-6 ml-6 h-[230px] overflow-hidden rounded-tl-xl border-t border-l border-line sm:h-[300px] md:ml-7 md:h-[330px]">
-            <picture>
-              <source
-                type="image/webp"
-                srcSet="/images/stats-760.webp 760w, /images/stats-1382.webp 1382w"
-                sizes="(min-width: 768px) 720px, 100vw"
-              />
-              <img
-                src="/images/stats-1382.webp"
-                alt="Snag's stats page: data per day, a breakdown by type and the top sites"
-                width={1382}
-                height={864}
-                loading="lazy"
-                decoding="async"
-                className="block h-auto w-[140%] max-w-none md:w-[115%]"
-              />
-            </picture>
-          </div>
-        </Card>
-
-        {/* Themes */}
-        <Card className="md:col-span-2">
-          <div className="flex items-center gap-3 p-6 md:p-7" aria-hidden="true">
-            <Palette className="size-7 text-accent" />
-            <span className="ml-auto flex items-center gap-1 rounded-full bg-accent px-3 py-1 text-sm font-semibold text-on-accent">
-              <Plus weight="bold" className="size-3.5" />
-              Add
-            </span>
-            <span className="relative h-5 w-9 rounded-full bg-accent">
-              <span className="absolute top-0.5 right-0.5 size-4 rounded-full bg-on-accent" />
-            </span>
-          </div>
-          <div className="mt-auto p-6 pt-0 md:p-7 md:pt-0">
-            <h3 className="heading text-xl md:text-[1.4rem]">Light, dark, and any accent colour</h3>
-            <p className="mt-2 mb-5 leading-relaxed text-muted">Make it yours. Try it here: this page follows along.</p>
-            <AccentPicker />
-          </div>
-        </Card>
+          }
+        />
       </div>
-    </section>
+    </Section>
   );
 }

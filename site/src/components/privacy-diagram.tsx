@@ -23,12 +23,12 @@ function Node({
     <div className="relative z-10 flex flex-col items-center gap-2 text-center">
       <div
         ref={ref}
-        className={cn("grid size-14 place-items-center rounded-2xl border border-line-strong bg-raised md:size-16", className)}
+        className={cn("grid size-14 place-items-center border border-line-strong bg-bg md:size-16", className)}
       >
         {children}
       </div>
-      <p className="text-sm font-semibold">{label}</p>
-      <p className="-mt-1.5 max-w-[14ch] text-xs text-faint">{detail}</p>
+      <p className="label mt-1 text-text">{label}</p>
+      <p className="max-w-[14ch] text-xs text-faint">{detail}</p>
     </div>
   );
 }
@@ -47,7 +47,7 @@ export function PrivacyDiagram() {
       ref={container}
       role="img"
       aria-label="The browser extension and the sites you download from connect only to Snag on your PC, which saves files to your own disk."
-      className="relative grid grid-cols-3 items-center gap-4 rounded-[22px] border border-line bg-surface px-4 py-8 md:px-8 md:py-10"
+      className="relative grid h-full grid-cols-3 items-center gap-4 bg-sunk px-4 py-10 md:px-8 md:py-12"
     >
       <div className="flex flex-col gap-10">
         <Node ref={browser} label="Extension" detail="in your browser">
@@ -57,9 +57,9 @@ export function PrivacyDiagram() {
           <Globe className="size-7 text-text" aria-hidden />
         </Node>
       </div>
-      <Node ref={snag} label="Snag" detail="127.0.0.1, this PC" className="size-18 border-accent/60 md:size-20">
+      <Node ref={snag} label="Snag" detail="127.0.0.1, this PC" className="size-18 border-accent md:size-20">
         {/* eslint-disable-next-line @next/next/no-img-element -- static export, already a 96px PNG */}
-        <img src="/images/logo-96.png" alt="" width={48} height={48} className="size-11 rounded-xl md:size-12" />
+        <img src="/images/logo-96.png" alt="" width={48} height={48} className="size-11 rounded-[22%] md:size-12" />
       </Node>
       <Node ref={disk} label="Your disk" detail="files and settings">
         <HardDrives className="size-7 text-text" aria-hidden />
