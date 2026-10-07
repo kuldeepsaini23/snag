@@ -223,22 +223,43 @@ fn extension<'a>(m: &'a Model, c: Colors) -> Element<'a, Message> {
     .into()
 }
 
+/// The last step: what Snag may use on this PC. Nothing below is on unless the user says so
+/// here (or later in Settings); the rest is explained, not hidden.
 fn clipboard<'a>(m: &'a Model, c: Colors) -> Element<'a, Message> {
-    let watch = row![
-        column![text("Watch the clipboard for links").size(13).font(style::MEDIUM), small("Copy a link anywhere and it pops up in the corner, ready to download", c.text3)]
-            .spacing(2)
-            .width(Fill),
-        toggler(m.draft.clipboard_watch).on_toggle(Message::DraftClipboard).size(18).style(style::toggle(c)),
-    ]
-    .spacing(16)
-    .align_y(Alignment::Center)
-    .padding([10, 14]);
+    let switch_row = |glyph: Icon, title: &'a str, desc: &'a str, on: bool, msg: fn(bool) -> Message| -> Element<'a, Message> {
+        row![
+            bold(glyph, 16).color(c.accent),
+            column![text(title).size(13).font(style::MEDIUM), small(desc, c.text3)].spacing(2).width(Fill),
+            toggler(on).on_toggle(msg).size(18).style(style::toggle(c)),
+        ]
+        .spacing(12)
+        .align_y(Alignment::Center)
+        .padding([9, 14])
+        .into()
+    };
+    let choices = card(
+        vec![
+            switch_row(Icon::ClipboardText, "Read copied links", "Only links: a copied link pops up in the corner, ready to download", m.draft.clipboard_watch, Message::DraftClipboard),
+            switch_row(Icon::CheckCircle, "Windows notifications", "When a download finishes or fails", m.draft.notify, Message::DraftNotify),
+            switch_row(Icon::DeviceMobile, "Phone sharing on your Wi-Fi", "Send links from your phone. Windows may ask to allow Snag on private networks", m.draft.phone_sharing, Message::PhoneSharing),
+        ],
+        c,
+    );
+    let facts = card(
+        vec![
+            point(Icon::Browser, "Browser cookies", "Only for the site you download from, only when you click Download in the extension", c),
+            point(Icon::Plug, "Internet", "Only the sites you download from, plus tool updates from GitHub. Nothing about you is sent", c),
+            point(Icon::WarningCircle, "Safety check", "Off. Add a VirusTotal key in Settings → Tools to check programs (only a fingerprint is sent)", c),
+        ],
+        c,
+    );
     column![
-        heading(Icon::ClipboardText, "Copy a link, get a download", "The quickest way in: no pasting needed.", c),
-        card(vec![watch.into()], c),
+        heading(Icon::Gear, "You decide what Snag may use", "Change any of these later in Settings.", c),
+        choices,
+        facts,
         small("Try a link puts a small test file (1 MB) in the link bar. Then click + Add to download it.", c.text2),
     ]
-    .spacing(16)
+    .spacing(14)
     .into()
 }
 
