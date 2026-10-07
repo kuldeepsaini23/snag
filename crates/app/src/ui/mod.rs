@@ -8,6 +8,7 @@ mod list;
 mod picker;
 mod popover;
 mod settings;
+pub use settings::SCROLL as SETTINGS_SCROLL;
 mod sidebar;
 pub mod style;
 pub mod theme;

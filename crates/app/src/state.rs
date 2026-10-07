@@ -154,6 +154,8 @@ pub struct Draft {
     /// "#rrggbb" as typed (Custom colour).
     pub accent: String,
     pub virustotal_key: String,
+    /// After-download rules (saved with the rest when Settings closes).
+    pub rules: Vec<rdm_core::rules::Rule>,
 }
 
 impl Draft {
@@ -175,6 +177,7 @@ impl Draft {
             keep_sharing: s.keep_sharing,
             phone_sharing: s.phone_sharing,
             virustotal_key: s.virustotal_key.clone(),
+            rules: s.rules.clone(),
             accent: s.accent.clone(),
         }
     }
@@ -210,6 +213,7 @@ impl Draft {
             keep_sharing: self.keep_sharing,
             phone_sharing: self.phone_sharing,
             virustotal_key: self.virustotal_key.trim().to_string(),
+            rules: self.rules.clone(),
             accent: accent.to_string(),
             ..base.clone()
         })
@@ -395,6 +399,10 @@ pub struct Model {
     pub duplicate: Option<Item>,
     /// VirusTotal's verdicts on downloaded programs.
     pub safety: std::collections::BTreeMap<ItemId, rdm_core::safety::Safety>,
+    /// The new after-download rule being filled in (Settings → General).
+    pub rule_form: crate::rules_form::RuleForm,
+    /// Why the new rule can't be added yet.
+    pub rule_error: Option<&'static str>,
     /// The toolbar search is a field (else just its magnifier).
     pub search_open: bool,
     /// Item whose Cancel was clicked once and waits for confirmation.
@@ -472,6 +480,8 @@ impl Default for Model {
             pair_request: None,
             duplicate: None,
             safety: Default::default(),
+            rule_form: Default::default(),
+            rule_error: None,
             search_open: false,
             pending_cancel: None,
             hovered: None,

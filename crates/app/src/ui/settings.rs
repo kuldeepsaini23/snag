@@ -10,7 +10,7 @@ use crate::queues::DAY_LETTERS;
 use crate::state::{Model, SETTINGS_TABS, SettingsTab};
 use crate::update::Message;
 use crate::view;
-use iced::widget::{Space, button, column, container, pick_list, row, rule, scrollable, text, text_input, toggler};
+use iced::widget::{Space, button, checkbox, column, container, pick_list, row, rule, scrollable, text, text_input, toggler};
 use iced::{Alignment, Color, Element, Fill, Length};
 use rdm_core::Status;
 
@@ -52,7 +52,7 @@ pub fn view<'a>(m: &'a Model, phone: Option<(&'a str, &'a iced::widget::qr_code:
         SettingsTab::Extension => extension(m, phone, c),
         SettingsTab::Tools => tools(m, c),
     };
-    let mut content = column![head, scrollable(container(body).padding(iced::Padding { right: 10.0, ..Default::default() })).style(style::scroll(c)).height(Fill)].spacing(14);
+    let mut content = column![head, scrollable(container(body).padding(iced::Padding { right: 10.0, ..Default::default() })).id(SCROLL).style(style::scroll(c)).height(Fill)].spacing(14);
     if let Some(e) = &m.settings_error {
         content = content.push(row![icon(Icon::WarningCircle, 14).color(c.danger), text(e).size(12.5)].spacing(8).align_y(Alignment::Center));
     } else if let Some(n) = &m.notice {
@@ -74,6 +74,9 @@ fn tab_info(tab: SettingsTab) -> (Icon, &'static str) {
 }
 
 // ---------- building blocks ----------
+
+/// The settings page's scroll area (the snapshot tool scrolls it).
+pub const SCROLL: &str = "settings-scroll";
 
 fn section<'a>(label: &str, rows: Vec<Element<'a, Message>>, c: Colors) -> Element<'a, Message> {
     let n = rows.len();
@@ -167,9 +170,60 @@ fn general(m: &Model, c: Colors) -> Element<'_, Message> {
             ],
             c,
         ),
+        rules(m, c),
     ]
     .spacing(18)
     .into()
+}
+
+/// "After download": the rules, each with on/off and remove, and a row to add one.
+fn rules(m: &Model, c: Colors) -> Element<'_, Message> {
+    use crate::rules_form::{CategoryChoice, Do, When, describe};
+    let mut rows: Vec<Element<'_, Message>> = m
+        .draft
+        .rules
+        .iter()
+        .map(|r| {
+            let remove = button(icon(Icon::X, 12)).style(style::ghost(c)).padding(6).on_press(Message::RuleDelete(r.id));
+            row![
+                text(describe(r)).size(12.5).color(if r.enabled { c.text } else { c.text3 }).width(Fill),
+                toggler(r.enabled).on_toggle(move |_| Message::RuleToggle(r.id)).size(18).style(style::toggle(c)),
+                remove,
+            ]
+            .spacing(10)
+            .align_y(Alignment::Center)
+            .padding([8, 14])
+            .into()
+        })
+        .collect();
+    let f = &m.rule_form;
+    let what: Element<'_, Message> = match f.when {
+        When::Category => pick_list(CategoryChoice::ALL, Some(f.category), Message::RuleCategory).text_size(12.5).padding([6, 10]).style(style::pick(c)).menu_style(style::menu(c)).into(),
+        When::Ext => field("zip, 7z", &f.value, 110.0, Message::RuleValue, c),
+        When::Site => field("youtube.com", &f.value, 140.0, Message::RuleValue, c),
+    };
+    let when = pick_list(When::ALL, Some(f.when), Message::RuleWhen).text_size(12.5).padding([6, 10]).style(style::pick(c)).menu_style(style::menu(c));
+    let action = pick_list(Do::ALL, Some(f.action), Message::RuleAction).text_size(12.5).padding([6, 10]).style(style::pick(c)).menu_style(style::menu(c));
+    let mut form = row![when, what, text("→").size(13).color(c.text3), action]
+        .spacing(8)
+        .align_y(Alignment::Center);
+    if f.action == Do::Move {
+        form = form.push(field(r"D:\Programs", &f.folder, 140.0, Message::RuleFolder, c));
+    }
+    let keep = checkbox(f.keep_original).label("Keep the original").on_toggle(Message::RuleKeep).size(15).text_size(12.5).style(style::check(c));
+    let add = button(row![icon(Icon::Plus, 12), text("Add rule").size(12.5).font(style::SEMIBOLD)].spacing(6).align_y(Alignment::Center))
+        .style(style::secondary(c))
+        .padding([7, 12])
+        .on_press(Message::RuleAdd);
+    let mut adder = column![form, row![keep, Space::new().width(Fill), add].spacing(10).align_y(Alignment::Center)].spacing(10).padding([12, 14]);
+    if let Some(why) = m.rule_error {
+        adder = adder.push(small(why.to_string(), c.danger));
+    }
+    if rows.is_empty() {
+        rows.push(container(small("No rules yet. Example: zip files → unpack, or From music.youtube.com → convert to MP3.".to_string(), c.text3)).padding([10, 14]).into());
+    }
+    rows.push(adder.into());
+    section("After download", rows, c)
 }
 
 fn appearance(m: &Model, c: Colors) -> Element<'_, Message> {

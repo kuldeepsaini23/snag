@@ -61,6 +61,10 @@ pub fn take(app: &mut App) -> Task<Message> {
                 st.0 += 1;
                 st.1 = Some(name.clone());
                 st.2 = false;
+                if name == "settings-rules" {
+                    // The "After download" section sits at the bottom of the page.
+                    return iced::widget::operation::snap_to_end(crate::ui::SETTINGS_SCROLL);
+                }
                 if name == "narrow" {
                     return window::latest().and_then(|id| window::resize(id, iced::Size::new(960.0, 600.0)));
                 }
@@ -224,6 +228,14 @@ fn apply(m: &mut Model, scene: &str) {
                 _ => SettingsTab::General,
             };
             m.open_settings(tab);
+            if s == "settings-rules" {
+                use rdm_core::rules::{Action, Match, Rule};
+                m.draft.rules = vec![
+                    Rule { id: 1, enabled: true, when: Match::Ext("zip, 7z".into()), action: Action::Extract, keep_original: false },
+                    Rule { id: 2, enabled: false, when: Match::Site("music.youtube.com".into()), action: Action::ToMp3, keep_original: true },
+                ];
+                m.rule_form.action = crate::rules_form::Do::Move;
+            }
         }
         _ => {}
     }

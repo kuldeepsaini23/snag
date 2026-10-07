@@ -5,6 +5,7 @@ mod hsv;
 mod motion;
 mod queues;
 mod report;
+mod rules_form;
 #[cfg(debug_assertions)]
 mod snap;
 mod notify;

@@ -132,6 +132,8 @@ pub struct Settings {
     pub last_seen_version: String,
     /// The user's own free VirusTotal API key; empty = no safety checks (nothing is sent).
     pub virustotal_key: String,
+    /// After-download rules, tried in order; the first that fits runs.
+    pub rules: Vec<crate::rules::Rule>,
 }
 
 impl Default for Settings {
@@ -157,6 +159,7 @@ impl Default for Settings {
             phone_sharing: false,
             last_seen_version: String::new(),
             virustotal_key: String::new(),
+            rules: Vec::new(),
         }
     }
 }

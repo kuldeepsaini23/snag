@@ -7,6 +7,7 @@ pub mod model;
 pub mod watch;
 pub mod planner;
 pub mod route;
+pub mod rules;
 pub mod safety;
 pub mod schedule;
 pub mod store;

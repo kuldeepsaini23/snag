@@ -967,3 +967,22 @@ async fn downloaded_programs_are_looked_up_on_virustotal_by_hash_only() {
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert!(!m.snapshot().await.safety.contains_key(&clip));
 }
+
+#[tokio::test]
+async fn a_matching_rule_runs_after_the_download() {
+    use rdm_core::rules::{Action, Match, Rule};
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let moved = dir.path().join("Sorted");
+    let to = moved.clone();
+    let m = manager(dir.path(), move |s| {
+        s.rules = vec![Rule { id: 1, enabled: true, when: Match::Ext("bin".into()), action: Action::MoveTo(to.clone()), keep_original: false }];
+    })
+    .await;
+    let mut rx = m.subscribe();
+    let id = m.add(s.url("/file/3000")).await;
+    let item = wait_item(&mut rx, |i| i.id == id && i.dest.as_ref().is_some_and(|d| d.starts_with(&moved))).await;
+    assert_eq!(item.status, Status::Done);
+    assert_eq!(std::fs::read(item.dest.unwrap()).unwrap(), data(3000));
+    assert_eq!(m.snapshot().await.items[0].dest.as_ref().map(|d| d.starts_with(&moved)), Some(true), "saved");
+}

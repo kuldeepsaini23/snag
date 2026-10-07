@@ -110,6 +110,16 @@ struct Tools {
 }
 
 impl Tools {
+    /// ffmpeg for conversions: Snag's own copy in `bin`, else one on the PATH.
+    fn ffmpeg(&self) -> Option<PathBuf> {
+        let own = self.bin_dir.join("ffmpeg.exe");
+        if own.exists() {
+            return Some(own);
+        }
+        let path = std::env::var_os("PATH")?;
+        std::env::split_paths(&path).map(|d| d.join("ffmpeg.exe")).find(|p| p.exists())
+    }
+
     /// Runs detached: a caller that gives up (pause) never interrupts a download or update of the exe.
     async fn ytdlp(&self) -> Result<PathBuf, String> {
         let this = self.clone();
@@ -496,6 +506,8 @@ enum Msg {
     Retry(ItemId, u64),
     /// VirusTotal answered about a finished program.
     Safety(ItemId, crate::safety::Safety),
+    /// An after-download rule finished (the item now points at its result).
+    RuleDone(ItemId, Result<crate::rules::Applied, String>),
 }
 
 /// Automatic retries after a temporary failure: waits of base, 3×base, 9×base.
@@ -1216,6 +1228,29 @@ impl Actor {
                 }
                 self.watches_changed();
             }
+            Msg::RuleDone(id, outcome) => {
+                let Some(item) = self.state.item_mut(id) else { return };
+                let name = item.name.clone();
+                let text = match outcome {
+                    Ok(applied) => {
+                        if let Some(file) = applied.result.file_name() {
+                            item.name = file.to_string_lossy().to_string();
+                        }
+                        if let Some(size) = std::fs::metadata(&applied.result).ok().filter(|m| m.is_file()).map(|m| m.len()) {
+                            item.downloaded = size;
+                            item.total = Some(size);
+                            // An MP4 turned MP3 is music now.
+                            item.category = Category::from_name(&item.name);
+                        }
+                        item.dest = Some(applied.result);
+                        self.dirty = true;
+                        self.updated(id);
+                        format!("{}: {name}", applied.note)
+                    }
+                    Err(e) => format!("A rule couldn't finish for {name} (the download is kept): {e}"),
+                };
+                self.emit(Event::Notice(text));
+            }
             Msg::Safety(id, verdict) => {
                 // Only while the download is still in the list.
                 if self.state.item(id).is_some() {
@@ -1248,6 +1283,8 @@ impl Actor {
                 let auto_retry = self.state.settings.auto_retry;
                 let vt_key = self.state.settings.virustotal_key.clone();
                 let safety_tx = self.msg_tx.clone();
+                let rules = self.state.settings.rules.clone();
+                let ffmpeg = self.tools.ffmpeg();
                 let used = self.retries.get(&id).copied().unwrap_or(0);
                 if let Some(item) = self.state.item_mut(id) {
                     item.speed_bps = 0;
@@ -1294,6 +1331,15 @@ impl Actor {
                     if item.status == Status::Done {
                         self.retries.remove(&id);
                         // Programs get a safety check (hash only), if the user set a VirusTotal key.
+                        // A matching after-download rule (files only, not galleries or torrent folders).
+                        if let Some(path) = item.dest.clone().filter(|p| p.is_file())
+                            && let Some(rule) = crate::rules::matching(&rules, &item.url, &path, item.category).cloned()
+                        {
+                            let rule_tx = safety_tx.clone();
+                            tokio::task::spawn_blocking(move || {
+                                let _ = rule_tx.send(Msg::RuleDone(id, crate::rules::apply(&rule, &path, ffmpeg.as_deref())));
+                            });
+                        }
                         if let Some(path) = item.dest.clone().filter(|p| !vt_key.trim().is_empty() && crate::safety::worth_checking(p)) {
                             tokio::spawn(async move {
                                 if let Some(verdict) = crate::safety::check(&path, &vt_key).await {

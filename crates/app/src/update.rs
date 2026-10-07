@@ -105,6 +105,16 @@ pub enum Message {
     RemoveWatch(u32),
     DraftSubtitleLangs(String),
     DraftVirusTotalKey(String),
+    /// The after-download rule editor.
+    RuleWhen(crate::rules_form::When),
+    RuleValue(String),
+    RuleCategory(crate::rules_form::CategoryChoice),
+    RuleAction(crate::rules_form::Do),
+    RuleFolder(String),
+    RuleKeep(bool),
+    RuleAdd,
+    RuleToggle(u32),
+    RuleDelete(u32),
     RefreshTyped(ItemId, String),
     /// Use the typed link for this item.
     RefreshUrl(ItemId),
@@ -504,6 +514,26 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::RemoveWatch(id) => return fire(&app.manager, move |m| async move { m.remove_watch(id).await }),
         Message::DraftSubtitleLangs(v) => model.draft.subtitle_langs = v,
         Message::DraftVirusTotalKey(v) => model.draft.virustotal_key = v,
+        Message::RuleWhen(v) => model.rule_form.when = v,
+        Message::RuleValue(v) => model.rule_form.value = v,
+        Message::RuleCategory(v) => model.rule_form.category = v,
+        Message::RuleAction(v) => model.rule_form.action = v,
+        Message::RuleFolder(v) => model.rule_form.folder = v,
+        Message::RuleKeep(v) => model.rule_form.keep_original = v,
+        Message::RuleAdd => match model.rule_form.build(crate::rules_form::next_id(&model.draft.rules)) {
+            Ok(rule) => {
+                model.draft.rules.push(rule);
+                model.rule_form = Default::default();
+                model.rule_error = None;
+            }
+            Err(why) => model.rule_error = Some(why),
+        },
+        Message::RuleToggle(id) => {
+            if let Some(rule) = model.draft.rules.iter_mut().find(|r| r.id == id) {
+                rule.enabled = !rule.enabled;
+            }
+        }
+        Message::RuleDelete(id) => model.draft.rules.retain(|r| r.id != id),
         Message::RefreshTyped(id, text) => model.refresh_typed(id, text),
         Message::RefreshUrl(id) => {
             if let Some(url) = model.take_refresh(id) {
