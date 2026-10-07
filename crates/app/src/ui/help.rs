@@ -39,7 +39,7 @@ pub fn sheet<'a>(m: &'a Model, info: &'a Info, bug_text: &'a text_editor::Conten
             };
             frame(&title, subtitle, whats_new(since.as_deref(), c), Length::Fixed(540.0), c)
         }
-        Info::BugReport => frame("Report a bug", "Saved as a text file on your Desktop and copied. Nothing is sent anywhere", bug_report(m, bug_text, c), Length::Shrink, c),
+        Info::BugReport => frame("Report a bug", "Opens a GitHub issue for you to check and send, or just saves a text file. Nothing is sent without you", bug_report(m, bug_text, c), Length::Shrink, c),
     }
 }
 
@@ -181,10 +181,21 @@ fn bug_report<'a>(m: &'a Model, bug_text: &'a text_editor::Content, c: Colors) -
         .padding(iced::Padding { left: 26.0, ..Default::default() }),
     ]
     .spacing(6);
-    let save = button(text(if m.bug_saving { "Saving…" } else { "Save report" }).size(12.5).font(style::SEMIBOLD))
+    let ready = (!m.bug_saving).then_some(());
+    let save = button(text("Save to Desktop").size(12.5).font(style::SEMIBOLD))
+        .style(style::secondary(c))
+        .padding([8, 14])
+        .on_press_maybe(ready.map(|_| Message::SaveBugReport(false)));
+    let github = button(text(if m.bug_saving { "Saving…" } else { "Report on GitHub" }).size(12.5).font(style::SEMIBOLD))
         .style(style::accent(c))
         .padding([8, 16])
-        .on_press_maybe((!m.bug_saving).then_some(Message::SaveBugReport));
-    let buttons = row![Space::new().width(Fill), button(text("Cancel").size(12.5).font(style::SEMIBOLD)).style(style::secondary(c)).padding([8, 14]).on_press(Message::CloseInfo), save].spacing(8);
+        .on_press_maybe(ready.map(|_| Message::SaveBugReport(true)));
+    let buttons = row![
+        button(text("Cancel").size(12.5).font(style::SEMIBOLD)).style(style::secondary(c)).padding([8, 14]).on_press(Message::CloseInfo),
+        Space::new().width(Fill),
+        save,
+        github
+    ]
+    .spacing(8);
     column![text("What happened?").size(13).font(style::MEDIUM), editor, Space::new().height(4), diagnostics, Space::new().height(6), buttons].spacing(8).into()
 }

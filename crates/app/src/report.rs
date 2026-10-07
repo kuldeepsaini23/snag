@@ -21,6 +21,40 @@ pub struct Diagnostics<'a> {
     pub home: Option<&'a str>,
 }
 
+/// Where bug reports are filed.
+const ISSUES: &str = "https://github.com/kuldeepsaini23/snag/issues/new";
+/// Longer links than this fail on GitHub (or in the browser); the report is pasted instead.
+const ISSUE_URL_MAX: usize = 7000;
+
+/// A new GitHub issue filled in with the report: the first line of `what` as its title. A report
+/// too long for a link stays on the clipboard and the issue says to paste it.
+pub fn issue_url(what: &str, report: &str) -> String {
+    use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+    let enc = |t: &str| utf8_percent_encode(t, NON_ALPHANUMERIC).to_string();
+    let first = what.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("Bug report");
+    let title: String = first.chars().take(80).collect();
+    let link = |body: &str| format!("{ISSUES}?labels=bug&title={}&body={}", enc(&title), enc(body));
+    let full = link(report);
+    if full.len() <= ISSUE_URL_MAX {
+        return full;
+    }
+    let note = "
+
+The full report from Snag is copied: press Ctrl+V here to paste it.";
+    // As much of what the user typed as fits (non-English text takes up to 9 characters each).
+    let mut budget = ISSUE_URL_MAX - link(note).len();
+    let mut short = String::new();
+    for ch in what.trim().chars() {
+        let cost = enc(ch.encode_utf8(&mut [0; 4])).len();
+        if cost > budget {
+            break;
+        }
+        budget -= cost;
+        short.push(ch);
+    }
+    link(&(short + note))
+}
+
 /// `Snag-bug-report-2026-10-07.txt`
 pub fn file_name(date: chrono::NaiveDate) -> String {
     format!("Snag-bug-report-{}.txt", date.format("%Y-%m-%d"))
@@ -217,6 +251,30 @@ mod tests {
             home: Some(r"C:\Users\alice"),
         };
         build(what, "2026-10-07 14:02", with.then_some(&d))
+    }
+
+    #[test]
+    fn a_github_issue_is_filled_in_with_the_report() {
+        let url = issue_url("Video stuck at 99%
+It was a YouTube live stream.", "REPORT & more
+line 2");
+        assert!(url.starts_with("https://github.com/kuldeepsaini23/snag/issues/new?"), "{url}");
+        assert!(url.contains("title=Video%20stuck%20at%2099%25"), "first line as the title: {url}");
+        assert!(url.contains("body=REPORT%20%26%20more%0Aline%202"), "the whole report, encoded: {url}");
+        assert!(url.contains("labels=bug"));
+        assert_eq!(issue_url("", "r"), issue_url("   ", "r"), "no text: a plain title");
+        assert!(issue_url("", "r").contains("title=Bug%20report"));
+    }
+
+    #[test]
+    fn a_long_report_is_pasted_instead_of_sent_in_the_link() {
+        let report = "x".repeat(20_000);
+        let url = issue_url(&"a very long first line ".repeat(20), &report);
+        assert!(url.len() <= ISSUE_URL_MAX, "GitHub refuses very long links: {}", url.len());
+        assert!(!url.contains("xxxxxxxxxx"), "the report itself stays on the clipboard");
+        assert!(url.contains("Ctrl%2BV"), "says how to paste it");
+        let hindi = issue_url(&"डाउनलोड रुक गया ".repeat(400), &report);
+        assert!(hindi.len() <= ISSUE_URL_MAX && hindi.contains("Ctrl%2BV"), "any language fits: {}", hindi.len());
     }
 
     #[test]

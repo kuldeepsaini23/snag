@@ -244,9 +244,10 @@ pub enum Message {
     CloseInfo,
     BugEdit(text_editor::Action),
     BugDiagnostics(bool),
-    SaveBugReport,
+    /// Save the report; `true` also opens a GitHub issue filled in with it.
+    SaveBugReport(bool),
     /// The report's file and text, or why it couldn't be written.
-    BugReportSaved(Result<(PathBuf, String), String>),
+    BugReportSaved(Result<(PathBuf, String), String>, bool),
     DismissNotice,
     /// Debug builds: render the window to a file (see `snap.rs`).
     #[cfg(debug_assertions)]
@@ -968,7 +969,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::CloseInfo => model.info = None,
         Message::BugEdit(action) => app.bug_text.perform(action),
         Message::BugDiagnostics(on) => model.bug_diagnostics = on,
-        Message::SaveBugReport => {
+        Message::SaveBugReport(github) => {
             if model.bug_saving {
                 return Task::none();
             }
@@ -978,16 +979,24 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             };
             model.bug_saving = true;
             let (what, include, settings, items) = (app.bug_text.text(), model.bug_diagnostics, model.settings.clone(), model.items.clone());
-            return Task::perform(crate::report::save(what, include, settings, items, app.data_dir.clone(), desktop), Message::BugReportSaved);
+            let save = crate::report::save(what, include, settings, items, app.data_dir.clone(), desktop);
+            return Task::perform(save, move |r| Message::BugReportSaved(r, github));
         }
-        Message::BugReportSaved(result) => {
+        Message::BugReportSaved(result, github) => {
             model.bug_saving = false;
             match result {
                 Ok((file, text)) => {
                     model.info = None;
-                    model.notice = Some("Bug report saved on your Desktop and copied: paste it wherever you report the bug".into());
+                    if github {
+                        // A new browser tab with the issue filled in; the report is also copied.
+                        let url = crate::report::issue_url(&app.bug_text.text(), &text);
+                        let _ = std::process::Command::new("explorer").arg(url).spawn();
+                        model.notice = Some("Opened GitHub in your browser: check the report and press Create. It's also saved on your Desktop".into());
+                    } else {
+                        model.notice = Some("Bug report saved on your Desktop and copied: paste it wherever you report the bug".into());
+                        reveal(&file);
+                    }
                     app.bug_text = text_editor::Content::new();
-                    reveal(&file);
                     return iced::clipboard::write(text);
                 }
                 Err(e) => model.notice = Some(e),

@@ -8,6 +8,7 @@ name = "snag"
 path = "src/main.rs"
 
 [dependencies]
+percent-encoding.workspace = true
 rdm-core = { path = "../core" }
 rdm-media = { path = "../media" }
 rdm-bridge = { path = "../bridge" }
