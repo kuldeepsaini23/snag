@@ -25,6 +25,17 @@ for (const name of ["main", "stats", "permissions"]) {
   }
 }
 
+// Browser extension screenshots from the store listing (1280x800).
+for (const name of ["1-download-menu", "2-popup"]) {
+  const src = path.join(repo, "docs", "store", "screenshots", `${name}.png`);
+  for (const width of [1280, 720]) {
+    await sharp(src)
+      .resize({ width, withoutEnlargement: true })
+      .webp({ quality: 82, effort: 6 })
+      .toFile(path.join(out, `ext-${name.slice(2)}-${width}.webp`));
+  }
+}
+
 // Logo: the mark used in the header, plus the icons Next.js picks up from src/app.
 await sharp(logo).resize(96).png().toFile(path.join(out, "logo-96.png"));
 await sharp(logo).resize(256).png().toFile(path.join(app, "icon.png"));
