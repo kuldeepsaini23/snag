@@ -1371,6 +1371,7 @@ mod tests {
             last_check: 0,
             seen: vec![],
             primed: false,
+            last_len: 0,
         };
         m.apply(Event::Watches(vec![w.clone()]));
         assert_eq!(m.watches, vec![w.clone()]);

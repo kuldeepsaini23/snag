@@ -4,8 +4,10 @@ use crate::model::QueueId;
 use rdm_media::{Entry, MediaFormat};
 use serde::{Deserialize, Serialize};
 
-/// Links remembered per watch (oldest forgotten first): plenty for any channel page.
-const SEEN_MAX: usize = 500;
+/// Only the newest uploads count (listings come newest first); older ones are never downloaded.
+pub const WINDOW: usize = 50;
+/// New downloads per check at most (a burst of uploads doesn't fill the disk).
+pub const MAX_NEW: usize = 20;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Watch {
@@ -23,6 +25,9 @@ pub struct Watch {
     pub seen: Vec<String>,
     /// The first check happened (it only records what's there).
     pub primed: bool,
+    /// How many entries the last listing had (a playlist that grew at the end has new ones there).
+    #[serde(default)]
+    pub last_len: usize,
 }
 
 impl Watch {
@@ -30,15 +35,23 @@ impl Watch {
         self.last_check == 0 || now - self.last_check >= self.every_hours.max(1) as i64 * 3600
     }
 
-    /// Takes a fresh listing: returns the entries to download now and remembers everything.
+    /// Takes a fresh listing: returns the entries to download now — never more than `MAX_NEW`,
+    /// only from the `WINDOW` entries at either end — and remembers those ends.
     pub fn take_new(&mut self, entries: &[Entry], now: i64) -> Vec<Entry> {
         self.last_check = now;
-        let fresh: Vec<&Entry> = entries.iter().filter(|e| !self.seen.contains(&e.url)).collect();
-        self.seen.extend(fresh.iter().map(|e| e.url.clone()));
-        if self.seen.len() > SEEN_MAX {
-            let extra = self.seen.len() - SEEN_MAX;
-            self.seen.drain(..extra);
+        // Channels list newest first: new uploads are at the top. A playlist that adds at the
+        // end shows nothing new at the top but grows: then its last entries are the new ones.
+        // The middle (the back catalogue) never counts.
+        let grew = entries.len().saturating_sub(self.last_len);
+        let head = &entries[..entries.len().min(WINDOW)];
+        let mut window: Vec<&Entry> = head.iter().collect();
+        if self.primed && grew > 0 && head.iter().all(|e| self.seen.contains(&e.url)) {
+            window.extend(&entries[entries.len() - grew.min(WINDOW)..]);
         }
+        self.last_len = entries.len();
+        let fresh: Vec<&Entry> = window.iter().copied().filter(|e| !self.seen.contains(&e.url)).collect();
+        // The top of the list (and what was just taken from the end) is what can't be new again.
+        self.seen = window.iter().map(|e| e.url.clone()).collect();
         if !self.primed {
             // Subscribing doesn't download the whole back catalogue.
             self.primed = true;
@@ -48,7 +61,7 @@ impl Watch {
             (Some(max), Some(secs)) => secs <= max as f64 * 60.0,
             _ => true,
         };
-        fresh.into_iter().filter(|e| short_enough(e)).cloned().collect()
+        fresh.into_iter().filter(|e| short_enough(e)).take(MAX_NEW).cloned().collect()
     }
 }
 
@@ -72,7 +85,27 @@ mod tests {
             last_check: 0,
             seen: Vec::new(),
             primed: false,
+            last_len: 0,
         }
+    }
+
+    #[test]
+    fn a_big_channel_never_floods_the_list() {
+        // Newest first, like yt-dlp lists a channel: 3000 uploads.
+        let listing = |newest: u32| (0..3000).map(|k| entry(newest - k, None)).collect::<Vec<_>>();
+        let mut w = watch();
+        assert!(w.take_new(&listing(3000), 1).is_empty(), "subscribing downloads nothing");
+        // Five new uploads since: exactly those five, not the back catalogue.
+        let new: Vec<String> = w.take_new(&listing(3005), 2).iter().map(|e| e.url.clone()).collect();
+        assert_eq!(new, (3001..=3005).rev().map(|n| format!("https://y/{n}")).collect::<Vec<_>>());
+        // A burst of 30 new uploads: the newest 20 at most per check.
+        assert_eq!(w.take_new(&listing(3035), 3).len(), MAX_NEW);
+        assert!(w.seen.len() <= WINDOW, "remembers only the top of the list");
+        // A playlist that adds at the end (oldest first) is caught too.
+        let mut p = watch();
+        let playlist = |count: u32| (1..=count).map(|n| entry(n, None)).collect::<Vec<_>>();
+        assert!(p.take_new(&playlist(200), 1).is_empty());
+        assert_eq!(p.take_new(&playlist(202), 2).len(), 2);
     }
 
     #[test]
@@ -109,14 +142,5 @@ mod tests {
         w.last_check = 1000;
         assert!(!w.due(1000 + 5 * 3600));
         assert!(w.due(1000 + 6 * 3600));
-    }
-
-    #[test]
-    fn seen_list_is_bounded() {
-        let mut w = watch();
-        let many: Vec<Entry> = (0..700).map(|n| entry(n, None)).collect();
-        w.take_new(&many, 1);
-        assert_eq!(w.seen.len(), SEEN_MAX);
-        assert_eq!(w.seen.last().map(String::as_str), Some("https://y/699"), "the newest are kept");
     }
 }

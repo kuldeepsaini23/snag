@@ -337,7 +337,7 @@ impl Manager {
     /// Watches a channel or playlist: new uploads are downloaded in `format`, every
     /// `every_hours`. The first check only records what's already there.
     pub async fn add_watch(&self, url: String, name: String, format: MediaFormat, max_minutes: Option<u32>, every_hours: u32) {
-        let watch = crate::watch::Watch { id: 0, url, name, format, max_minutes, every_hours, queue: 0, last_check: 0, seen: Vec::new(), primed: false };
+        let watch = crate::watch::Watch { id: 0, url, name, format, max_minutes, every_hours, queue: 0, last_check: 0, seen: Vec::new(), primed: false, last_len: 0 };
         let _ = self.tx.send(Cmd::AddWatch(watch));
     }
 
