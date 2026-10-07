@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { ScrollRail } from "@/components/scroll-rail";
 import { ISSUES_URL, REPO_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -18,46 +19,70 @@ export const metadata: Metadata = {
   },
 };
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
+  const index = sections.findIndex((s) => s.id === id) + 1;
   return (
-    <section className="mt-14">
-      <h2 className="heading text-2xl md:text-3xl">{title}</h2>
-      <div className="mt-4 grid gap-4 leading-relaxed text-muted [&_strong]:font-semibold [&_strong]:text-text">
-        {children}
+    <section id={id} className="border-t border-line">
+      <div className="flex min-h-10 items-center border-b border-line px-5 py-3 sm:px-8">
+        <p className="label text-muted">{String(index).padStart(2, "0")} / {title}</p>
+      </div>
+      <div className="px-5 pt-10 pb-14 sm:px-8" data-reveal>
+        <h2 className="display text-2xl md:text-[2rem]">{title}</h2>
+        <div className="mt-6 grid max-w-[68ch] gap-4 leading-relaxed text-muted [&_strong]:font-semibold [&_strong]:text-text">
+          {children}
+        </div>
       </div>
     </section>
   );
 }
 
+const sections = [
+  { id: "policy", label: "Policy" },
+  { id: "extension", label: "Extension" },
+  { id: "app", label: "The app" },
+  { id: "never", label: "Never" },
+  { id: "website", label: "This website" },
+  { id: "contact", label: "Contact" },
+];
+
 function List({ children }: { children: React.ReactNode }) {
-  return <ul className="grid list-disc gap-2 pl-5 marker:text-accent">{children}</ul>;
+  return <ul className="grid list-disc gap-2 pl-5 marker:text-faint">{children}</ul>;
 }
 
 function Code({ children }: { children: React.ReactNode }) {
-  return <code className="rounded bg-raised px-1.5 py-0.5 text-[0.9em] text-text">{children}</code>;
+  return <code className="bg-raised px-1.5 py-0.5 font-mono text-[0.85em] text-text">{children}</code>;
 }
 
 const link = "text-accent underline decoration-accent/40 underline-offset-4 hover:decoration-accent";
 
 export default function PrivacyPage() {
   return (
-    <article className="mx-auto max-w-3xl px-4 pt-16 pb-28 sm:px-6 md:pt-24">
-      <h1 className="display text-5xl md:text-7xl">Privacy policy</h1>
-      <p className="mt-6 text-muted">
-        For the Snag desktop app and the Snag browser extension for Chrome, Edge and Firefox.
-        <br />
-        Effective 7 October 2026.
-      </p>
+    <article>
+      <header id="policy">
+        <div className="flex min-h-10 items-center justify-between gap-4 border-b border-line px-5 py-3 sm:px-8">
+          <p className="label text-muted">Privacy policy</p>
+          <p className="label text-faint">Effective 7 October 2026</p>
+        </div>
+        <div className="px-5 pt-14 pb-14 sm:px-8 md:pt-20">
+          <h1 className="display text-[clamp(2.8rem,9vw,5.5rem)] animate-intro">
+            Privacy <em>policy.</em>
+          </h1>
+          <p className="mt-6 max-w-[60ch] text-lg leading-relaxed text-muted">
+            For the Snag desktop app and the Snag browser extension for Chrome, Edge and Firefox. Effective 7 October
+            2026.
+          </p>
+        </div>
+        <div className="border-t border-line bg-sunk px-5 py-8 sm:px-8">
+          <p className="label text-accent">In short</p>
+          <p className="mt-4 max-w-[68ch] text-lg leading-relaxed">
+            Snag has no account, no analytics, no ads and no server of its own. The extension sends what it reads only
+            to the Snag app on the same computer. Nothing is sent to the developer or to any third party, and nothing is
+            sold.
+          </p>
+        </div>
+      </header>
 
-      <div className="mt-10 rounded-[20px] border border-line bg-surface p-6 leading-relaxed">
-        <p className="font-semibold">In short</p>
-        <p className="mt-2 text-muted">
-          Snag has no account, no analytics, no ads and no server of its own. The extension sends what it reads only to
-          the Snag app on the same computer. Nothing is sent to the developer or to any third party, and nothing is sold.
-        </p>
-      </div>
-
-      <Section title="The browser extension">
+      <Section id="extension" title="The browser extension">
         <p>The extension exists to hand downloads to the Snag app on your computer. To do that, it reads:</p>
         <List>
           <li>
@@ -109,7 +134,7 @@ export default function PrivacyPage() {
         </List>
       </Section>
 
-      <Section title="The Snag app">
+      <Section id="app" title="The Snag app">
         <p>
           Snag keeps your download list, history and settings in <Code>%APPDATA%\Snag</Code> on your PC. Downloaded files
           go to the folders you choose. None of it is uploaded anywhere.
@@ -143,7 +168,7 @@ export default function PrivacyPage() {
         </p>
       </Section>
 
-      <Section title="What Snag never does">
+      <Section id="never" title="What Snag never does">
         <List>
           <li>No accounts, sign-ins or email addresses.</li>
           <li>No analytics, telemetry, tracking or advertising.</li>
@@ -158,14 +183,14 @@ export default function PrivacyPage() {
         </p>
       </Section>
 
-      <Section title="This website">
+      <Section id="website" title="This website">
         <p>
           snag.kuldeepsaini.dev is a static site with no cookies, analytics or trackers. The company that hosts it may keep
           standard server logs, such as IP addresses, for security.
         </p>
       </Section>
 
-      <Section title="Changes and contact">
+      <Section id="contact" title="Changes and contact">
         <p>
           If this policy changes, the new version will be posted here with a new effective date, and the change will be
           visible in the project’s history on GitHub.
@@ -178,6 +203,7 @@ export default function PrivacyPage() {
           .
         </p>
       </Section>
+      <ScrollRail sections={sections} />
     </article>
   );
 }

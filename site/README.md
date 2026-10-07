@@ -1,6 +1,6 @@
 # snag.kuldeepsaini.dev
 
-The website for Snag: the landing page (`/`) and the privacy policy for the app and the browser extension (`/privacy/`). Next.js App Router with a static export, Tailwind CSS, Magic UI components (Border Beam, Animated Beam, Marquee) and `motion`.
+The website for Snag: the landing page (`/`) and the privacy policy for the app and the browser extension (`/privacy/`). Next.js App Router with a static export, Tailwind CSS, Magic UI components (Animated Beam, Marquee) and `motion`.
 
 ## Run it
 
@@ -21,7 +21,7 @@ bun run build      # writes the whole site to out/
 
 ### Images
 
-The screenshots in `public/images/`, the Open Graph card `public/og.png` and the icons in `src/app/` (`icon.png`, `apple-icon.png`) are made from `../docs/images/*.png` and `../crates/app/assets/logo/` by:
+The screenshots in `public/images/`, the Open Graph card `public/og.png` and the icons in `src/app/` (`icon.png`, `apple-icon.png`) are made from `../docs/images/*.png`, `../docs/store/screenshots/` and `../crates/app/assets/logo/` by:
 
 ```bash
 bun run images
