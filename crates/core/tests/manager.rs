@@ -1068,3 +1068,21 @@ fn base64_of(bytes: &[u8]) -> String {
     }
     out
 }
+
+#[tokio::test]
+async fn at_most_two_pages_are_read_at_once() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let m = manager(dir.path(), |_| {}).await;
+    // Three pages read together (the extension's prefetch on several tabs): the third waits.
+    let reads = (0..3).map(|n| {
+        let m = m.clone();
+        tokio::spawn(async move { m.probe_media(format!("https://videos.test/{n}/slowprobe")).await })
+    });
+    for read in futures_util::future::join_all(reads).await {
+        assert_eq!(read.unwrap().expect("read").title, "Fake clip");
+    }
+    let seen = std::fs::read_dir(dir.path().join("bin").join("seen")).unwrap();
+    let most = seen.map(|f| std::fs::read_to_string(f.unwrap().path()).unwrap().parse::<usize>().unwrap()).max();
+    assert_eq!(most, Some(2), "two yt-dlp reads at a time");
+}

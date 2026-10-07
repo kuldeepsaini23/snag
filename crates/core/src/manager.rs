@@ -79,7 +79,12 @@ pub struct Manager {
     torrents: Arc<Torrents>,
     /// Extensions waiting for the user's answer to "connect?".
     pairs: Arc<Mutex<HashMap<u64, oneshot::Sender<bool>>>>,
+    /// Page reads (`probe_media`) running at once; the rest wait their turn.
+    probes: Arc<tokio::sync::Semaphore>,
 }
+
+/// How many `probe_media` reads (one yt-dlp each) may run at once.
+const PROBES_AT_ONCE: usize = 2;
 
 type Referrers = Arc<Mutex<HashMap<String, String>>>;
 
@@ -236,13 +241,15 @@ impl Manager {
         actor.referrers = referrers.clone();
         actor.torrents = torrents.clone();
         tokio::spawn(actor.run(rx));
-        Manager { tx, events, tools, jar, cookie_dir, referrers, torrents, pairs: Arc::default() }
+        let probes = Arc::new(tokio::sync::Semaphore::new(PROBES_AT_ONCE));
+        Manager { tx, events, tools, jar, cookie_dir, referrers, torrents, pairs: Arc::default(), probes }
     }
 
     /// Reads a video/audio page (title, qualities, playlist entries). Fetches yt-dlp
-    /// on first use.
+    /// on first use. At most two reads run at once (each is a yt-dlp process); others queue.
     pub async fn probe_media(&self, url: String) -> Result<MediaInfo, String> {
         let ytdlp = self.tools.ytdlp().await?;
+        let _turn = self.probes.acquire().await.map_err(|e| e.to_string())?;
         static PROBES: AtomicU64 = AtomicU64::new(0);
         let key = format!("probe-{}", PROBES.fetch_add(1, Ordering::Relaxed));
         let cookies = cookie_file(&self.jar, &self.cookie_dir, &key, &url);
