@@ -8,6 +8,8 @@ mod report;
 #[cfg(debug_assertions)]
 mod snap;
 mod notify;
+mod speed_history;
+mod stats;
 mod state;
 mod tray;
 mod ui;

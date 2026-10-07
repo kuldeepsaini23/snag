@@ -380,6 +380,17 @@ pub struct Model {
     pub thumb_pending: HashSet<String>,
     /// Thumbnails that couldn't be fetched: (failures so far, when to try again).
     pub thumb_failures: HashMap<String, (u32, std::time::Instant)>,
+    /// The last minute of speeds, per item and in total (the sparklines).
+    pub speeds: crate::speed_history::Speeds,
+    /// Each running segmented download's connections (the inspector's segment map).
+    pub segments: HashMap<ItemId, Vec<rdm_engine::segments::Segment>>,
+    /// Downloaded per day, from the manager (the stats screen).
+    pub daily: std::collections::BTreeMap<String, rdm_core::DayTotal>,
+    /// The stats screen shows instead of the list.
+    pub stats_open: bool,
+    pub stats_range: crate::stats::Range,
+    /// Libraries shown as a grid of thumbnails (Videos, Images) instead of rows.
+    pub grid: HashSet<rdm_core::Category>,
     /// "Refresh link": the item and the new link typed for it.
     pub refresh: Option<(ItemId, String)>,
     /// Why the settings sheet couldn't be saved (shown in it with a warning icon).
@@ -459,6 +470,12 @@ impl Default for Model {
             thumbs: HashMap::new(),
             thumb_pending: HashSet::new(),
             thumb_failures: HashMap::new(),
+            speeds: Default::default(),
+            segments: HashMap::new(),
+            daily: Default::default(),
+            stats_open: false,
+            stats_range: Default::default(),
+            grid: HashSet::new(),
             refresh: None,
             settings_error: None,
             watches: Vec::new(),
@@ -484,6 +501,9 @@ impl Model {
         self.items = state.items;
         self.queues = state.queues;
         self.watches = state.watches;
+        self.daily = state.daily;
+        let items = &self.items;
+        self.segments.retain(|id, _| items.iter().any(|i| i.id == *id && i.status == Status::Running));
         // An open settings sheet keeps what's being typed; it is saved on close.
         if self.screen != Screen::Settings {
             self.draft = Draft::from_settings(&state.settings);
@@ -512,12 +532,16 @@ impl Model {
                         self.notes.push(n);
                         self.notes_since.get_or_insert_with(std::time::Instant::now);
                     }
+                    if item.status != Status::Running {
+                        self.segments.remove(&item.id);
+                    }
                     *slot = item;
                 }
                 None => self.items.push(item),
             },
             Event::Removed(id) => {
                 self.items.retain(|i| i.id != id);
+                self.segments.remove(&id);
                 if self.selected == Some(id) {
                     self.selected = None;
                 }
@@ -534,6 +558,11 @@ impl Model {
             Event::Focus | Event::Quit => {}
             Event::Watches(watches) => self.watches = watches,
             Event::PairRequest(id) => self.pair_request = Some(id),
+            Event::Segments(id, segments) => {
+                if self.items.iter().any(|i| i.id == id && i.status == Status::Running) {
+                    self.segments.insert(id, segments);
+                }
+            }
             Event::Queues(queues) => {
                 if let crate::view::Library::Queue(id) = self.library
                     && !queues.iter().any(|q| q.id == id)
@@ -727,6 +756,32 @@ mod tests {
             duration: None,
             retry_at: None,
         }
+    }
+
+    #[test]
+    fn segments_are_kept_only_while_running() {
+        use rdm_engine::segments::Segment;
+        let mut m = Model::default();
+        m.apply(Event::Added(item(1, Status::Running, 0)));
+        m.apply(Event::Added(item(2, Status::Paused, 0)));
+        m.apply(Event::Segments(ItemId(1), vec![Segment::new(0, 10), Segment::new(10, 20)]));
+        m.apply(Event::Segments(ItemId(2), vec![Segment::new(0, 10)]));
+        assert_eq!(m.segments.get(&ItemId(1)).map(Vec::len), Some(2));
+        assert!(!m.segments.contains_key(&ItemId(2)), "a late report for a stopped download is dropped");
+        m.apply(Event::Updated(item(1, Status::Done, 0)));
+        assert!(m.segments.is_empty(), "finished: no map");
+        m.apply(Event::Updated(item(1, Status::Running, 0)));
+        m.apply(Event::Segments(ItemId(1), vec![Segment::new(0, 20)]));
+        m.apply(Event::Removed(ItemId(1)));
+        assert!(m.segments.is_empty(), "removed: forgotten");
+    }
+
+    #[test]
+    fn a_load_brings_the_day_counter() {
+        let mut m = Model::default();
+        let daily = [("2026-10-07".to_string(), rdm_core::DayTotal { bytes: 5, ms: 9 })].into();
+        m.load(AppState { daily, ..AppState::default() });
+        assert_eq!(m.daily["2026-10-07"].bytes, 5);
     }
 
     #[test]
