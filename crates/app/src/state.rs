@@ -158,6 +158,7 @@ pub struct Draft {
     pub rules: Vec<rdm_core::rules::Rule>,
     pub theme: ThemeMode,
     pub translucent: bool,
+    pub use_gpu: bool,
 }
 
 impl Draft {
@@ -183,6 +184,7 @@ impl Draft {
             accent: s.accent.clone(),
             theme: s.theme,
             translucent: s.translucent,
+            use_gpu: s.use_gpu,
         }
     }
 
@@ -221,6 +223,7 @@ impl Draft {
             accent: accent.to_string(),
             theme: self.theme,
             translucent: self.translucent,
+            use_gpu: self.use_gpu,
             ..base.clone()
         })
     }

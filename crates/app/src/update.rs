@@ -174,6 +174,7 @@ pub enum Message {
     DraftAccent(String),
     DraftTheme(ThemeMode),
     DraftTranslucent(bool),
+    DraftGpu(bool),
     /// Windows' app mode now (true = light), while the theme follows it.
     SystemTheme(bool),
     /// Mica (or acrylic) is behind the window now (true), or isn't.
@@ -750,6 +751,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::DraftAccent(v) => model.type_accent(v),
         Message::DraftTheme(mode) => model.draft.theme = mode,
         Message::DraftTranslucent(on) => model.draft.translucent = on,
+        Message::DraftGpu(on) => model.draft.use_gpu = on,
         Message::SystemTheme(light) => model.system_light = light,
         Message::Backdrop(on) => model.backdrop = on,
         Message::ShowTour => {

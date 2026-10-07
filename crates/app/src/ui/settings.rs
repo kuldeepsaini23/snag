@@ -276,6 +276,16 @@ fn appearance(m: &Model, c: Colors) -> Element<'_, Message> {
             vec![
                 line("Theme", "Follow Windows switches with your app mode in Windows settings", container(segments).padding(3).style(style::segmented(c)).into(), c),
                 line("Translucent window", mica, switch(m.draft.translucent, Message::DraftTranslucent, c), c),
+                line(
+                    "Draw with the graphics card",
+                    if m.draft.use_gpu != m.settings.use_gpu {
+                        "Takes effect the next time Snag starts"
+                    } else {
+                        "Off: the processor draws Snag (about 35 MB). On: smoother on very large screens, about 150 MB more"
+                    },
+                    switch(m.draft.use_gpu, Message::DraftGpu, c),
+                    c,
+                ),
             ],
             c,
         ),

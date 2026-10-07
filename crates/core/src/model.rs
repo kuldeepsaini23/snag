@@ -150,6 +150,9 @@ pub struct Settings {
     pub translucent: bool,
     /// The first-run tour was finished or skipped (or this install predates it).
     pub tour_done: bool,
+    /// Draw the window with the graphics card instead of the CPU (more memory; takes effect at
+    /// the next start).
+    pub use_gpu: bool,
 }
 
 /// The window's colours: Settings → Appearance → Theme.
@@ -190,6 +193,7 @@ impl Default for Settings {
             theme: ThemeMode::Dark,
             translucent: false,
             tour_done: false,
+            use_gpu: false,
         }
     }
 }

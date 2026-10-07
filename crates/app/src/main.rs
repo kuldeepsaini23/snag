@@ -7,6 +7,7 @@ mod hsv;
 mod local_thumb;
 mod motion;
 mod queues;
+mod renderer;
 mod report;
 mod rules_form;
 mod sharing;
@@ -25,11 +26,17 @@ mod view;
 use std::path::PathBuf;
 
 fn main() -> iced::Result {
-    // The download manager runs on its own runtime, independent of the UI's.
-    let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
     // %APPDATA%\Snag (an older %APPDATA%\rdm is moved there once).
     let appdata = std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_default();
     let state_path = rdm_core::store::data_dir(&appdata).join("state.json");
+    let saved = rdm_core::store::load(&state_path).settings;
+    // CPU or GPU drawing (see `renderer`), decided before any other thread exists.
+    if let Some(backend) = renderer::backend(std::env::var("ICED_BACKEND").ok().as_deref(), saved.use_gpu) {
+        // SAFETY: still single-threaded here; nothing else reads or writes the environment.
+        unsafe { std::env::set_var("ICED_BACKEND", backend) };
+    }
+    // The download manager runs on its own runtime, independent of the UI's.
+    let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
     // Only one RDM: a second copy would run the same downloads into the same files.
     let data_dir = state_path.parent().map(PathBuf::from).unwrap_or_default();
     // `rdm --quit`: ask the running RDM to pause, save and quit (used by the uninstaller).
@@ -49,7 +56,7 @@ fn main() -> iced::Result {
         return Ok(()); // nothing running
     }
     // A translucent window has to be created see-through (Mica goes behind it once it's open).
-    let translucent = rdm_core::store::load(&state_path).settings.translucent;
+    let translucent = saved.translucent;
     let manager = {
         let _enter = runtime.enter();
         rdm_core::Manager::start(state_path)
