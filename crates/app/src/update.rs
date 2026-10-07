@@ -4,7 +4,7 @@ use crate::state::{Info, MediaTab, Model, Screen, SettingsTab, explorer_select_a
 use crate::view::{Filter, Library};
 use iced::widget::{Id, operation, text_editor};
 use iced::{Subscription, Task, keyboard, window};
-use rdm_core::{AppState, Event, ItemId, Manager, MediaFormat, MediaInfo, QueueId, Status};
+use rdm_core::{AppState, Event, ItemId, Manager, MediaFormat, MediaInfo, QueueId, Status, ThemeMode};
 use std::future::Future;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
@@ -30,6 +30,8 @@ pub struct App {
     pub inspector_item: Option<ItemId>,
     /// Report a bug: "What happened?" as typed (kept if the sheet is closed before saving).
     pub bug_text: text_editor::Content,
+    /// The backdrop last asked of the window: (translucent, light).
+    pub backdrop_asked: Option<(bool, bool)>,
 }
 
 /// Text inputs the app focuses itself.
@@ -170,6 +172,24 @@ pub enum Message {
     DraftQuality(Option<MediaFormat>),
     DraftAsk(bool),
     DraftAccent(String),
+    DraftTheme(ThemeMode),
+    DraftTranslucent(bool),
+    /// Windows' app mode now (true = light), while the theme follows it.
+    SystemTheme(bool),
+    /// Mica (or acrylic) is behind the window now (true), or isn't.
+    Backdrop(bool),
+    // First-run tour
+    /// Settings → General → Show the tour again.
+    ShowTour,
+    TourNext,
+    TourBack,
+    SkipTour,
+    /// The tour's last step: a test link into the link bar.
+    TryLink,
+    // Drag and drop
+    /// Files are dragged over the window (true), or went away without a drop.
+    DropHover(bool),
+    FileDropped(PathBuf),
     /// The accent picker: saturation and value (0 … 1) from the square, hue (degrees) from the strip.
     AccentSv(f32, f32),
     AccentHue(f32),
@@ -225,11 +245,23 @@ pub enum Message {
 
 pub fn boot(manager: Manager, bridge_status: String, data_dir: PathBuf, runtime: tokio::runtime::Handle) -> (App, Task<Message>) {
     let m = manager.clone();
-    let model = Model { bridge_status, ..Model::default() };
+    let model = Model { bridge_status, system_light: crate::appearance::system_light(), ..Model::default() };
     let tray = crate::tray::create();
     crate::notify::register(&data_dir);
     let motion = Motion::new(crate::view::motion_targets(&model), crate::motion::system_reduced_motion());
-    let app = App { model, manager, data_dir, tray, runtime, phone: None, motion, now: Instant::now(), inspector_item: None, bug_text: text_editor::Content::new() };
+    let app = App {
+        model,
+        manager,
+        data_dir,
+        tray,
+        runtime,
+        phone: None,
+        motion,
+        now: Instant::now(),
+        inspector_item: None,
+        bug_text: text_editor::Content::new(),
+        backdrop_asked: None,
+    };
     (app, Task::perform(async move { m.snapshot().await }, Message::Loaded))
 }
 
@@ -252,8 +284,26 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
     sync_phone(app);
     // Items and the picker may now show videos whose thumbnails aren't here yet.
     let thumbs = fetch_thumbs(app);
+    let backdrop = sync_backdrop(app);
     sync_motion(app, animate);
-    Task::batch([task, thumbs])
+    Task::batch([task, thumbs, backdrop])
+}
+
+/// Mica follows the "Translucent window" setting, tinted for the theme drawn (nothing is asked
+/// of the window until it's first switched on).
+fn sync_backdrop(app: &mut App) -> Task<Message> {
+    let wanted = (app.model.settings.translucent, app.model.light());
+    if app.backdrop_asked == Some(wanted) || (app.backdrop_asked.is_none() && !wanted.0) {
+        return Task::none();
+    }
+    app.backdrop_asked = Some(wanted);
+    let (on, light) = wanted;
+    window::latest().and_then(move |id| window::run(id, move |w| crate::appearance::set_backdrop(w, on, light))).map(Message::Backdrop)
+}
+
+/// Saves settings changed outside the settings sheet (the tour, the launch checks).
+fn save_settings(app: &App, settings: rdm_core::Settings) -> Task<Message> {
+    fire(&app.manager, move |m| async move { m.update_settings(settings).await })
 }
 
 /// Points the animations at what the model shows now; the view reads them at `app.now`.
@@ -454,9 +504,12 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::Loaded(state) => {
             model.load(state);
-            // After an update, "What's new" shows once; the version seen is saved.
-            if let Some(settings) = model.check_version(crate::changelog::VERSION) {
-                return fire(&app.manager, move |m| async move { m.update_settings(settings).await });
+            // A fresh install starts the tour (decided before the version is noted: a version
+            // seen means Snag ran before). After an update, "What's new" shows once.
+            let tour = model.check_tour();
+            if model.check_version(crate::changelog::VERSION).is_some() || tour.is_some() {
+                let settings = model.settings.clone();
+                return save_settings(app, settings);
             }
         }
         Message::Lagged => {
@@ -626,6 +679,8 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
                 model.keep_downloading();
             } else if model.info.is_some() {
                 model.info = None;
+            } else if model.tour.is_some() {
+                return update(app, Message::SkipTour);
             } else if model.help_open {
                 model.help_open = false;
             } else if model.speed_open {
@@ -693,6 +748,48 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::DraftQuality(q) => model.draft.preferred_quality = q,
         Message::DraftAsk(v) => model.draft.ask_quality = v,
         Message::DraftAccent(v) => model.type_accent(v),
+        Message::DraftTheme(mode) => model.draft.theme = mode,
+        Message::DraftTranslucent(on) => model.draft.translucent = on,
+        Message::SystemTheme(light) => model.system_light = light,
+        Message::Backdrop(on) => model.backdrop = on,
+        Message::ShowTour => {
+            // Closing the sheet saves it first; it stays open if something in it is invalid.
+            let close = update(app, Message::CloseSettings);
+            if app.model.screen != Screen::Settings {
+                app.model.start_tour();
+            }
+            return close;
+        }
+        Message::TourNext => {
+            if let Some(settings) = model.tour_next() {
+                return save_settings(app, settings);
+            }
+        }
+        Message::TourBack => model.tour_back(),
+        Message::SkipTour => {
+            let settings = model.skip_tour();
+            return save_settings(app, settings);
+        }
+        Message::TryLink => {
+            if let Some(settings) = model.try_link() {
+                return save_settings(app, settings);
+            }
+        }
+        Message::DropHover(on) => model.drop_hover = on,
+        Message::FileDropped(path) => {
+            model.drop_hover = false;
+            match crate::dropped::read(&path) {
+                Ok(links) => {
+                    let n = links.len();
+                    let tasks: Vec<Task<Message>> = links.into_iter().map(|link| update(app, Message::AddLink(link))).collect();
+                    if n > 1 {
+                        app.model.notice = Some(format!("Adding {n} links from {}", path.file_name().unwrap_or_default().to_string_lossy()));
+                    }
+                    return Task::batch(tasks);
+                }
+                Err(e) => model.notice = Some(e),
+            }
+        }
         Message::AccentSv(s, v) => model.drag_accent_sv(s, v),
         Message::AccentHue(h) => model.drag_accent_hue(h),
         Message::CopyToken => {
@@ -916,6 +1013,16 @@ pub fn subscription(app: &App) -> Subscription<Message> {
         subs.push(iced::event::listen_with(|event, _, _| {
             matches!(event, iced::Event::Mouse(iced::mouse::Event::ButtonReleased(_))).then_some(Message::CheckSearchFocus)
         }));
+    }
+    // Dropped files (lists of links, torrents, shortcuts), and the hint while they're dragged over.
+    subs.push(iced::event::listen_with(|event, _, _| match event {
+        iced::Event::Window(window::Event::FileHovered(_)) => Some(Message::DropHover(true)),
+        iced::Event::Window(window::Event::FilesHoveredLeft) => Some(Message::DropHover(false)),
+        iced::Event::Window(window::Event::FileDropped(path)) => Some(Message::FileDropped(path)),
+        _ => None,
+    }));
+    if app.model.theme_mode() == ThemeMode::System {
+        subs.push(crate::appearance::system_theme().map(Message::SystemTheme));
     }
     #[cfg(debug_assertions)]
     subs.push(crate::snap::subscription());

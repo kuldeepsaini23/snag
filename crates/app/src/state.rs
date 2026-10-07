@@ -1,7 +1,7 @@
 use crate::hsv::Hsv;
 use crate::queues::{QueueDraft, drafts_to_queues};
 use crate::view::{Filter, Library};
-use rdm_core::{AppState, Event, Item, ItemId, MediaFormat, MediaInfo, Queue, QueueId, Settings, Status};
+use rdm_core::{AppState, Event, Item, ItemId, MediaFormat, MediaInfo, Queue, QueueId, Settings, Status, ThemeMode};
 use rdm_media::QualityOption;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -156,6 +156,8 @@ pub struct Draft {
     pub virustotal_key: String,
     /// After-download rules (saved with the rest when Settings closes).
     pub rules: Vec<rdm_core::rules::Rule>,
+    pub theme: ThemeMode,
+    pub translucent: bool,
 }
 
 impl Draft {
@@ -179,6 +181,8 @@ impl Draft {
             virustotal_key: s.virustotal_key.clone(),
             rules: s.rules.clone(),
             accent: s.accent.clone(),
+            theme: s.theme,
+            translucent: s.translucent,
         }
     }
 
@@ -215,6 +219,8 @@ impl Draft {
             virustotal_key: self.virustotal_key.trim().to_string(),
             rules: self.rules.clone(),
             accent: accent.to_string(),
+            theme: self.theme,
+            translucent: self.translucent,
             ..base.clone()
         })
     }
@@ -437,6 +443,16 @@ pub struct Model {
     pub bug_saving: bool,
     /// "What's new" was looked at for this launch (once, after the first full load).
     pub version_checked: bool,
+    /// Windows' app mode is light (read from the registry; followed when the theme is "Follow Windows").
+    pub system_light: bool,
+    /// Mica (or acrylic) is behind the window: the translucent tokens can be drawn.
+    pub backdrop: bool,
+    /// The first-run tour's step, while it runs (see `tour.rs`).
+    pub tour: Option<crate::tour::Step>,
+    /// Whether to start the tour was decided for this launch.
+    pub tour_checked: bool,
+    /// Files are dragged over the window.
+    pub drop_hover: bool,
 }
 
 /// The sheets of the "?" menu.
@@ -510,6 +526,11 @@ impl Default for Model {
             bug_diagnostics: true,
             bug_saving: false,
             version_checked: false,
+            system_light: false,
+            backdrop: false,
+            tour: None,
+            tour_checked: false,
+            drop_hover: false,
         }
     }
 }
@@ -525,7 +546,7 @@ impl Model {
         let items = &self.items;
         self.segments.retain(|id, _| items.iter().any(|i| i.id == *id && i.status == Status::Running));
         // An open settings sheet keeps what's being typed; it is saved on close.
-        if self.screen != Screen::Settings {
+        if !self.editing() {
             self.draft = Draft::from_settings(&state.settings);
         }
         self.settings = state.settings;
@@ -597,7 +618,7 @@ impl Model {
                 self.queues = queues;
             }
             Event::Settings(s) => {
-                if self.screen != Screen::Settings {
+                if !self.editing() {
                     self.draft = Draft::from_settings(&s);
                 }
                 self.settings = s;
@@ -640,10 +661,34 @@ impl Model {
         self.speed_preview.unwrap_or(self.settings.speed_limit_bps)
     }
 
+    /// The settings sheet or the tour's sheet is up: the draft is being edited (and previewed).
+    pub fn editing(&self) -> bool {
+        self.screen == Screen::Settings || self.tour_sheet()
+    }
+
     /// The accent to draw with: the typed one while Settings is open and it's valid, else the saved one.
     pub fn accent_hex(&self) -> &str {
         let draft = self.draft.accent.trim();
-        if self.screen == Screen::Settings && crate::ui::theme::parse_hex(draft).is_some() { draft } else { &self.settings.accent }
+        if self.editing() && crate::ui::theme::parse_hex(draft).is_some() { draft } else { &self.settings.accent }
+    }
+
+    /// The theme to draw with: the picked one while Settings is open (a preview), else the saved one.
+    pub fn theme_mode(&self) -> ThemeMode {
+        if self.editing() { self.draft.theme } else { self.settings.theme }
+    }
+
+    /// Draw the light token set.
+    pub fn light(&self) -> bool {
+        match self.theme_mode() {
+            ThemeMode::Dark => false,
+            ThemeMode::Light => true,
+            ThemeMode::System => self.system_light,
+        }
+    }
+
+    /// Draw see-through panels: switched on, and Mica made it behind the window.
+    pub fn translucent(&self) -> bool {
+        self.settings.translucent && self.backdrop
     }
 
     /// A clipboard read: a new link becomes a toast (the first read only records what's there).
@@ -1094,6 +1139,37 @@ mod tests {
         assert_eq!((m.accent_hsv.h, m.accent_hsv.s), (120.0, 0.5));
         let (saved, _) = m.close_settings().expect("valid");
         assert_eq!(saved.accent, "#000000", "closing saves what the picker shows");
+    }
+
+    #[test]
+    fn light_follows_the_theme_setting() {
+        let mut m = Model::default();
+        assert!(!m.light(), "dark by default");
+        m.settings.theme = ThemeMode::Light;
+        assert!(m.light());
+        m.settings.theme = ThemeMode::System;
+        assert!(!m.light(), "Windows in dark mode");
+        m.system_light = true;
+        assert!(m.light(), "Windows in light mode");
+        // The sheet previews what's picked, like the accent; closing saves it.
+        m.open_settings(SettingsTab::Appearance);
+        m.draft.theme = ThemeMode::Dark;
+        assert!(!m.light());
+        m.draft.translucent = true;
+        let (saved, _) = m.close_settings().expect("valid");
+        assert_eq!((saved.theme, saved.translucent), (ThemeMode::Dark, true));
+        assert!(!m.light());
+    }
+
+    #[test]
+    fn translucent_only_once_the_backdrop_is_on() {
+        let mut m = Model::default();
+        m.settings.translucent = true;
+        assert!(!m.translucent(), "Mica isn't behind the window yet");
+        m.backdrop = true;
+        assert!(m.translucent());
+        m.settings.translucent = false;
+        assert!(!m.translucent(), "switched off: solid at once");
     }
 
     #[test]

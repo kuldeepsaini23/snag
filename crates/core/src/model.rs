@@ -136,6 +136,23 @@ pub struct Settings {
     pub virustotal_key: String,
     /// After-download rules, tried in order; the first that fits runs.
     pub rules: Vec<crate::rules::Rule>,
+    /// Dark, light, or whatever Windows uses for apps.
+    pub theme: ThemeMode,
+    /// Mica (acrylic on Windows 10) behind the window, with slightly see-through panels.
+    pub translucent: bool,
+    /// The first-run tour was finished or skipped (or this install predates it).
+    pub tour_done: bool,
+}
+
+/// The window's colours: Settings → Appearance → Theme.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemeMode {
+    #[default]
+    Dark,
+    Light,
+    /// Follows Windows' "Choose your app mode".
+    System,
 }
 
 impl Default for Settings {
@@ -162,6 +179,9 @@ impl Default for Settings {
             last_seen_version: String::new(),
             virustotal_key: String::new(),
             rules: Vec::new(),
+            theme: ThemeMode::Dark,
+            translucent: false,
+            tour_done: false,
         }
     }
 }
@@ -275,5 +295,19 @@ mod tests {
         assert!(s.daily.is_empty());
         let round: AppState = serde_json::from_str(&serde_json::to_string(&AppState { daily: [("2026-10-07".to_string(), DayTotal { bytes: 9, ms: 1 })].into(), ..s }).unwrap()).unwrap();
         assert_eq!(round.daily["2026-10-07"].bytes, 9);
+    }
+
+    #[test]
+    fn appearance_and_tour_settings_default_for_old_files() {
+        // A settings block written before these fields existed.
+        let old: Settings = serde_json::from_str(r##"{"accent":"#0a84ff","clipboard_watch":false}"##).unwrap();
+        assert_eq!(old.theme, ThemeMode::Dark, "existing users keep the dark look");
+        assert!(!old.translucent);
+        assert!(!old.tour_done);
+        assert_eq!(old.accent, "#0a84ff");
+        let s = Settings { theme: ThemeMode::System, translucent: true, tour_done: true, ..Settings::default() };
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(json.contains(r#""theme":"system""#), "{json}");
+        assert_eq!(serde_json::from_str::<Settings>(&json).unwrap(), s);
     }
 }

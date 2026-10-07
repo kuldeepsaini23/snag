@@ -10,7 +10,7 @@ use crate::state::{MediaTab, Model, Picker};
 use crate::update::Message;
 use crate::view;
 use iced::widget::{Space, button, checkbox, column, container, pick_list, row, scrollable, text};
-use iced::{Alignment, Color, Element, Fill, Length};
+use iced::{Alignment, Element, Fill, Length};
 use rdm_core::{Category, MediaFormat};
 
 pub fn view<'a>(m: &'a Model, p: &'a Picker, c: Colors) -> Element<'a, Message> {
@@ -105,7 +105,7 @@ fn title_card<'a>(m: &'a Model, p: &'a Picker, host: &str, c: Colors) -> Element
             .content_fit(iced::ContentFit::Cover)
             .border_radius(7.0)
             .into(),
-        None => container(icon(Icon::PlayFill, 26).color(Color::WHITE))
+        None => container(icon(Icon::PlayFill, 26).color(c.tile_ink))
             .width(136)
             .height(76)
             .align_x(Alignment::Center)

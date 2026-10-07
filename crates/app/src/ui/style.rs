@@ -45,15 +45,15 @@ pub fn sheet(c: Colors) -> impl Fn(&Theme) -> container::Style {
     move |_| container::Style {
         background: bg(c.panel),
         border: border(c.line_strong, 1.0, 14.0),
-        shadow: Shadow { color: c.fixed(Color::from_rgba(0.0, 0.0, 0.0, 0.55)), offset: Vector::new(0.0, 18.0), blur_radius: 48.0 },
+        shadow: Shadow { color: c.shadow, offset: Vector::new(0.0, 18.0), blur_radius: 48.0 },
         text_color: Some(c.text),
         ..Default::default()
     }
 }
 
-/// The dim behind a sheet (`a`: 0 … 1 as it fades in).
-pub fn scrim(a: f32) -> impl Fn(&Theme) -> container::Style {
-    move |_| container::Style { background: bg(Color::from_rgba(0.0, 0.0, 0.0, 0.5 * a)), ..Default::default() }
+/// The dim behind a sheet (`dim`: `Colors::scrim`; `a`: 0 … 1 as it fades in).
+pub fn scrim(dim: Color, a: f32) -> impl Fn(&Theme) -> container::Style {
+    move |_| container::Style { background: bg(Color { a: dim.a * a, ..dim }), ..Default::default() }
 }
 
 /// A small coloured tag ("Video detected", "4K").
@@ -100,15 +100,20 @@ fn button_style(background: Option<Color>, text: Color, line: Color, radius: f32
     button::Style { background: background.map(Background::Color), text_color: text, border: border(line, 1.0, radius), ..Default::default() }
 }
 
-/// White button (Add URL, Show in folder, Download now).
+/// A hover wash: white on dark, graphite on light, at `a` (and faded along with the tokens).
+fn wash(c: Colors, a: f32) -> Color {
+    Color { a: a * c.ink.a, ..c.ink }
+}
+
+/// White button on dark, graphite on light (Add URL, Show in folder, Download now).
 pub fn primary(c: Colors) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |_, s| {
         let fill = match s {
-            button::Status::Hovered => c.fixed(Color::from_rgb8(0xe8, 0xe6, 0xe3)),
+            button::Status::Hovered => Color { a: c.ink.a, ..over(c.ink, Color { a: 0.1, ..c.on_ink }) },
             button::Status::Disabled => c.raised,
-            _ => c.fixed(Color::WHITE),
+            _ => c.ink,
         };
-        let text = if s == button::Status::Disabled { c.text3 } else { c.canvas };
+        let text = if s == button::Status::Disabled { c.text3 } else { c.on_ink };
         button_style(Some(fill), text, Color::TRANSPARENT, 8.0)
     }
 }
@@ -153,7 +158,7 @@ pub fn ghost(c: Colors) -> impl Fn(&Theme, button::Status) -> button::Style {
 pub fn tool(c: Colors, on: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |_, s| {
         let hot = matches!(s, button::Status::Hovered | button::Status::Pressed);
-        let fill = if on { Some(c.accent_soft) } else { hot.then_some(Color { a: 0.07, ..Color::WHITE }) };
+        let fill = if on { Some(c.accent_soft) } else { hot.then_some(wash(c, 0.07)) };
         let text = if on { c.accent } else if hot { c.text } else { c.text2 };
         button_style(fill, text, Color::TRANSPARENT, 8.0)
     }
@@ -180,8 +185,8 @@ pub fn pill(c: Colors) -> impl Fn(&Theme, button::Status) -> button::Style {
 pub fn caption(c: Colors) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |_, s| {
         let fill = match s {
-            button::Status::Hovered => Some(Color { a: 0.06, ..Color::WHITE }),
-            button::Status::Pressed => Some(Color { a: 0.04, ..Color::WHITE }),
+            button::Status::Hovered => Some(wash(c, 0.06)),
+            button::Status::Pressed => Some(wash(c, 0.04)),
             _ => None,
         };
         button_style(fill, if fill.is_some() { c.text } else { c.text2 }, Color::TRANSPARENT, 0.0)
@@ -214,7 +219,7 @@ pub fn danger(c: Colors) -> impl Fn(&Theme, button::Status) -> button::Style {
 /// A filter pill / settings nav item / sidebar row / segmented choice.
 pub fn choice(c: Colors, selected: bool, radius: f32) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |_, s| {
-        let fill = if selected { Some(c.raised) } else { (s == button::Status::Hovered).then_some(Color { a: 0.05, ..Color::WHITE }) };
+        let fill = if selected { Some(c.raised) } else { (s == button::Status::Hovered).then_some(wash(c, 0.05)) };
         button_style(fill, if selected { c.text } else { c.text2 }, Color::TRANSPARENT, radius)
     }
 }
@@ -223,7 +228,7 @@ pub fn choice(c: Colors, selected: bool, radius: f32) -> impl Fn(&Theme, button:
 /// with the accent just after it finished.
 pub fn row(c: Colors, selected: bool, failed: bool, glow: f32) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |_, s| {
-        let mut fill = if selected { Some(c.surface) } else { (s == button::Status::Hovered).then_some(Color { a: 0.03, ..Color::WHITE }) };
+        let mut fill = if selected { Some(c.surface) } else { (s == button::Status::Hovered).then_some(wash(c, 0.03)) };
         let mut line = match (selected, failed) {
             (true, true) => Color { a: 0.45, ..c.danger },
             (true, false) => c.line_strong,
@@ -240,7 +245,7 @@ pub fn row(c: Colors, selected: bool, failed: bool, glow: f32) -> impl Fn(&Theme
 /// A quality option in the picker; the chosen one is accent-soft with an accent outline.
 pub fn option(c: Colors, chosen: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |_, s| {
-        let fill = if chosen { Some(Color { a: 0.16, ..c.accent }) } else { (s == button::Status::Hovered).then_some(Color { a: 0.04, ..Color::WHITE }) };
+        let fill = if chosen { Some(Color { a: 0.16, ..c.accent }) } else { (s == button::Status::Hovered).then_some(wash(c, 0.04)) };
         button_style(fill, c.text, if chosen { c.accent } else { Color::TRANSPARENT }, 8.0)
     }
 }
@@ -248,7 +253,8 @@ pub fn option(c: Colors, chosen: bool) -> impl Fn(&Theme, button::Status) -> but
 pub fn swatch(color: Color, chosen: bool, ring: Color) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |_, _| button::Style {
         background: bg(color),
-        border: Border { color: if chosen { ring } else { Color::TRANSPARENT }, width: if chosen { 2.0 } else { 0.0 }, radius: Radius::from(10.0) },
+        // A faint edge keeps a white swatch visible on a light panel.
+        border: Border { color: if chosen { ring } else { Color { a: 0.15 * ring.a, ..ring } }, width: if chosen { 2.0 } else { 1.0 }, radius: Radius::from(10.0) },
         ..Default::default()
     }
 }
@@ -282,7 +288,7 @@ pub fn search(c: Colors) -> impl Fn(&Theme, text_input::Status) -> text_input::S
     move |_, s| {
         let focused = matches!(s, text_input::Status::Focused { .. });
         text_input::Style {
-            background: Background::Color(Color { a: 0.06, ..Color::WHITE }),
+            background: Background::Color(wash(c, 0.06)),
             border: border(if focused { Color { a: 0.7, ..c.accent } } else { Color::TRANSPARENT }, 1.0, 8.0),
             icon: c.text2,
             placeholder: c.text3,
@@ -308,10 +314,10 @@ pub fn toggle(c: Colors) -> impl Fn(&Theme, toggler::Status) -> toggler::Style {
     move |_, s| {
         let on = matches!(s, toggler::Status::Active { is_toggled: true } | toggler::Status::Hovered { is_toggled: true });
         toggler::Style {
-            background: Background::Color(if on { c.accent } else { c.hover }),
+            background: Background::Color(if on { c.accent } else { c.track }),
             background_border_width: 0.0,
             background_border_color: Color::TRANSPARENT,
-            foreground: Background::Color(if on { c.knob } else { Color::from_rgb8(0xb8, 0xb4, 0xaf) }),
+            foreground: Background::Color(if on { c.knob } else { c.knob_off }),
             foreground_border_width: 0.0,
             foreground_border_color: Color::TRANSPARENT,
             text_color: Some(c.text),
@@ -339,8 +345,8 @@ pub fn progress(track: Color, fill: Color) -> impl Fn(&Theme) -> progress_bar::S
 
 pub fn speed_slider(c: Colors) -> impl Fn(&Theme, slider::Status) -> slider::Style {
     move |_, _| slider::Style {
-        rail: slider::Rail { backgrounds: (Background::Color(c.accent), Background::Color(c.hover)), width: 4.0, border: border(Color::TRANSPARENT, 0.0, 2.0) },
-        handle: slider::Handle { shape: slider::HandleShape::Circle { radius: 7.0 }, background: Background::Color(Color::WHITE), border_width: 0.0, border_color: Color::TRANSPARENT },
+        rail: slider::Rail { backgrounds: (Background::Color(c.accent), Background::Color(c.track)), width: 4.0, border: border(Color::TRANSPARENT, 0.0, 2.0) },
+        handle: slider::Handle { shape: slider::HandleShape::Circle { radius: 7.0 }, background: Background::Color(c.fixed(Color::WHITE)), border_width: 1.0, border_color: c.line_strong },
     }
 }
 
@@ -361,7 +367,7 @@ pub fn menu(c: Colors) -> impl Fn(&Theme) -> iced::overlay::menu::Style {
         text_color: c.text,
         selected_text_color: c.on_accent,
         selected_background: Background::Color(c.accent),
-        shadow: Shadow { color: Color::from_rgba(0.0, 0.0, 0.0, 0.4), offset: Vector::new(0.0, 8.0), blur_radius: 24.0 },
+        shadow: Shadow { color: Color { a: c.shadow.a * 0.75, ..c.shadow }, offset: Vector::new(0.0, 8.0), blur_radius: 24.0 },
     }
 }
 
