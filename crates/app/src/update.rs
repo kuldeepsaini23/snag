@@ -163,6 +163,9 @@ pub enum Message {
     SettingsTab(SettingsTab),
     CloseSettings,
     DraftDir(String),
+    /// Opens the Windows folder picker for a folder box.
+    BrowseFolder(crate::state::FolderFor),
+    FolderPicked(crate::state::FolderFor, Option<std::path::PathBuf>),
     DraftConnections(usize),
     DraftMax(usize),
     DraftLimit(String),
@@ -740,6 +743,21 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             }
         }
         Message::DraftDir(v) => model.draft.download_dir = v,
+        Message::BrowseFolder(target) => {
+            let start = match target {
+                crate::state::FolderFor::Downloads => model.draft.download_dir.clone(),
+                crate::state::FolderFor::Rule => model.rule_form.folder.clone(),
+            };
+            let pick = async move {
+                let mut dialog = rfd::AsyncFileDialog::new().set_title("Choose a folder");
+                if !start.trim().is_empty() && std::path::Path::new(start.trim()).is_dir() {
+                    dialog = dialog.set_directory(start.trim());
+                }
+                dialog.pick_folder().await.map(|f| f.path().to_path_buf())
+            };
+            return Task::perform(pick, move |folder| Message::FolderPicked(target, folder));
+        }
+        Message::FolderPicked(target, folder) => model.folder_picked(target, folder),
         Message::DraftConnections(n) => model.draft.connections = n.to_string(),
         Message::DraftMax(n) => model.draft.max_concurrent = n.to_string(),
         Message::DraftLimit(v) => model.draft.speed_limit_kbps = v,

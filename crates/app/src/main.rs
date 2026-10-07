@@ -1,3 +1,7 @@
+// A window app, not a console one: no terminal opens next to it (debug builds keep the console
+// for logs).
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod appearance;
 mod changelog;
 mod choices;

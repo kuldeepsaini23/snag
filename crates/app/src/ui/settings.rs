@@ -141,7 +141,18 @@ fn general(m: &Model, c: Colors) -> Element<'_, Message> {
         section(
             "Downloads",
             vec![
-                line("Default folder", "New downloads are saved here unless a category folder applies", field("Folder", &d.download_dir, 260.0, Message::DraftDir, c), c),
+                line(
+                    "Default folder",
+                    "New downloads are saved here unless a category folder applies",
+                    row![field("Folder", &d.download_dir, 220.0, Message::DraftDir, c), button(row![icon(Icon::FolderOpen, 13), text("Browse…").size(12.5).font(style::SEMIBOLD)].spacing(6).align_y(Alignment::Center))
+                .style(style::secondary(c))
+                .padding([7, 12])
+                .on_press(Message::BrowseFolder(crate::state::FolderFor::Downloads))]
+                        .spacing(6)
+                        .align_y(Alignment::Center)
+                        .into(),
+                    c,
+                ),
                 line("Sort into category folders", "Videos, Music, Images, Archives, Documents, Programs", switch(d.sort_into_folders, Message::DraftSort, c), c),
             ],
             c,
@@ -215,6 +226,12 @@ fn rules(m: &Model, c: Colors) -> Element<'_, Message> {
         .align_y(Alignment::Center);
     if f.action == Do::Move {
         form = form.push(field(r"D:\Programs", &f.folder, 140.0, Message::RuleFolder, c));
+        form = form.push(
+            button(icon(Icon::FolderOpen, 13))
+                .style(style::secondary(c))
+                .padding([7, 9])
+                .on_press(Message::BrowseFolder(crate::state::FolderFor::Rule)),
+        );
     }
     let keep = checkbox(f.keep_original).label("Keep the original").on_toggle(Message::RuleKeep).size(15).text_size(12.5).style(style::check(c));
     let add = button(row![icon(Icon::Plus, 12), text("Add rule").size(12.5).font(style::SEMIBOLD)].spacing(6).align_y(Alignment::Center))

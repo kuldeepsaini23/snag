@@ -132,12 +132,18 @@ fn welcome<'a>(c: Colors) -> Element<'a, Message> {
 
 fn folder<'a>(m: &'a Model, c: Colors) -> Element<'a, Message> {
     let d = &m.draft;
-    let field = text_input(r"C:\Users\you\Downloads\Snag", &d.download_dir)
+    let input = text_input(r"C:\Users\you\Downloads\Snag", &d.download_dir)
         .on_input(Message::DraftDir)
         .on_submit(Message::TourNext)
         .size(12.5)
         .padding([8, 10])
         .style(style::input(c));
+    let field = row![input, button(row![icon(Icon::FolderOpen, 13), text("Browse…").size(12.5).font(style::SEMIBOLD)].spacing(6).align_y(Alignment::Center))
+                .style(style::secondary(c))
+                .padding([7, 12])
+                .on_press(Message::BrowseFolder(crate::state::FolderFor::Downloads))]
+        .spacing(6)
+        .align_y(Alignment::Center);
     let sort = row![
         column![text("Sort into category folders").size(13).font(style::MEDIUM), small("Videos, Music, Images, Archives, Documents and Programs each get a folder inside it", c.text3)]
             .spacing(2)

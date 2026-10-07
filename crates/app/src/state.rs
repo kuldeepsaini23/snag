@@ -6,6 +6,15 @@ use rdm_media::QualityOption;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
+/// Which box the Windows folder picker fills.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FolderFor {
+    /// The download folder (Settings → General, and the tour).
+    Downloads,
+    /// A "Move to folder" rule being written.
+    Rule,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Screen {
     Downloads,
@@ -249,6 +258,16 @@ pub fn file_missing(item: &Item) -> bool {
 }
 
 impl Model {
+    /// The folder picker closed: its folder goes into the box it was opened for (Cancel: nothing).
+    pub fn folder_picked(&mut self, target: FolderFor, folder: Option<std::path::PathBuf>) {
+        let Some(folder) = folder else { return };
+        let text = folder.display().to_string();
+        match target {
+            FolderFor::Downloads => self.draft.download_dir = text,
+            FolderFor::Rule => self.rule_form.folder = text,
+        }
+    }
+
     /// Delete is two clicks: the first arms it for `id`, the second (same item) confirms.
     pub fn confirm_delete(&mut self, id: ItemId) -> bool {
         if self.pending_delete == Some(id) {
@@ -808,6 +827,19 @@ mod tests {
     use super::*;
     use rdm_core::Category;
     use rdm_media::{Entry, QualityOption};
+
+    #[test]
+    fn a_picked_folder_fills_the_right_box() {
+        let mut m = Model::default();
+        m.draft.download_dir = r"C:\old".into();
+        m.folder_picked(FolderFor::Downloads, Some(std::path::PathBuf::from(r"D:\Media")));
+        assert_eq!(m.draft.download_dir, r"D:\Media");
+        m.folder_picked(FolderFor::Downloads, None);
+        assert_eq!(m.draft.download_dir, r"D:\Media", "Cancel keeps what was there");
+        m.folder_picked(FolderFor::Rule, Some(std::path::PathBuf::from(r"E:\Programs")));
+        assert_eq!(m.rule_form.folder, r"E:\Programs");
+        assert_eq!(m.draft.download_dir, r"D:\Media");
+    }
 
     #[test]
     fn a_duplicate_link_shows_its_earlier_download() {
