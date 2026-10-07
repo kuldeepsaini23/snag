@@ -163,7 +163,17 @@ fn extract(archive: &Path, out: &Path) -> Result<(), String> {
             }
             Ok(())
         }
-        "7z" => sevenz_rust::decompress_file(archive, out).map_err(|e| format!("not a readable 7z: {e}")),
+        // Each entry is checked before it is written: no `..`, drive letters or absolute paths
+        // (the library would join them onto `out` as they are).
+        "7z" => sevenz_rust::decompress_file_with_extract_fn(archive, out, |entry, reader, dest| {
+            let inside = entry.name().split(['/', '\\']).filter(|p| !p.is_empty()).all(rdm_torrent::safe_component);
+            if !inside || entry.name().starts_with(['/', '\\']) {
+                std::io::copy(reader, &mut std::io::sink()).map_err(sevenz_rust::Error::io)?;
+                return Ok(true);
+            }
+            sevenz_rust::default_entry_extract_fn(entry, reader, dest)
+        })
+        .map_err(|e| format!("not a readable 7z: {e}")),
         _ => Err(format!("Snag can unpack .zip and .7z, not .{ext}")),
     }
 }
@@ -214,6 +224,28 @@ mod tests {
         assert_eq!(std::fs::read(folder.join("sub").join("b.txt")).unwrap(), b"two");
         assert!(!dir.path().join("escape.txt").exists(), "nothing lands outside the folder");
         assert!(!archive.exists(), "keep original off: the archive goes");
+    }
+
+    #[test]
+    fn a_7z_cannot_write_outside_its_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("pack.7z");
+        let mut sz = sevenz_rust::SevenZWriter::create(&archive).unwrap();
+        // An absolute name, pointing at a harmless place inside the test's own folder.
+        let absolute = dir.path().join("abs-escape.txt").display().to_string();
+        for (name, data) in [("a.txt", &b"one"[..]), ("../escape.txt", &b"no"[..]), (r"..\escape2.txt", &b"no"[..]), (absolute.as_str(), &b"no"[..])] {
+            let mut entry = sevenz_rust::SevenZArchiveEntry::new();
+            entry.name = name.to_string();
+            entry.has_stream = true;
+            entry.size = data.len() as u64;
+            sz.push_archive_entry(entry, Some(data)).unwrap();
+        }
+        sz.finish().unwrap();
+        let done = apply(&rule(Match::Ext("7z".into()), Action::Extract, true), &archive, None).unwrap();
+        assert_eq!(std::fs::read(done.result.join("a.txt")).unwrap(), b"one");
+        assert!(!dir.path().join("escape.txt").exists(), "../ stays inside");
+        assert!(!dir.path().join("escape2.txt").exists(), r"..\ stays inside");
+        assert!(!dir.path().join("abs-escape.txt").exists(), "absolute paths are refused");
     }
 
     #[test]
