@@ -876,10 +876,23 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
                     return Task::perform(async move { m.add_gallery(url).await }, Message::Added);
                 }
                 // Not a site yt-dlp knows and no video on the page: it may be a plain download link.
+                // Not a video page yt-dlp knows: download it as a file only if it really is one (a
+                // web page, or a login page after a redirect, is not worth saving as a file).
                 Err(e) if !rdm_media::is_media_url(&url) && e.contains("Unsupported URL") => {
                     model.notice = None;
                     let m = app.manager.clone();
-                    return Task::perform(async move { m.add(url).await }, Message::Added);
+                    return Task::perform(
+                        async move {
+                            if m.is_web_page(url.clone()).await {
+                                return None;
+                            }
+                            Some(m.add(url).await)
+                        },
+                        |added| match added {
+                            Some(id) => Message::Added(id),
+                            None => Message::Core(Event::Notice("No video or file at that link: it's a web page. To keep the page itself, right-click it in the browser → Save this page with Snag.".into())),
+                        },
+                    );
                 }
                 Err(e) => model.notice = Some(format!("Couldn't read that link: {e}")),
             }

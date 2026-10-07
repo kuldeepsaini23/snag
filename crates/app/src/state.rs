@@ -238,12 +238,17 @@ impl Draft {
     }
 }
 
-/// A link worth suggesting from the clipboard: a single http(s) URL that isn't the last one seen.
+/// A link worth suggesting from the clipboard: a single link that isn't the last one seen and
+/// looks downloadable — a file, a video or image site, a torrent, a GitHub repository. Ordinary
+/// web pages (copied all day long) don't pop up.
 pub fn clipboard_link(text: &str, last_seen: Option<&str>) -> Option<String> {
+    use rdm_core::route::{Route, github_zip, route};
     let link = text.trim();
     let web = link.starts_with("http://") || link.starts_with("https://") || rdm_core::is_torrent_link(link);
     let is_url = web && link.len() < 4096 && !link.contains(char::is_whitespace);
-    (is_url && last_seen != Some(link)).then(|| link.to_string())
+    // `route` sends any page to the video reader; only known video sites count here.
+    let downloadable = route(link) != Route::Media || rdm_media::is_media_url(link) || github_zip(link).is_some();
+    (is_url && downloadable && last_seen != Some(link)).then(|| link.to_string())
 }
 
 /// Explorer argument that selects `path`. Quoted, because file names can contain
@@ -1097,6 +1102,23 @@ mod tests {
         assert_eq!(clipboard_link("ftp://x/y", None), None);
         let magnet = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=x";
         assert_eq!(clipboard_link(magnet, None).as_deref(), Some(magnet), "magnet links too");
+    }
+
+    #[test]
+    fn clipboard_offers_only_what_looks_downloadable() {
+        // Ordinary pages people copy all day: no popup (it once saved a login page as a file).
+        for page in ["https://main-preprod.codehelp.in/problems/remove-all-adjacent-duplicates-in-string", "https://docs.rs/iced/latest/iced/", "https://example.com/"] {
+            assert_eq!(clipboard_link(page, None), None, "{page}");
+        }
+        for link in [
+            "https://cdn.example.com/files/setup.exe",
+            "https://www.youtube.com/watch?v=abc",
+            "https://x.com/someone/status/123",
+            "https://github.com/rust-lang/rustlings",
+            "https://www.pinterest.com/pin/1/",
+        ] {
+            assert_eq!(clipboard_link(link, None).as_deref(), Some(link), "{link}");
+        }
     }
 
     #[test]

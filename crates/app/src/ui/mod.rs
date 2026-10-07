@@ -43,7 +43,6 @@ pub struct Anim {
     pub tab: f32,
     pub sidebar: f32,
     pub inspector: f32,
-    pub sheet: f32,
     pub popover: f32,
     pub toast: f32,
     pub search: f32,
@@ -57,7 +56,6 @@ impl Anim {
             tab: m.tab_at(now),
             sidebar: m.open(&m.sidebar, now),
             inspector: m.open(&m.inspector, now),
-            sheet: m.open(&m.sheet, now),
             popover: m.open(&m.popover, now),
             toast: m.open(&m.toast, now),
             search: m.open(&m.search, now),
@@ -117,7 +115,9 @@ pub fn view(app: &App) -> Element<'_, Message> {
             left: 0.0,
         }));
     }
-    let sheet_c = c.faded(a.sheet);
+    // Sheets open at once: fading and scaling a sheet over a dimmed window repaints all of it
+    // every frame, which stutters when the CPU draws.
+    let sheet_c = c;
     match (m.screen, &m.picker) {
         (Screen::Picker, Some(p)) => layers = layers.push(modal(picker::view(m, p, sheet_c), sheet_c, Message::CancelPick)),
         (Screen::Settings, _) => {
@@ -270,13 +270,9 @@ fn confirm_quit(m: &Model, c: Colors) -> Element<'_, Message> {
     container(content).width(440).padding(20).style(style::sheet(c)).into()
 }
 
-/// A sheet over a dimmed window; clicking the dim area sends `on_blur`. `c` are the sheet's
-/// colours: while their alpha goes 0 → 1 the dim fades in and the sheet scales up from 97% and
-/// rises a few pixels.
+/// A sheet over a dimmed window; clicking the dim area sends `on_blur`.
 fn modal<'a>(content: Element<'a, Message>, c: Colors, on_blur: Message) -> Element<'a, Message> {
-    let t = c.alpha;
-    let sheet = float(opaque(content)).scale(0.97 + 0.03 * t).translate(move |_, _| Vector::new(0.0, 10.0 * (1.0 - t)));
-    opaque(mouse_area(container(sheet).width(Fill).height(Fill).center(Fill).style(style::scrim(c.scrim, 1.0))).on_press(on_blur))
+    opaque(mouse_area(container(opaque(content)).width(Fill).height(Fill).center(Fill).style(style::scrim(c.scrim, 1.0))).on_press(on_blur))
 }
 
 fn footer(m: &Model, now: Instant, c: Colors) -> Element<'_, Message> {

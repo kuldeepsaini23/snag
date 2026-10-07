@@ -1086,3 +1086,13 @@ async fn at_most_two_pages_are_read_at_once() {
     let most = seen.map(|f| std::fs::read_to_string(f.unwrap().path()).unwrap().parse::<usize>().unwrap()).max();
     assert_eq!(most, Some(2), "two yt-dlp reads at a time");
 }
+
+#[tokio::test]
+async fn a_web_page_is_told_apart_from_a_file() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |_| {}).await;
+    assert!(m.is_web_page(s.url("/page")).await, "an HTML page (e.g. a login page after a redirect)");
+    assert!(!m.is_web_page(s.url("/file/5000")).await, "a real file");
+    assert!(!m.is_web_page("http://127.0.0.1:1/unreachable".into()).await, "unknown: let the download say what's wrong");
+}

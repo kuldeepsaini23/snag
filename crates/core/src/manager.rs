@@ -272,6 +272,14 @@ impl Manager {
         result
     }
 
+    /// The link answers with a web page (HTML), not a file: e.g. a site page, or a login page
+    /// after a redirect. False when it can't be reached (the download then says why).
+    pub async fn is_web_page(&self, url: String) -> bool {
+        let Ok(resp) = self.tools.client.get(&url).header(reqwest::header::RANGE, "bytes=0-0").send().await else { return false };
+        let kind = resp.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("").to_ascii_lowercase();
+        kind.starts_with("text/html") || kind.starts_with("application/xhtml")
+    }
+
     pub async fn notify(&self, text: String) {
         let _ = self.events.send(Event::Notice(text));
     }

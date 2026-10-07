@@ -234,7 +234,7 @@ fn dark_colors(accent: Color) -> Colors {
         on_ink: GRAPHITE,
         tile_ink: Color::WHITE,
         shadow: Color::from_rgba(0.0, 0.0, 0.0, 0.55),
-        scrim: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+        scrim: Color::from_rgba(0.0, 0.0, 0.0, 0.38),
         light: false,
         alpha: 1.0,
     }

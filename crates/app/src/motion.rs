@@ -91,7 +91,8 @@ impl Motion {
             tab: float(start.tab as f32, d),
             sidebar: flag(start.sidebar, d),
             inspector: flag(start.inspector, d),
-            sheet: flag(start.sheet, d),
+            // Sheets open at once (see `ui::modal`): no frames for them.
+            sheet: flag(start.sheet, Duration::ZERO),
             popover: flag(start.popover, d),
             toast: flag(start.toast, d),
             search: flag(start.search, d),
