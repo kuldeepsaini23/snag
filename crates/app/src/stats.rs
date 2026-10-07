@@ -159,7 +159,7 @@ pub fn compute(items: &[Item], daily: &BTreeMap<String, DayTotal>, range: Range,
         }
     }
     categories.retain(|(_, b)| *b > 0);
-    categories.sort_by(|a, b| b.1.cmp(&a.1));
+    categories.sort_by_key(|(_, bytes)| std::cmp::Reverse(*bytes));
     sites.sort_by(|a, b| b.bytes.cmp(&a.bytes).then(b.files.cmp(&a.files)));
     sites.truncate(5);
 

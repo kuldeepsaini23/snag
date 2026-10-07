@@ -62,6 +62,7 @@ impl History {
     }
 
     /// The speed last recorded.
+    #[cfg(test)]
     pub fn latest(&self) -> u64 {
         self.span.map_or(0, |(_, last)| self.slots[(last % WINDOW as u64) as usize])
     }
