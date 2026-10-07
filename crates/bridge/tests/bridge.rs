@@ -396,3 +396,15 @@ async fn a_github_repo_page_downloads_its_code_as_zip() {
     assert_eq!(items[0].url, "https://github.com/rust-lang/rustlings/archive/HEAD.zip");
     assert_eq!(items[0].kind, rdm_core::Kind::Http);
 }
+
+#[tokio::test]
+async fn the_extension_can_save_a_page() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path()).await;
+    let b = start(m.clone(), 48261..=48270).await.unwrap();
+    let (status, reply) = post(b.port, json!({ "url": "https://example.com/article", "kind": "page" }), TOKEN).await;
+    assert_eq!(status, 200, "{reply}");
+    let items = m.snapshot().await.items;
+    assert_eq!(items[0].kind, rdm_core::Kind::Page);
+    assert_eq!(items[0].url, "https://example.com/article");
+}

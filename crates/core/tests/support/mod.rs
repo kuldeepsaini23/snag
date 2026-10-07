@@ -17,6 +17,15 @@ pub fn data(size: usize) -> Vec<u8> {
     (0..size).map(|i| (i % 251) as u8).collect()
 }
 
+const PAGE: &str = "<!doctype html><html><head><title>Rust: Saved Page</title><link rel=stylesheet href=/style.css></head><body><h1>Hello</h1><img src=/dot.png></body></html>";
+
+/// A 1×1 PNG.
+const DOT_PNG: [u8; 67] = [
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
+    0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+    0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+];
+
 pub struct TestServer {
     pub base: String,
 }
@@ -27,7 +36,11 @@ impl TestServer {
             .route("/file/{size}", get(|Path(size): Path<usize>, h: HeaderMap| async move { serve(&h, size, "test.bin", None) }))
             .route("/slow/{size}", get(|Path(size): Path<usize>, h: HeaderMap| async move { serve(&h, size, "test.bin", Some(Duration::from_millis(10))) }))
             .route("/named/{name}/{size}", get(|Path((name, size)): Path<(String, usize)>, h: HeaderMap| async move { serve(&h, size, &name, None) }))
-            .route("/needs-cookie/{size}", get(|Path(size): Path<usize>, h: HeaderMap| async move { needs_cookie(&h, size) }));
+            .route("/needs-cookie/{size}", get(|Path(size): Path<usize>, h: HeaderMap| async move { needs_cookie(&h, size) }))
+            // A small web page with a stylesheet and an image, for "save page".
+            .route("/page", get(|| async { ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], PAGE) }))
+            .route("/style.css", get(|| async { ([(header::CONTENT_TYPE, "text/css")], "body { color: rgb(1, 2, 3); }") }))
+            .route("/dot.png", get(|| async { ([(header::CONTENT_TYPE, "image/png")], DOT_PNG.to_vec()) }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });

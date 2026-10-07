@@ -97,6 +97,7 @@ function fullSizeImage(url) {
 function contextTarget(info) {
   const page = info.pageUrl;
   if (info.menuItemId === "rdm-page") return { url: page, kind: "media", referrer: undefined };
+  if (info.menuItemId === "rdm-save-page") return { url: page, kind: "page", referrer: undefined };
   const media = info.mediaType === "image" || info.mediaType === "video" || info.mediaType === "audio";
   if (media) {
     if (/^https?:/i.test(info.srcUrl || "")) return { url: fullSizeImage(info.srcUrl), kind: "file", referrer: page };

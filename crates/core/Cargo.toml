@@ -16,6 +16,7 @@ url = "2"
 sha2 = "0.10"
 zip = "2"
 sevenz-rust = "0.6"
+monolith = { version = "2.11", default-features = false }
 reqwest.workspace = true
 
 [dev-dependencies]

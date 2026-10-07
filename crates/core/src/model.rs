@@ -31,6 +31,8 @@ pub enum Kind {
     Gallery,
     /// A magnet link or `.torrent` (librqbit).
     Torrent,
+    /// A web page saved as one offline .html file (styles and images inside).
+    Page,
 }
 
 /// "pinterest.com · wallpapers · 3fa2": a gallery's name and folder. The most telling part of

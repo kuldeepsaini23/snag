@@ -288,6 +288,7 @@ chrome.downloads.onCreated.addListener(async (item) => {
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({ id: "rdm-link", title: "Download with Snag", contexts: ["link", "video", "audio", "image"] });
   chrome.contextMenus.create({ id: "rdm-page", title: "Download this page's video with Snag", contexts: ["page"] });
+  chrome.contextMenus.create({ id: "rdm-save-page", title: "Save this page with Snag (one offline file)", contexts: ["page"] });
 });
 
 chrome.contextMenus.onClicked.addListener((info) => {

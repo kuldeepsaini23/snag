@@ -304,6 +304,7 @@ pub fn kind_label(item: &Item) -> String {
         Kind::Media(MediaFormat::Live { max_height }) => format!("Live · {max_height}p"),
         Kind::Gallery => "Images".into(),
         Kind::Torrent => "Torrent".into(),
+        Kind::Page => "Web page · HTML".into(),
         Kind::Http => item
             .name
             .rsplit_once('.')

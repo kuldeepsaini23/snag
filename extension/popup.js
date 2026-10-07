@@ -185,6 +185,14 @@ async function init() {
     showQualities(tab, probe.info, sendPage);
   });
 
+  $("save-page").addEventListener("click", async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !/^https?:/.test(tab.url || "")) return say("Only web pages can be saved.");
+    say("Saving…");
+    const result = await chrome.runtime.sendMessage({ type: "send", url: tab.url, kind: "page", tabId: tab.id });
+    say(result.ok ? (result.later ? "Saved: goes to Snag when it opens" : "Saving in Snag (Pages folder) ✓") : result.error);
+  });
+
   $("grab").addEventListener("click", async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab) return;

@@ -986,3 +986,37 @@ async fn a_matching_rule_runs_after_the_download() {
     assert_eq!(std::fs::read(item.dest.unwrap()).unwrap(), data(3000));
     assert_eq!(m.snapshot().await.items[0].dest.as_ref().map(|d| d.starts_with(&moved)), Some(true), "saved");
 }
+
+#[tokio::test]
+async fn a_saved_page_is_one_file_with_its_styles_and_images() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |s| s.sort_into_folders = true).await;
+    let mut rx = m.subscribe();
+    let id = m.save_page(s.url("/page")).await;
+    let item = wait_item(&mut rx, |i| i.id == id && matches!(i.status, Status::Done | Status::Failed(_))).await;
+    assert_eq!(item.status, Status::Done);
+    assert_eq!(item.kind, Kind::Page);
+    let file = item.dest.unwrap();
+    assert_eq!(file, dir.path().join("dl").join("Pages").join("Rust - Saved Page.html"), "named after the page title, safe for Windows");
+    let html = std::fs::read_to_string(&file).unwrap();
+    // Styles and images are packed into the file as data: links.
+    let css = "body { color: rgb(1, 2, 3); }";
+    let packed = format!("data:text/css;base64,{}", base64_of(css.as_bytes()));
+    assert!(html.contains(&packed), "the stylesheet is inside: {html}");
+    assert!(html.contains("data:image/png;base64,"), "the image is inside");
+    assert!(!html.contains("src=\"/dot.png\"") && !html.contains("src=/dot.png"), "no links back to the site");
+}
+
+fn base64_of(bytes: &[u8]) -> String {
+    const ABC: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let n = (b[0] as u32) << 16 | (b[1] as u32) << 8 | b[2] as u32;
+        for i in 0..4 {
+            out.push(if i <= chunk.len() { ABC[(n >> (18 - 6 * i) & 63) as usize] as char } else { '=' });
+        }
+    }
+    out
+}

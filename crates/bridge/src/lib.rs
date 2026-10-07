@@ -90,6 +90,11 @@ async fn add(State(manager): State<Manager>, headers: HeaderMap, Json(mut req): 
         manager.remember_cookies(cookies);
     }
     let referrer = req.referrer.filter(|r| r.starts_with("http"));
+    // "Save page with Snag": the page itself, as one offline file.
+    if req.kind.as_deref() == Some("page") {
+        let id = manager.save_page(req.url).await;
+        return (StatusCode::OK, Json(json!({ "id": id.0 })));
+    }
     // A file the browser was downloading (already cancelled there) stays a file; anything else
     // goes where its link belongs.
     let route = match (req.kind.as_deref(), rdm_core::route::route(&req.url)) {

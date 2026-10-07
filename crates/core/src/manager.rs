@@ -178,6 +178,7 @@ enum Cmd {
     Snapshot(oneshot::Sender<AppState>),
     AddMedia(String, String, MediaFormat, QueueId, Option<String>, Option<f64>, oneshot::Sender<ItemId>),
     AddGallery(String, oneshot::Sender<ItemId>),
+    AddPage(String, oneshot::Sender<ItemId>),
     AddTorrent(String, oneshot::Sender<ItemId>),
     Refresh(ItemId, String),
     AddWatch(crate::watch::Watch),
@@ -282,6 +283,14 @@ impl Manager {
     }
 
     /// A page of images (Pinterest, Imgur, an Instagram photo post…): saved by gallery-dl.
+    /// Saves a web page as one offline .html file (in `<download>/Pages`), with the browser's
+    /// cookies, so logged-in pages save as you see them.
+    pub async fn save_page(&self, url: String) -> ItemId {
+        let (reply, rx) = oneshot::channel();
+        let _ = self.tx.send(Cmd::AddPage(url, reply));
+        rx.await.unwrap_or(ItemId(0))
+    }
+
     pub async fn add_gallery(&self, url: String) -> ItemId {
         let (reply, rx) = oneshot::channel();
         let _ = self.tx.send(Cmd::AddGallery(url, reply));
@@ -451,6 +460,19 @@ impl Manager {
 fn media_dir(settings: &Settings, format: &MediaFormat) -> PathBuf {
     let category = if *format == MediaFormat::AudioMp3 { Category::Music } else { Category::Video };
     if settings.sort_into_folders { settings.download_dir.join(category.folder()) } else { settings.download_dir.clone() }
+}
+
+/// Some sites send a bare page to unknown programs; a saved page should look like the browser's.
+const BROWSER_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36";
+
+/// "Rust: Saved Page" → "Rust - Saved Page": the page title as a Windows file name (else the
+/// site's name), at most 120 characters.
+fn page_file_name(title: Option<&str>, url: &str) -> String {
+    let host = url::Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_string)).unwrap_or_else(|| "page".into());
+    let title = title.map(str::trim).filter(|t| !t.is_empty()).unwrap_or(&host).replace(':', " -");
+    let words: Vec<&str> = title.split_whitespace().collect();
+    let name: String = rdm_engine::filename::sanitize(&words.join(" ")).chars().take(120).collect();
+    name.trim_end_matches(['.', ' ']).to_string()
 }
 
 /// Writes the browser cookies for `url` as a cookies.txt for yt-dlp; `None` when there are none.
@@ -690,6 +712,11 @@ impl Actor {
                 }
                 let name = crate::model::gallery_name(&url);
                 let _ = reply.send(self.push_item(url, name, Category::Image, Kind::Gallery, None, 0));
+            }
+            Cmd::AddPage(url, reply) => {
+                // Pages change: saving one again is never a duplicate.
+                let host = url::Url::parse(&url).ok().and_then(|u| u.host_str().map(str::to_string)).unwrap_or_else(|| "Web page".into());
+                let _ = reply.send(self.push_item(url, host, Category::Document, Kind::Page, None, 0));
             }
             Cmd::Offer(url, info) => self.offer(url, info),
             Cmd::SetQueues(queues) => self.set_queues(queues),
@@ -1013,6 +1040,10 @@ impl Actor {
             self.start_torrent(id, url, share, cancel, progress_tx);
             return;
         }
+        if kind == Kind::Page {
+            self.start_page(id, url, cancel, progress_tx);
+            return;
+        }
 
         let opts = DownloadOptions {
             connections: self.state.settings.connections.max(1),
@@ -1095,6 +1126,41 @@ impl Actor {
             if let Some(file) = cookies {
                 let _ = std::fs::remove_file(file);
             }
+            let _ = msg_tx.send(Msg::Finished { id, result });
+        });
+    }
+
+    /// A page is fetched (with the browser's cookies) and packed into one .html file named after
+    /// its title, in `<download>/Pages`.
+    fn start_page(&mut self, id: ItemId, url: String, cancel: CancellationToken, progress_tx: watch::Sender<Progress>) {
+        let settings = &self.state.settings;
+        let dir = if settings.sort_into_folders { settings.download_dir.join("Pages") } else { settings.download_dir.clone() };
+        let cookies = self.jar.lock().ok().and_then(|j| j.netscape(&url)).and_then(|text| monolith::cookies::parse_cookie_file_contents(&text).ok());
+        let msg_tx = self.msg_tx.clone();
+        tokio::spawn(async move {
+            let save = tokio::task::spawn_blocking(move || -> Result<PathBuf, String> {
+                let options = monolith::core::MonolithOptions { silent: true, ignore_errors: true, timeout: 30, user_agent: Some(BROWSER_UA.into()), ..Default::default() };
+                let session = monolith::session::Session::new(None, cookies, options);
+                let (html, title) = monolith::core::create_monolithic_document(session, url.clone()).map_err(|e| format!("couldn't save the page: {e}"))?;
+                std::fs::create_dir_all(&dir).map_err(|e| format!("can't create {}: {e}", dir.display()))?;
+                let name = format!("{}.html", page_file_name(title.as_deref(), &url));
+                let path = rdm_engine::filename::unique_path(&dir, &name);
+                std::fs::write(&path, &html).map_err(|e| format!("can't write {}: {e}", path.display()))?;
+                Ok(path)
+            });
+            let result = tokio::select! {
+                // The page can't be interrupted half-way; a pause just stops waiting for it.
+                _ = cancel.cancelled() => Ok(Outcome::Paused),
+                saved = save => match saved {
+                    Ok(Ok(path)) => {
+                        let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                        progress_tx.send_replace(Progress { downloaded: size, total: Some(size), speed_bps: 0, segments: Vec::new() });
+                        Ok(Outcome::Completed(path))
+                    }
+                    Ok(Err(e)) => Err(e),
+                    Err(e) => Err(format!("couldn't save the page: {e}")),
+                },
+            };
             let _ = msg_tx.send(Msg::Finished { id, result });
         });
     }
@@ -1299,6 +1365,11 @@ impl Actor {
                             if let Some(size) = size {
                                 item.downloaded = size;
                                 item.total = Some(size);
+                            }
+                            if item.kind == Kind::Page
+                                && let Some(name) = path.file_name()
+                            {
+                                item.name = name.to_string_lossy().to_string();
                             }
                             if item.kind == Kind::Torrent
                                 && let Some(name) = path.file_name().map(|n| n.to_string_lossy().to_string())

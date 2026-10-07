@@ -112,3 +112,8 @@ test("right-click: an image is the image itself (instant), not the post it links
   // "Download this page".
   assert.deepStrictEqual(contextTarget({ menuItemId: "rdm-page", pageUrl: page }), { url: page, kind: "media", referrer: undefined });
 });
+
+test("right-click 'Save page' sends the page to be saved as one file", () => {
+  const { contextTarget } = require("../quality.js");
+  assert.deepStrictEqual(contextTarget({ menuItemId: "rdm-save-page", pageUrl: "https://blog.x/post" }), { url: "https://blog.x/post", kind: "page", referrer: undefined });
+});
