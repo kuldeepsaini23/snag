@@ -79,10 +79,6 @@
       });
     };
     chrome.storage.local.get(["buttonCorner"]).then(({ buttonCorner }) => place(buttonCorner));
-    chrome.storage.onChanged.addListener((changes) => {
-      if (changes.buttonCorner) place(changes.buttonCorner.newValue);
-      if (changes.accent) host.style.setProperty("--accent", safeAccent(changes.accent.newValue));
-    });
 
     // Drag the button anywhere; it settles in the nearest corner and stays there on every site.
     let drag = null;
@@ -250,17 +246,25 @@
         sendPage();
       }
     });
-    document.addEventListener("keydown", (e) => e.key === "Escape" && close());
-    return host;
+    return { host, place, close };
   }
 
   // Shown on known video pages, and on any page once it plays a video or audio stream.
   let lastUrl = "";
   let mediaSeen = 0;
+  // The button on the page now. Single-page apps take it down and build it again many times, so
+  // the listeners that reach it are registered once, below.
+  let button = null;
   function show(on) {
     const existing = document.getElementById(HOST_ID);
-    if (on && !existing) document.documentElement.appendChild(build());
-    if (!on && existing) existing.remove();
+    if (on && !existing) {
+      button = build();
+      document.documentElement.appendChild(button.host);
+    }
+    if (!on && existing) {
+      existing.remove();
+      button = null;
+    }
   }
   // Known video pages only (never just because something played), once the address settles.
   const prefetch = new PrefetchPlan(1500, isVideoPage);
@@ -274,7 +278,11 @@
       hiddenSites = changes.hiddenSites.newValue || [];
       sync();
     }
+    if (!button) return;
+    if (changes.buttonCorner) button.place(changes.buttonCorner.newValue);
+    if (changes.accent) button.host.style.setProperty("--accent", safeAccent(changes.accent.newValue));
   });
+  document.addEventListener("keydown", (e) => e.key === "Escape" && button?.close());
   function sync() {
     // Cut off by an extension update: leave the page to the new copy of this script.
     if (!chrome.runtime?.id) return clearInterval(timer);
