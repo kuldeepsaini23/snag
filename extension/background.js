@@ -269,7 +269,7 @@ chrome.contextMenus.onClicked.addListener((info) => {
 });
 
 // Popup and in-page button.
-chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg.type === "send-batch") {
     sendBatch(msg.urls, msg.referrer)
       .then((body) => reply({ ok: true, added: body.added, skipped: body.skipped || 0 }))
@@ -277,13 +277,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     return true;
   }
   if (msg.type === "media-list") {
-    const tabId = msg.tabId ?? _sender.tab?.id;
+    const tabId = tabOf(msg, sender);
     mediaOf(tabId).then((list) => reply({ items: list.items }));
     return true;
   }
   if (msg.type === "send") {
     // Sending a page: the stream it played is the fallback if Snag can't read the page itself.
-    const tabId = msg.tabId ?? _sender.tab?.id;
+    const tabId = tabOf(msg, sender);
     const best = msg.withFallback && tabId !== undefined ? mediaOf(tabId).then((l) => bestMedia(l.items)) : Promise.resolve(null);
     best
       .then((b) => sendOrSave(msg.url, msg.kind, msg.referrer, b && b.url !== msg.url ? b.url : undefined))

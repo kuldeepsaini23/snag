@@ -161,3 +161,11 @@ test("prefetch reads pass their options through (no cookies), clicks theirs", as
   await cache.get("https://v.x/2", { cookies: true });
   assert.deepStrictEqual(seen, [["https://v.x/1", { cookies: false }], ["https://v.x/2", { cookies: true }]]);
 });
+
+test("a page's own messages are about its own tab; only the popup names a tab", () => {
+  const { tabOf } = require("../quality.js");
+  assert.strictEqual(tabOf({ tabId: 99 }, { tab: { id: 7 } }), 7, "a content script can't ask about another tab");
+  assert.strictEqual(tabOf({}, { tab: { id: 7 } }), 7);
+  assert.strictEqual(tabOf({ tabId: 99 }, {}), 99, "the popup (no sender tab) passes it");
+  assert.strictEqual(tabOf({}, {}), undefined);
+});
