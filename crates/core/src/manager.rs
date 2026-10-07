@@ -43,8 +43,9 @@ pub enum Event {
     Quit,
     /// The watched channels/playlists changed.
     Watches(Vec<crate::watch::Watch>),
-    /// A browser extension asks to connect: the UI asks the user, then `answer_pair`.
-    PairRequest(u64),
+    /// A browser extension asks to connect: the UI asks the user, then `answer_pair`. `origin`
+    /// is the asking extension's (`chrome-extension://<id>`), shown in the question.
+    PairRequest { id: u64, origin: String },
     /// That link was downloaded before (and the file is still there): nothing was added. The UI
     /// offers Show / Download again (`redownload` of this item) / Skip.
     Duplicate(Item),
@@ -52,6 +53,16 @@ pub enum Event {
     Safety(ItemId, crate::safety::Safety),
     /// A segmented download's connections changed: each one's range and bytes written.
     Segments(ItemId, Vec<rdm_engine::segments::Segment>),
+}
+
+/// What became of a browser extension's request to connect (`Manager::request_pair`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PairAnswer {
+    Allowed,
+    /// Not allowed, or no answer within two minutes.
+    Refused,
+    /// Another request still waits for the user's answer.
+    Busy,
 }
 
 /// Handle to the download manager. Cheap to clone; all clones talk to one actor.
@@ -350,24 +361,38 @@ impl Manager {
         let _ = self.tx.send(Cmd::CheckWatches);
     }
 
-    /// A browser extension asks to connect. The UI shows the question; this waits (up to two
-    /// minutes) for the user's answer. True = allowed.
-    pub async fn request_pair(&self) -> bool {
+    /// A browser extension (`origin`) asks to connect. The UI shows the question; this waits (up
+    /// to two minutes) for the user's answer. One question at a time: while one waits, others
+    /// are turned away rather than put in its place.
+    pub async fn request_pair(&self, origin: String) -> PairAnswer {
         static NEXT: AtomicU64 = AtomicU64::new(1);
         let id = NEXT.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
-        if let Ok(mut pairs) = self.pairs.lock() {
+        {
+            let Ok(mut pairs) = self.pairs.lock() else { return PairAnswer::Refused };
+            if !pairs.is_empty() {
+                return PairAnswer::Busy;
+            }
             pairs.insert(id, tx);
         }
-        let _ = self.events.send(Event::PairRequest(id));
-        let answer = tokio::time::timeout(Duration::from_secs(120), rx).await;
-        if let Ok(mut pairs) = self.pairs.lock() {
-            pairs.remove(&id);
+        // Forgets the question however this ends (answered, timed out, or the caller hung up).
+        struct Asked<'a>(&'a Mutex<HashMap<u64, oneshot::Sender<bool>>>, u64);
+        impl Drop for Asked<'_> {
+            fn drop(&mut self) {
+                if let Ok(mut pairs) = self.0.lock() {
+                    pairs.remove(&self.1);
+                }
+            }
         }
-        matches!(answer, Ok(Ok(true)))
+        let _asked = Asked(&self.pairs, id);
+        let _ = self.events.send(Event::PairRequest { id, origin });
+        match tokio::time::timeout(Duration::from_secs(120), rx).await {
+            Ok(Ok(true)) => PairAnswer::Allowed,
+            _ => PairAnswer::Refused,
+        }
     }
 
-    /// The user's answer to `Event::PairRequest(id)`.
+    /// The user's answer to `Event::PairRequest { id, .. }`.
     pub async fn answer_pair(&self, id: u64, allow: bool) {
         let waiting = self.pairs.lock().ok().and_then(|mut p| p.remove(&id));
         if let Some(tx) = waiting {

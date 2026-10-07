@@ -264,7 +264,7 @@ async fn extension_pairs_with_one_click_after_the_user_allows() {
     let mut rx = m.subscribe();
     let asking = tokio::spawn(pair("chrome-extension://abcdefghijklmnop"));
     let id = loop {
-        if let Ok(rdm_core::Event::PairRequest(id)) = rx.recv().await {
+        if let Ok(rdm_core::Event::PairRequest { id, .. }) = rx.recv().await {
             break id;
         }
     };
@@ -276,7 +276,7 @@ async fn extension_pairs_with_one_click_after_the_user_allows() {
     // Denied: no code.
     let asking = tokio::spawn(pair("moz-extension://1234-5678"));
     let id = loop {
-        if let Ok(rdm_core::Event::PairRequest(id)) = rx.recv().await {
+        if let Ok(rdm_core::Event::PairRequest { id, .. }) = rx.recv().await {
             break id;
         }
     };
@@ -284,6 +284,41 @@ async fn extension_pairs_with_one_click_after_the_user_allows() {
     let resp = asking.await.unwrap().unwrap();
     assert_eq!(resp.status().as_u16(), 403);
     assert!(!resp.text().await.unwrap().contains(TOKEN));
+}
+
+#[tokio::test]
+async fn a_second_connection_request_is_refused_while_one_waits() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path()).await;
+    let b = start(m.clone(), 48371..=48380).await.unwrap();
+    let pair = |origin: &'static str| Client::new().post(format!("http://127.0.0.1:{}/pair", b.port)).header("Origin", origin).send();
+    let mut rx = m.subscribe();
+    let first = tokio::spawn(pair("chrome-extension://abcdefghijklmnop"));
+    // The question names who asks, so the user can tell it apart from another extension.
+    let (id, origin) = loop {
+        if let Ok(rdm_core::Event::PairRequest { id, origin }) = rx.recv().await {
+            break (id, origin);
+        }
+    };
+    assert_eq!(origin, "chrome-extension://abcdefghijklmnop");
+    // Another caller can't swap its own question in while the user reads this one.
+    let second = pair("chrome-extension://zyxwvutsrqponmlk").await.unwrap();
+    assert_eq!(second.status().as_u16(), 409);
+    assert!(second.text().await.unwrap().contains("another connection request is waiting"));
+    while let Ok(event) = rx.try_recv() {
+        assert!(!matches!(event, rdm_core::Event::PairRequest { .. }), "only one question at a time");
+    }
+    m.answer_pair(id, true).await;
+    assert_eq!(first.await.unwrap().unwrap().status().as_u16(), 200);
+    // Answered: the next request may ask again.
+    let again = tokio::spawn(pair("chrome-extension://zyxwvutsrqponmlk"));
+    let id = loop {
+        if let Ok(rdm_core::Event::PairRequest { id, .. }) = rx.recv().await {
+            break id;
+        }
+    };
+    m.answer_pair(id, false).await;
+    assert_eq!(again.await.unwrap().unwrap().status().as_u16(), 403);
 }
 
 /// The fake yt-dlp from the media crate, as bin/yt-dlp.exe in `data_dir`.

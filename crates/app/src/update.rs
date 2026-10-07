@@ -494,7 +494,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::Core(Event::Quit) => return iced::exit(),
         Message::Core(event) => {
             log_event(&app.data_dir, &event);
-            let pick = matches!(event, Event::PickMedia { .. } | Event::Focus | Event::PairRequest(_) | Event::Duplicate(_));
+            let pick = matches!(event, Event::PickMedia { .. } | Event::Focus | Event::PairRequest { .. } | Event::Duplicate(_));
             model.apply(event);
             model.speeds.sample(&model.items, Instant::now());
             if pick {
@@ -560,7 +560,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             };
         }
         Message::AnswerPair(allow) => {
-            if let Some(id) = model.pair_request.take() {
+            if let Some((id, _)) = model.pair_request.take() {
                 if allow {
                     model.notice = Some("Browser extension connected ✓".into());
                 }

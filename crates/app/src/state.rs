@@ -410,8 +410,8 @@ pub struct Model {
     pub settings_error: Option<String>,
     /// Watched channels and playlists.
     pub watches: Vec<rdm_core::watch::Watch>,
-    /// A browser extension waits for "Allow / Don't allow".
-    pub pair_request: Option<u64>,
+    /// A browser extension (id of the request, its origin) waits for "Allow / Don't allow".
+    pub pair_request: Option<(u64, String)>,
     /// "Already downloaded": the finished download a new link matched (nothing was added).
     pub duplicate: Option<Item>,
     /// VirusTotal's verdicts on downloaded programs.
@@ -599,7 +599,7 @@ impl Model {
             Event::Notice(text) => self.notice = Some(text),
             Event::Focus | Event::Quit => {}
             Event::Watches(watches) => self.watches = watches,
-            Event::PairRequest(id) => self.pair_request = Some(id),
+            Event::PairRequest { id, origin } => self.pair_request = Some((id, origin)),
             Event::Duplicate(item) => self.duplicate = Some(item),
             Event::Safety(id, verdict) => {
                 self.safety.insert(id, verdict);
