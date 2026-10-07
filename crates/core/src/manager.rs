@@ -1291,7 +1291,16 @@ impl Actor {
         let paused = cancel.clone();
         tokio::spawn(async move {
             let save = tokio::task::spawn_blocking(move || -> Result<PathBuf, String> {
-                let options = monolith::core::MonolithOptions { silent: true, ignore_errors: true, timeout: 30, user_agent: Some(BROWSER_UA.into()), ..Default::default() };
+                // No video or audio inside: one film would make a gigabyte .html file.
+                let options = monolith::core::MonolithOptions {
+                    silent: true,
+                    ignore_errors: true,
+                    timeout: 30,
+                    user_agent: Some(BROWSER_UA.into()),
+                    no_video: true,
+                    no_audio: true,
+                    ..Default::default()
+                };
                 let session = monolith::session::Session::new(None, cookies, options);
                 let (html, title) = monolith::core::create_monolithic_document(session, url.clone()).map_err(|e| format!("couldn't save the page: {e}"))?;
                 std::fs::create_dir_all(&dir).map_err(|e| format!("can't create {}: {e}", dir.display()))?;

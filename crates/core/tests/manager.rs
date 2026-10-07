@@ -1054,6 +1054,9 @@ async fn a_saved_page_is_one_file_with_its_styles_and_images() {
     assert!(html.contains(&packed), "the stylesheet is inside: {html}");
     assert!(html.contains("data:image/png;base64,"), "the image is inside");
     assert!(!html.contains("src=\"/dot.png\"") && !html.contains("src=/dot.png"), "no links back to the site");
+    // Videos and audio aren't packed in: a page with a film would become a huge .html file.
+    let video = &html[html.find("<video").expect("the video tag stays")..];
+    assert!(!video.starts_with("<video src=\"data:"), "no video inside: {}", &video[..video.len().min(80)]);
 }
 
 fn base64_of(bytes: &[u8]) -> String {

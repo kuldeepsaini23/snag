@@ -17,7 +17,7 @@ pub fn data(size: usize) -> Vec<u8> {
     (0..size).map(|i| (i % 251) as u8).collect()
 }
 
-const PAGE: &str = "<!doctype html><html><head><title>Rust: Saved Page</title><link rel=stylesheet href=/style.css></head><body><h1>Hello</h1><img src=/dot.png></body></html>";
+const PAGE: &str = "<!doctype html><html><head><title>Rust: Saved Page</title><link rel=stylesheet href=/style.css></head><body><h1>Hello</h1><img src=/dot.png><video src=/file/40000></video></body></html>";
 
 /// A 1×1 PNG.
 const DOT_PNG: [u8; 67] = [
