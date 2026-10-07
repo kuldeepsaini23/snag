@@ -148,6 +148,45 @@ impl Tools {
         self.bin_dir.join("yt-dlp.checked")
     }
 
+    /// ffmpeg for videos, MP3s and rules: one already there (Snag's own or on PATH), else fetched
+    /// once (35 MB, checked against its published SHA-256). `notify` is told before a fetch.
+    async fn ensure_ffmpeg(&self, notify: impl FnOnce()) -> Result<PathBuf, String> {
+        if let Some(found) = self.ffmpeg() {
+            return Ok(found);
+        }
+        let this = self.clone();
+        let _only_one = this.lock.lock().await;
+        if let Some(found) = this.ffmpeg() {
+            return Ok(found);
+        }
+        notify();
+        let archive = this.bin_dir.join("ffmpeg-download.7z");
+        let fetched = async {
+            let expected = this.client.get(crate::ffmpeg::SHA256_URL).send().await.map_err(|e| e.to_string())?.text().await.map_err(|e| e.to_string())?;
+            let expected = crate::ffmpeg::parse_sha256(&expected).ok_or("no checksum published for the ffmpeg download")?;
+            let (progress, _) = watch::channel(Progress::default());
+            match download(&this.client, crate::ffmpeg::URL, &archive, &DownloadOptions::default(), CancellationToken::new(), &progress).await {
+                Ok(Outcome::Completed(_)) => {}
+                Ok(Outcome::Paused) => return Err("the ffmpeg download was interrupted".to_string()),
+                Err(e) => return Err(e.to_string()),
+            }
+            let (file, bin) = (archive.clone(), this.bin_dir.clone());
+            tokio::task::spawn_blocking(move || {
+                // Only a file with the published fingerprint is unpacked and run.
+                if crate::safety::sha256_file(&file).map_err(|e| e.to_string())? != expected {
+                    return Err("the ffmpeg download didn't match its published checksum".to_string());
+                }
+                crate::ffmpeg::unpack(&file, &bin)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+        }
+        .await;
+        let _ = std::fs::remove_file(&archive);
+        fetched.map_err(|e| format!("couldn't get ffmpeg: {e}"))?;
+        this.ffmpeg().ok_or_else(|| "ffmpeg wasn't unpacked".into())
+    }
+
     /// gallery-dl, downloaded into `bin/` the first time (detached, like `ytdlp`).
     async fn gallery_dl(&self) -> Result<PathBuf, String> {
         let this = self.clone();
@@ -278,6 +317,11 @@ impl Manager {
         let Ok(resp) = self.tools.client.get(&url).header(reqwest::header::RANGE, "bytes=0-0").send().await else { return false };
         let kind = resp.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("").to_ascii_lowercase();
         kind.starts_with("text/html") || kind.starts_with("application/xhtml")
+    }
+
+    /// ffmpeg's path, fetching it once if there is none (see `Tools::ensure_ffmpeg`).
+    pub async fn ensure_ffmpeg(&self) -> Result<PathBuf, String> {
+        self.tools.ensure_ffmpeg(|| {}).await
     }
 
     pub async fn notify(&self, text: String) {
@@ -1157,13 +1201,23 @@ impl Actor {
         let cookies = cookie_file(&self.jar, &self.cookie_dir, &id.0.to_string(), &url);
         let subtitles = (settings.subtitles && !settings.subtitle_langs.trim().is_empty()).then(|| settings.subtitle_langs.trim().to_string());
         let referer = self.state.item(id).and_then(|i| i.referrer.clone());
-        let opts = MediaOptions { cookies: cookies.clone(), limit_bps, temp_dir: work_dir, subtitles, referer };
+        let mut opts = MediaOptions { cookies: cookies.clone(), limit_bps, temp_dir: work_dir, subtitles, referer, ffmpeg: None };
+        let events = self.events.clone();
         let (tools, msg_tx) = (self.tools.clone(), self.msg_tx.clone());
         tokio::spawn(async move {
             let result = async {
                 let ytdlp = tokio::select! {
                     _ = cancel.cancelled() => return Ok(Outcome::Paused),
                     path = tools.ytdlp() => path?,
+                };
+                // HD video (picture + sound joined), MP3 and subtitles need ffmpeg. Without it
+                // yt-dlp still saves what it can, so a failed fetch doesn't stop the download.
+                let get = tools.ensure_ffmpeg(|| {
+                    let _ = events.send(Event::Notice("Getting ffmpeg once (35 MB) for HD video and MP3…".into()));
+                });
+                opts.ffmpeg = tokio::select! {
+                    _ = cancel.cancelled() => return Ok(Outcome::Paused),
+                    got = get => got.ok(),
                 };
                 let (media_tx, mut media_rx) = watch::channel(MediaProgress::default());
                 let forward = tokio::spawn(async move {
@@ -1424,7 +1478,7 @@ impl Actor {
                 let vt_key = self.state.settings.virustotal_key.clone();
                 let safety_tx = self.msg_tx.clone();
                 let rules = self.state.settings.rules.clone();
-                let ffmpeg = self.tools.ffmpeg();
+                let tools = self.tools.clone();
                 let used = self.retries.get(&id).copied().unwrap_or(0);
                 if let Some(item) = self.state.item_mut(id) {
                     item.speed_bps = 0;
@@ -1481,8 +1535,12 @@ impl Actor {
                             && let Some(rule) = crate::rules::matching(&rules, &item.url, &path, item.category).cloned()
                         {
                             let rule_tx = safety_tx.clone();
-                            tokio::task::spawn_blocking(move || {
-                                let _ = rule_tx.send(Msg::RuleDone(id, crate::rules::apply(&rule, &path, ffmpeg.as_deref())));
+                            tokio::spawn(async move {
+                                // Converting rules fetch ffmpeg first if there is none yet.
+                                let converts = matches!(rule.action, crate::rules::Action::ToMp3 | crate::rules::Action::SmallerMp4 { .. });
+                                let ffmpeg = if converts { tools.ensure_ffmpeg(|| {}).await.ok() } else { tools.ffmpeg() };
+                                let done = tokio::task::spawn_blocking(move || crate::rules::apply(&rule, &path, ffmpeg.as_deref())).await;
+                                let _ = rule_tx.send(Msg::RuleDone(id, done.unwrap_or_else(|e| Err(e.to_string()))));
                             });
                         }
                         if let Some(path) = item.dest.clone().filter(|p| !vt_key.trim().is_empty() && crate::safety::worth_checking(p)) {

@@ -1096,3 +1096,22 @@ async fn a_web_page_is_told_apart_from_a_file() {
     assert!(!m.is_web_page(s.url("/file/5000")).await, "a real file");
     assert!(!m.is_web_page("http://127.0.0.1:1/unreachable".into()).await, "unknown: let the download say what's wrong");
 }
+
+/// The real ffmpeg fetch (35 MB from gyan.dev): checksum, unpack, found afterwards.
+/// Run with: cargo test -p rdm-core --test manager real_ffmpeg_fetch -- --ignored --nocapture
+#[tokio::test]
+#[ignore]
+async fn real_ffmpeg_fetch() {
+    // SAFETY: only this ignored test runs (by name); nothing else reads PATH meanwhile.
+    unsafe { std::env::set_var("PATH", r"C:\Windows\System32") };
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |_| {}).await;
+    let started = std::time::Instant::now();
+    let path = m.ensure_ffmpeg().await.expect("fetched");
+    println!("ffmpeg at {} after {:?}", path.display(), started.elapsed());
+    assert_eq!(path, dir.path().join("bin").join("ffmpeg.exe"));
+    let version = std::process::Command::new(&path).arg("-version").output().unwrap();
+    assert!(String::from_utf8_lossy(&version.stdout).starts_with("ffmpeg version"), "it runs");
+    assert!(dir.path().join("bin").join("ffprobe.exe").exists());
+    assert!(!dir.path().join("bin").join("ffmpeg-download.7z").exists(), "the archive is cleaned up");
+}

@@ -12,6 +12,7 @@ Newest first. Snag shows the newest entry once after an update; the Help menu (?
 - Pictures from image pages (Pinterest, Imgur, Reddit galleries, Instagram and X photo posts) are saved into a folder each.
 - Torrents and magnet links download in the same list, with the same queues, pause and speed limit.
 - A GitHub repository link downloads the code as a ZIP.
+- ffmpeg (for HD video, MP3 and conversions) is fetched once when first needed (35 MB) and checked against its published checksum.
 - Some video streams hide their pieces as images; Snag repairs them into a video that plays.
 - Failed downloads try again by themselves after a timeout or a busy server.
 - "Refresh link": give an expired or stopped download a fresh link and it carries on.

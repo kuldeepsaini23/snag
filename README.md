@@ -18,26 +18,23 @@
 
 ## Install
 
-Snag is new: there is no installer yet, so for now you build it yourself.
+**Windows 10 and 11.** Download `Snag-Setup-1.0.0.exe` from the [latest release](https://github.com/kuldeepsaini23/snag/releases/latest) (about 12 MB) and run it. It installs for your user only, so no admin rights are needed. Mac and Linux are coming.
 
-1. Install [Rust](https://rustup.rs) (stable) on Windows 10 or 11.
-2. Build and run:
-   ```
-   git clone https://github.com/kuldeepsaini23/snag
-   cd snag
-   cargo build --release
-   target\release\snag.exe
-   ```
-3. Optional: install [ffmpeg](https://ffmpeg.org/download.html) and put it on your PATH (or copy `ffmpeg.exe` to `%APPDATA%\Snag\bin`). Snag needs it to merge HD video with its audio, to make MP3s and for conversion rules.
+Windows may say "Windows protected your PC" because the installer isn't code-signed yet: click **More info → Run anyway**. Each release lists its SHA-256 checksums, so you can check the file is the one published here.
 
-Snag downloads yt-dlp and gallery-dl by itself the first time it needs them.
+Snag fetches its helpers the first time they're needed: yt-dlp for video sites, gallery-dl for image galleries, and ffmpeg (35 MB, checked against its published checksum) for HD video, MP3 and conversions.
+
+### Build it yourself
+
+1. Install [Rust](https://rustup.rs) (stable), [Node.js](https://nodejs.org) and, for the installer, [Inno Setup 6](https://jrsoftware.org/isdl.php).
+2. `cargo build --release` builds `target\release\snag.exe`; `bash installer/build.sh` builds the installer and the extension packages.
 
 ### Browser extension
 
 Chrome, Edge, Brave and other Chromium browsers:
 
 1. Open `chrome://extensions` (or `edge://extensions`, `brave://extensions`) and turn on **Developer mode**.
-2. Click **Load unpacked** and pick the `extension` folder of this repository.
+2. Click **Load unpacked** and pick the `browser-extension` folder in Snag's install folder (or `extension` in this repository). Store versions are on their way.
 3. Click the Snag icon, then **Connect to Snag**, and press **Allow** in Snag.
 
 Firefox: run `node extension/build.js` and load `extension/dist/firefox` from `about:debugging` → This Firefox → Load Temporary Add-on.

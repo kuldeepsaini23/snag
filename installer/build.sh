@@ -15,4 +15,19 @@ done
 [ -n "$iscc" ] || { echo "Inno Setup 6 not found (winget install JRSoftware.InnoSetup)"; exit 1; }
 
 "$iscc" //Q "//DAppVersion=$version" installer/snag.iss
-ls -la "target/installer/Snag-Setup-$version.exe"
+
+# Store packages: Firefox (checked by Mozilla's linter first) and Chrome/Edge.
+mkdir -p target/store
+(cd extension && npx --yes web-ext@latest lint --source-dir dist/firefox --output text | tail -6)
+(cd extension && npx --yes web-ext@latest build --source-dir dist/firefox --artifacts-dir ../target/store --overwrite-dest >/dev/null)
+python - "$version" <<'PY'
+import os, sys, zipfile
+out = f"target/store/snag-chrome-{sys.argv[1]}.zip"
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+    for root, _, files in os.walk("extension/dist/chrome"):
+        for name in files:
+            path = os.path.join(root, name)
+            z.write(path, os.path.relpath(path, "extension/dist/chrome"))
+PY
+(cd target && sha256sum "installer/Snag-Setup-$version.exe" store/*.zip > "SHA256SUMS-$version.txt")
+ls -la "target/installer/Snag-Setup-$version.exe" target/store/

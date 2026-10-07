@@ -1,6 +1,7 @@
 pub mod category;
 pub mod cookies;
 pub mod dupe;
+pub mod ffmpeg;
 pub mod instance;
 pub mod manager;
 pub mod model;

@@ -97,6 +97,8 @@ pub struct MediaOptions {
     pub subtitles: Option<String>,
     /// The page the media was found on (`--referer`): many stream hosts refuse without it.
     pub referer: Option<String>,
+    /// Snag's own ffmpeg (`--ffmpeg-location`); None: yt-dlp looks on PATH.
+    pub ffmpeg: Option<PathBuf>,
 }
 
 impl MediaInfo {
@@ -280,6 +282,9 @@ pub fn build_args(format: &MediaFormat, out_dir: &Path, url: &str, opts: &MediaO
     }
     if let Some(referer) = &opts.referer {
         args.extend(["--referer".into(), referer.clone()]);
+    }
+    if let Some(ffmpeg) = &opts.ffmpeg {
+        args.extend(["--ffmpeg-location".into(), ffmpeg.display().to_string()]);
     }
     if opts.limit_bps > 0 {
         args.extend(["--limit-rate".into(), opts.limit_bps.to_string()]);
@@ -813,5 +818,19 @@ mod option_safety {
             let n = args.len();
             assert_eq!(&args[n - 2..], ["--", evil], "{args:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod ffmpeg_location {
+    use super::*;
+
+    #[test]
+    fn ytdlp_is_told_where_ffmpeg_is() {
+        let opts = MediaOptions { ffmpeg: Some(PathBuf::from(r"C:\Snag\bin\ffmpeg.exe")), ..Default::default() };
+        let args = build_args(&MediaFormat::AudioMp3, Path::new(r"C:\dl"), "https://youtu.be/x", &opts);
+        assert!(args.windows(2).any(|w| w[0] == "--ffmpeg-location" && w[1] == r"C:\Snag\bin\ffmpeg.exe"), "{args:?}");
+        let none = build_args(&MediaFormat::AudioMp3, Path::new(r"C:\dl"), "https://youtu.be/x", &MediaOptions::default());
+        assert!(!none.iter().any(|a| a == "--ffmpeg-location"), "none known: yt-dlp looks on PATH itself");
     }
 }
