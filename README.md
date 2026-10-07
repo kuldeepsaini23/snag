@@ -18,7 +18,7 @@
 
 ## Install
 
-**Windows 10 and 11.** Download `Snag-Setup-1.0.0.exe` from the [latest release](https://github.com/kuldeepsaini23/snag/releases/latest) (about 12 MB) and run it. It installs for your user only, so no admin rights are needed. Mac and Linux are coming.
+**Windows 10 and 11.** Download [`Snag-Setup.exe`](https://github.com/kuldeepsaini23/snag/releases/latest/download/Snag-Setup.exe) from the [latest release](https://github.com/kuldeepsaini23/snag/releases/latest) (about 12 MB) and run it. It installs for your user only, so no admin rights are needed. Mac and Linux are coming.
 
 Windows may say "Windows protected your PC" because the installer isn't code-signed yet: click **More info → Run anyway**. Each release lists its SHA-256 checksums, so you can check the file is the one published here.
 

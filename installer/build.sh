@@ -30,4 +30,7 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
             z.write(path, os.path.relpath(path, "extension/dist/chrome"))
 PY
 (cd target && sha256sum "installer/Snag-Setup-$version.exe" store/*.zip > "SHA256SUMS-$version.txt")
-ls -la "target/installer/Snag-Setup-$version.exe" target/store/
+# Also under a name without the version, so .../releases/latest/download/Snag-Setup.exe (the
+# website's Download button) always gets the newest one. Upload both to the release.
+cp "target/installer/Snag-Setup-$version.exe" target/installer/Snag-Setup.exe
+ls -la "target/installer/Snag-Setup-$version.exe" target/installer/Snag-Setup.exe target/store/
