@@ -272,7 +272,7 @@ chrome.contextMenus.onClicked.addListener((info) => {
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg.type === "send-batch") {
     sendBatch(msg.urls, msg.referrer)
-      .then((body) => reply({ ok: true, added: body.added }))
+      .then((body) => reply({ ok: true, added: body.added, skipped: body.skipped || 0 }))
       .catch((e) => reply({ ok: false, error: e.message }));
     return true;
   }
