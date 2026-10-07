@@ -132,7 +132,16 @@ async fn second_instance_can_bring_the_first_forward() {
     let port = b.port;
     let answered = tokio::task::spawn_blocking(move || rdm_bridge::focus_running(port..=port, TOKEN)).await.unwrap();
     assert!(answered);
-    assert!(matches!(rx.recv().await, Ok(rdm_core::Event::Focus)));
+    // Other events (e.g. the test's own settings being saved) may come first.
+    let focused = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if let Ok(rdm_core::Event::Focus) = rx.recv().await {
+                return true;
+            }
+        }
+    })
+    .await;
+    assert_eq!(focused, Ok(true));
     assert!(!tokio::task::spawn_blocking(move || rdm_bridge::focus_running(port..=port, "wrong")).await.unwrap());
 }
 
@@ -154,7 +163,16 @@ async fn quit_request_asks_the_running_app_to_quit() {
     assert!(!tokio::task::spawn_blocking(move || rdm_bridge::quit_running(port..=port, "wrong")).await.unwrap(), "needs the pairing token");
     let answered = tokio::task::spawn_blocking(move || rdm_bridge::quit_running(port..=port, TOKEN)).await.unwrap();
     assert!(answered);
-    assert!(matches!(rx.recv().await, Ok(rdm_core::Event::Quit)));
+    // Other events may come first; the quit request must arrive.
+    let quit = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if let Ok(rdm_core::Event::Quit) = rx.recv().await {
+                return true;
+            }
+        }
+    })
+    .await;
+    assert_eq!(quit, Ok(true));
 }
 
 #[tokio::test]
