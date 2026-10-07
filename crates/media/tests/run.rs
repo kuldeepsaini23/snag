@@ -177,11 +177,16 @@ async fn refused_subtitles_dont_fail_a_saved_video() {
 #[tokio::test]
 async fn stopping_a_live_recording_keeps_the_file() {
     let dir = tempfile::tempdir().unwrap();
-    let (tx, _rx) = watch::channel(MediaProgress::default());
+    let (tx, mut rx) = watch::channel(MediaProgress::default());
     let cancel = CancellationToken::new();
     let stop = cancel.clone();
+    // Stop once something was recorded (a fixed delay raced the fake's start on a busy machine).
     tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+        while rx.changed().await.is_ok() {
+            if rx.borrow().downloaded > 0 {
+                break;
+            }
+        }
         stop.cancel();
     });
     let r = download(&fake(), "fake://live", &MediaFormat::Live { max_height: 720 }, dir.path(), &MediaOptions::default(), cancel, &tx).await;
