@@ -45,6 +45,8 @@ pub enum Event {
     Watches(Vec<crate::watch::Watch>),
     /// A browser extension asks to connect: the UI asks the user, then `answer_pair`.
     PairRequest(u64),
+    /// A segmented download's connections changed: each one's range and bytes written.
+    Segments(ItemId, Vec<rdm_engine::segments::Segment>),
 }
 
 /// Handle to the download manager. Cheap to clone; all clones talk to one actor.
@@ -478,6 +480,23 @@ struct Running {
     stop: Stop,
     /// The `--limit-rate` its yt-dlp runs with (videos only; 0 = none).
     limit_bps: u64,
+    /// Progress already added to the day's total (it starts at what was on disk before).
+    counted: u64,
+    /// The segments last sent to the UI.
+    segments: Vec<rdm_engine::segments::Segment>,
+}
+
+impl Running {
+    /// Bytes downloaded since the last call. A report of 0 is the watch's initial value, not
+    /// progress; a smaller one is a new stream of a video (its count starts again).
+    fn newly_downloaded(&mut self, downloaded: u64) -> u64 {
+        if downloaded == 0 {
+            return 0;
+        }
+        let new = downloaded.saturating_sub(self.counted);
+        self.counted = downloaded;
+        new
+    }
 }
 
 /// Messages from download tasks back to the actor.
@@ -927,14 +946,15 @@ impl Actor {
         {
             item.work_dir = Some(media_dir(&settings, format).join(PARTS_DIR).join(id.0.to_string()));
         }
-        let (url, existing_dest, kind) = (item.url.clone(), item.dest.clone(), item.kind.clone());
+        let (url, existing_dest, kind, counted) = (item.url.clone(), item.dest.clone(), item.kind.clone(), item.downloaded);
         let (referrer, work_dir) = (item.referrer.clone(), item.work_dir.clone());
         self.updated(id);
 
         let cancel = CancellationToken::new();
         let (progress_tx, progress_rx) = watch::channel(Progress::default());
         let video = matches!(kind, Kind::Media(_) | Kind::Gallery | Kind::Torrent);
-        self.running.insert(id, Running { cancel: cancel.clone(), progress: progress_rx, stop: Stop::None, limit_bps: if video { share } else { 0 } });
+        let limit_bps = if video { share } else { 0 };
+        self.running.insert(id, Running { cancel: cancel.clone(), progress: progress_rx, stop: Stop::None, limit_bps, counted, segments: Vec::new() });
         if let Kind::Media(format) = kind {
             self.start_media(id, url, format, work_dir, share, cancel, progress_tx);
             return;
@@ -1176,13 +1196,16 @@ impl Actor {
                 }
             }
             Msg::Finished { id, result } => {
-                let Some(r) = self.running.remove(&id) else { return };
+                let Some(mut r) = self.running.remove(&id) else { return };
                 if let Stop::Remove { delete_file } = r.stop {
                     self.remove_now(id, delete_file);
                     self.schedule();
                     return;
                 }
                 let last = r.progress.borrow().clone();
+                // The bytes since the last tick.
+                let new = r.newly_downloaded(last.downloaded);
+                self.count_today(new, 0);
                 let auto_retry = self.state.settings.auto_retry;
                 let used = self.retries.get(&id).copied().unwrap_or(0);
                 if let Some(item) = self.state.item_mut(id) {
@@ -1286,8 +1309,14 @@ impl Actor {
         let due: Vec<u32> = self.state.watches.iter().filter(|w| w.due(now)).map(|w| w.id).collect();
         due.into_iter().for_each(|id| self.check_watch(id));
         let mut changed = Vec::new();
-        for (id, r) in &self.running {
+        let (mut new_bytes, mut segments) = (0, Vec::new());
+        for (id, r) in &mut self.running {
             let p = r.progress.borrow().clone();
+            new_bytes += r.newly_downloaded(p.downloaded);
+            if p.segments != r.segments {
+                r.segments = p.segments.clone();
+                segments.push((*id, p.segments.clone()));
+            }
             if let Some(item) = self.state.item_mut(*id) {
                 let total = p.total.or(item.total);
                 if item.downloaded != p.downloaded || item.speed_bps != p.speed_bps || item.total != total {
@@ -1303,10 +1332,22 @@ impl Actor {
                 self.emit(Event::Updated(item.clone()));
             }
         }
+        for (id, segs) in segments {
+            self.emit(Event::Segments(id, segs));
+        }
+        // Time counts only while bytes arrive (a stalled download isn't "downloading").
+        self.count_today(new_bytes, if new_bytes > 0 { TICK.as_millis() as u64 } else { 0 });
         self.schedule();
         if self.dirty && self.last_save.elapsed() >= SAVE_EVERY {
             self.save();
         }
+    }
+
+    /// Adds to today's downloaded total. It is saved with the next save (a finish, a pause, quitting);
+    /// progress alone doesn't make the list dirty, so a long download doesn't rewrite it every second.
+    fn count_today(&mut self, bytes: u64, ms: u64) {
+        let day = chrono::Local::now().format("%Y-%m-%d").to_string();
+        self.state.count_download(&day, bytes, ms);
     }
 
     fn save(&mut self) {

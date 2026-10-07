@@ -52,6 +52,54 @@ async fn add_downloads_to_done() {
 }
 
 #[tokio::test]
+async fn downloaded_bytes_are_counted_per_day() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    // One connection: slow enough (about 2 s) for progress ticks to see it.
+    let m = manager(dir.path(), |s| s.connections = 1).await;
+    let mut rx = m.subscribe();
+    let id = m.add(s.url("/slow/3000000")).await;
+    wait_item(&mut rx, has(id, Status::Done)).await;
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let daily = m.snapshot().await.daily;
+    assert_eq!(daily.get(&today).map(|d| d.bytes), Some(3_000_000), "every byte once: {daily:?}");
+    assert!(daily[&today].ms > 0, "time spent downloading is counted too");
+}
+
+#[tokio::test]
+async fn a_resumed_download_counts_its_bytes_once() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |s| s.connections = 1).await;
+    let mut rx = m.subscribe();
+    let id = m.add(s.url("/slow/3000000")).await;
+    wait_item(&mut rx, |i| i.id == id && i.downloaded > 500_000).await;
+    m.pause(id).await;
+    wait_item(&mut rx, has(id, Status::Paused)).await;
+    m.resume(id).await;
+    wait_item(&mut rx, has(id, Status::Done)).await;
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    assert_eq!(m.snapshot().await.daily[&today].bytes, 3_000_000, "what was on disk before the resume isn't counted again");
+}
+
+#[tokio::test]
+async fn segments_reach_the_ui_while_downloading() {
+    let s = TestServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |s| s.connections = 4).await;
+    let mut rx = m.subscribe();
+    let id = m.add(s.url(&format!("/slow/{}", 8 * 1024 * 1024))).await;
+    let segments = wait_event(&mut rx, |e| match e {
+        Event::Segments(got, segs) if got == id && segs.iter().any(|s| s.written > 0) => Some(segs),
+        _ => None,
+    })
+    .await;
+    assert_eq!(segments.len(), 4, "one per connection");
+    assert_eq!(segments.iter().map(|s| s.end - s.start).sum::<u64>(), 8 * 1024 * 1024, "they cover the file");
+    m.shutdown().await;
+}
+
+#[tokio::test]
 async fn sorts_into_category_folder() {
     let s = TestServer::start().await;
     let dir = tempfile::tempdir().unwrap();
