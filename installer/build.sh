@@ -16,11 +16,13 @@ done
 
 "$iscc" //Q "//DAppVersion=$version" installer/snag.iss
 
-# Store packages: Firefox (checked by Mozilla's linter first) and Chrome/Edge.
+# Store packages: Firefox (checked by Mozilla's linter first) and Chrome/Edge, both named after
+# the extension's own version (it changes less often than the app's).
+ext_version=$(node -p "require('./extension/manifest.json').version")
 mkdir -p target/store
 (cd extension && npx --yes web-ext@latest lint --source-dir dist/firefox --output text | tail -6)
 (cd extension && npx --yes web-ext@latest build --source-dir dist/firefox --artifacts-dir ../target/store --overwrite-dest >/dev/null)
-python - "$version" <<'PY'
+python - "$ext_version" <<'PY'
 import os, sys, zipfile
 out = f"target/store/snag-chrome-{sys.argv[1]}.zip"
 with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
@@ -29,7 +31,7 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
             path = os.path.join(root, name)
             z.write(path, os.path.relpath(path, "extension/dist/chrome"))
 PY
-(cd target && sha256sum "installer/Snag-Setup-$version.exe" store/*-"$version".zip > "SHA256SUMS-$version.txt")
+(cd target && sha256sum "installer/Snag-Setup-$version.exe" store/*-"$ext_version".zip > "SHA256SUMS-$version.txt")
 # Also under a name without the version, so .../releases/latest/download/Snag-Setup.exe (the
 # website's Download button) always gets the newest one. Upload both to the release.
 cp "target/installer/Snag-Setup-$version.exe" target/installer/Snag-Setup.exe
