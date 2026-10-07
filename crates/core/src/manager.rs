@@ -236,6 +236,7 @@ enum Cmd {
     AddMedia(String, String, MediaFormat, QueueId, Option<String>, Option<f64>, oneshot::Sender<ItemId>),
     AddGallery(String, oneshot::Sender<ItemId>),
     AddPage(String, oneshot::Sender<ItemId>),
+    AlreadyHave(String, oneshot::Sender<bool>),
     AddTorrent(String, oneshot::Sender<ItemId>),
     Refresh(ItemId, String),
     AddWatch(crate::watch::Watch),
@@ -355,6 +356,14 @@ impl Manager {
     }
 
     /// A page of images (Pinterest, Imgur, an Instagram photo post…): saved by gallery-dl.
+    /// That link was downloaded before and its file is still there (asks quietly: no
+    /// "already downloaded" notice, e.g. for each link of a batch).
+    pub async fn already_have(&self, url: String) -> bool {
+        let (reply, rx) = oneshot::channel();
+        let _ = self.tx.send(Cmd::AlreadyHave(url, reply));
+        rx.await.unwrap_or(false)
+    }
+
     /// Saves a web page as one offline .html file (in `<download>/Pages`), with the browser's
     /// cookies, so logged-in pages save as you see them.
     pub async fn save_page(&self, url: String) -> ItemId {
@@ -634,7 +643,8 @@ enum Msg {
     /// A torrent picked its folder: remembered so a resume writes there again.
     TorrentFolder(ItemId, PathBuf),
     /// An after-download rule finished (the item now points at its result).
-    RuleDone(ItemId, Result<crate::rules::Applied, String>),
+    /// The rule ran on the file at that path (the item may have changed since).
+    RuleDone(ItemId, PathBuf, Result<crate::rules::Applied, String>),
 }
 
 /// Automatic retries after a temporary failure: waits of base, 3×base, 9×base.
@@ -820,6 +830,9 @@ impl Actor {
                 }
                 let name = crate::model::gallery_name(&url);
                 let _ = reply.send(self.push_item(url, name, Category::Image, Kind::Gallery, None, 0));
+            }
+            Cmd::AlreadyHave(url, reply) => {
+                let _ = reply.send(self.done_copy(&url).is_some());
             }
             Cmd::AddPage(url, reply) => {
                 // Pages change: saving one again is never a duplicate.
@@ -1252,6 +1265,7 @@ impl Actor {
         let dir = if settings.sort_into_folders { settings.download_dir.join("Pages") } else { settings.download_dir.clone() };
         let cookies = self.jar.lock().ok().and_then(|j| j.netscape(&url)).and_then(|text| monolith::cookies::parse_cookie_file_contents(&text).ok());
         let msg_tx = self.msg_tx.clone();
+        let paused = cancel.clone();
         tokio::spawn(async move {
             let save = tokio::task::spawn_blocking(move || -> Result<PathBuf, String> {
                 let options = monolith::core::MonolithOptions { silent: true, ignore_errors: true, timeout: 30, user_agent: Some(BROWSER_UA.into()), ..Default::default() };
@@ -1260,6 +1274,11 @@ impl Actor {
                 std::fs::create_dir_all(&dir).map_err(|e| format!("can't create {}: {e}", dir.display()))?;
                 let name = format!("{}.html", page_file_name(title.as_deref(), &url));
                 let path = rdm_engine::filename::unique_path(&dir, &name);
+                // Paused meanwhile (a save can't be interrupted): drop the late file, or resuming
+                // would leave a second copy.
+                if paused.is_cancelled() {
+                    return Err("paused".into());
+                }
                 std::fs::write(&path, &html).map_err(|e| format!("can't write {}: {e}", path.display()))?;
                 Ok(path)
             });
@@ -1422,8 +1441,9 @@ impl Actor {
                     self.dirty = true;
                 }
             }
-            Msg::RuleDone(id, outcome) => {
-                let Some(item) = self.state.item_mut(id) else { return };
+            Msg::RuleDone(id, from, outcome) => {
+                // Removed, re-downloaded or moved since: the item isn't pointed at the result.
+                let Some(item) = self.state.item_mut(id).filter(|i| i.status == Status::Done && i.dest.as_deref() == Some(from.as_path())) else { return };
                 let name = item.name.clone();
                 let text = match outcome {
                     Ok(applied) => {
@@ -1542,8 +1562,9 @@ impl Actor {
                                 // Converting rules fetch ffmpeg first if there is none yet.
                                 let converts = matches!(rule.action, crate::rules::Action::ToMp3 | crate::rules::Action::SmallerMp4 { .. });
                                 let ffmpeg = if converts { tools.ensure_ffmpeg(|| {}).await.ok() } else { tools.ffmpeg() };
+                                let from = path.clone();
                                 let done = tokio::task::spawn_blocking(move || crate::rules::apply(&rule, &path, ffmpeg.as_deref())).await;
-                                let _ = rule_tx.send(Msg::RuleDone(id, done.unwrap_or_else(|e| Err(e.to_string()))));
+                                let _ = rule_tx.send(Msg::RuleDone(id, from, done.unwrap_or_else(|e| Err(e.to_string()))));
                             });
                         }
                         if let Some(path) = item.dest.clone().filter(|p| !vt_key.trim().is_empty() && crate::safety::worth_checking(p)) {

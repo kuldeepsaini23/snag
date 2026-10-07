@@ -499,3 +499,26 @@ async fn only_web_pictures_are_taken_as_thumbnails() {
     let kept: Vec<_> = items.iter().map(|i| i.thumbnail.as_deref()).collect();
     assert_eq!(kept, vec![None, None, None, Some("https://i.example/ok.jpg")]);
 }
+
+#[tokio::test]
+async fn grab_all_skips_what_is_already_downloaded_quietly() {
+    let dir = tempfile::tempdir().unwrap();
+    // A download finished earlier, its file still on disk.
+    let file = dir.path().join("dl").join("a.zip");
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    std::fs::write(&file, b"zip").unwrap();
+    let state = json!({ "next_id": 2, "items": [{ "id": 1, "url": "https://x.test/a.zip", "name": "a.zip", "category": "Archive", "status": "Done", "dest": file, "downloaded": 3, "total": 3, "speed_bps": 0, "queue": 0, "added": 1, "kind": "Http" }] });
+    std::fs::write(dir.path().join("state.json"), state.to_string()).unwrap();
+    let m = manager(dir.path()).await;
+    let mut rx = m.subscribe();
+    let b = start(m.clone(), 48281..=48290).await.unwrap();
+    let (status, reply) = post_to(b.port, "/add-batch", json!({ "urls": ["https://x.test/a.zip?utm_source=x", "https://x.test/b.zip"] }), TOKEN).await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!((reply["added"].clone(), reply["skipped"].clone()), (json!(1), json!(1)), "{reply}");
+    assert_eq!(m.snapshot().await.items.len(), 2);
+    // No "already downloaded" popup for each link of a batch.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    while let Ok(event) = rx.try_recv() {
+        assert!(!matches!(event, rdm_core::Event::Duplicate(_)), "quiet in a batch");
+    }
+}

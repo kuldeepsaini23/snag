@@ -294,15 +294,21 @@ async fn add_batch(State(manager): State<Manager>, headers: HeaderMap, Json(req)
     }
     let referrer = req.referrer.filter(|r| r.starts_with("http"));
     let mut seen = std::collections::HashSet::new();
-    let mut added = 0;
+    let (mut added, mut skipped) = (0, 0);
     for url in req.urls {
         let web = url.starts_with("http://") || url.starts_with("https://");
-        if web && seen.insert(url.clone()) {
-            manager.add_with(url, referrer.clone()).await;
-            added += 1;
+        if !web || !seen.insert(url.clone()) {
+            continue;
         }
+        // Downloaded before: skipped quietly (one popup per link would bury the window).
+        if manager.already_have(url.clone()).await {
+            skipped += 1;
+            continue;
+        }
+        manager.add_with(url, referrer.clone()).await;
+        added += 1;
     }
-    (StatusCode::OK, Json(json!({ "added": added })))
+    (StatusCode::OK, Json(json!({ "added": added, "skipped": skipped })))
 }
 
 async fn quit(State(manager): State<Manager>, headers: HeaderMap) -> (StatusCode, Json<Value>) {

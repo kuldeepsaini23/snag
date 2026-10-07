@@ -1,8 +1,10 @@
 //! "Already downloaded?": links compared in a normal form, so the same download reached through
 //! a share link, a tracking parameter or a different spelling is still recognised.
 
-/// Query parameters that only track where a click came from; they never change the download.
-const TRACKING: [&str; 14] = ["fbclid", "gclid", "igshid", "si", "feature", "ref", "ref_src", "_ga", "mc_cid", "mc_eid", "pp", "ab_channel", "spm", "share"];
+/// Query parameters that only track where a click came from, on any site.
+const TRACKING: [&str; 6] = ["fbclid", "gclid", "igshid", "_ga", "mc_cid", "mc_eid"];
+/// Parameters that only track on YouTube (elsewhere `ref` or `share` can pick the download).
+const YOUTUBE_TRACKING: [&str; 5] = ["si", "feature", "pp", "ab_channel", "ref_src"];
 
 /// One spelling per download: scheme and `www.`/`m.` dropped, host lower-cased, YouTube share
 /// and Shorts links turned into watch links, tracking parameters, fragments and trailing
@@ -20,6 +22,7 @@ pub fn normalize(url: &str) -> String {
     let mut query: Vec<(String, String)> = parsed
         .query_pairs()
         .filter(|(k, _)| !k.starts_with("utm_") && !TRACKING.contains(&k.as_ref()))
+        .filter(|(k, _)| !(is_youtube(&host) && YOUTUBE_TRACKING.contains(&k.as_ref())))
         .map(|(k, v)| (k.into_owned(), v.into_owned()))
         .collect();
     // youtu.be/<id> and /shorts/<id> are the same video as watch?v=<id>.
@@ -39,6 +42,10 @@ pub fn normalize(url: &str) -> String {
     query.sort();
     let query: Vec<String> = query.iter().map(|(k, v)| if v.is_empty() { k.clone() } else { format!("{k}={v}") }).collect();
     if query.is_empty() { format!("{host}{path}") } else { format!("{host}{path}?{}", query.join("&")) }
+}
+
+fn is_youtube(host: &str) -> bool {
+    matches!(host, "youtube.com" | "youtu.be" | "music.youtube.com")
 }
 
 #[cfg(test)]
@@ -68,5 +75,8 @@ mod tests {
         differ("https://example.com/file.zip?version=2", "https://example.com/file.zip?version=3");
         differ("https://example.com/a.zip", "https://example.org/a.zip");
         differ("https://example.com/A.zip", "https://example.com/a.zip");
+        // Parameters that only track on some sites mean something on others.
+        differ("https://api.github.com/repos/a/b/zipball?ref=main", "https://api.github.com/repos/a/b/zipball?ref=dev");
+        differ("https://files.example.com/get?share=abc", "https://files.example.com/get?share=xyz");
     }
 }

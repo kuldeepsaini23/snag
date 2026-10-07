@@ -105,8 +105,9 @@ fn scrub(text: &str, token: &str, home: Option<&str>) -> String {
     out.split_inclusive(char::is_whitespace)
         .map(|word| {
             let link = word.find("http://").or_else(|| word.find("https://"));
-            match link.and_then(|at| word[at..].find('?').map(|q| at + q)) {
-                Some(q) => format!("{}?…{}", &word[..q], &word[word.trim_end().len()..]),
+            // Parameters and the #part both go: signed links, sessions and file keys live there.
+            match link.and_then(|at| word[at..].find(['?', '#']).map(|q| at + q)) {
+                Some(q) => format!("{}{}…{}", &word[..q], &word[q..q + 1], &word[word.trim_end().len()..]),
                 None => word.to_string(),
             }
         })
@@ -224,12 +225,14 @@ mod tests {
             "2026-10-07 13:00:00  Phone link http://192.168.1.5:47330/{TOKEN}\n\
              2026-10-07 13:01:00  clip.mp4 failed: HTTP 403 for https://rr3.googlevideo.com/videoplayback?expire=1&sig=SECRETSIG\n\
              2026-10-07 13:02:00  Couldn't write C:\\Users\\alice\\Videos\\clip.mp4\n\
-             2026-10-07 13:03:00  c:\\users\\ALICE\\AppData\\Roaming\\Snag\\cookies\\youtube.txt is gone\n"
+             2026-10-07 13:03:00  c:\\users\\ALICE\\AppData\\Roaming\\Snag\\cookies\\youtube.txt is gone\n\
+             2026-10-07 13:04:00  share.zip failed: https://mega.nz/file/AbC#DECRYPTKEY\n"
         );
         let text = report("It froze. My code is pasted nowhere.", &log, true);
         assert!(!text.contains(TOKEN), "pairing code");
         assert!(!text.contains("extension_token"), "not even the setting's name");
         assert!(!text.contains("SECRETSIG"), "link parameters (signed links, sessions)");
+        assert!(!text.contains("DECRYPTKEY"), "a link's #part (file keys live there)");
         assert!(!text.to_lowercase().contains("alice"), "the user's name in paths");
         assert!(text.contains(r"%USERPROFILE%\Downloads\Snag"), "folder names stay readable");
         assert!(text.contains("https://rr3.googlevideo.com/videoplayback?…"), "the link minus its parameters");

@@ -85,14 +85,18 @@ pub fn apply(rule: &Rule, file: &Path, ffmpeg: Option<&Path>) -> Result<Applied,
             std::fs::create_dir_all(target).map_err(|e| format!("can't create {}: {e}", target.display()))?;
             let name = file.file_name().ok_or("the file has no name")?;
             let out = free_path(target.join(name));
+            let mut note = format!("Moved to {}", target.display());
             if rule.keep_original {
                 std::fs::copy(file, &out).map_err(|e| format!("can't copy to {}: {e}", target.display()))?;
+                note = format!("Copied to {}", target.display());
             } else if std::fs::rename(file, &out).is_err() {
-                // Another drive: copy, then remove.
+                // Another drive, or the file is in use: copy, then remove the original if possible.
                 std::fs::copy(file, &out).map_err(|e| format!("can't move to {}: {e}", target.display()))?;
-                let _ = std::fs::remove_file(file);
+                if std::fs::remove_file(file).is_err() {
+                    note = format!("Copied to {} (the original is in use, so it stays too)", target.display());
+                }
             }
-            return Ok(Applied { note: format!("Moved to {}", target.display()), result: out });
+            return Ok(Applied { note, result: out });
         }
     };
     // The result is safe on disk: now the original may go.
@@ -265,6 +269,25 @@ mod tests {
         std::fs::write(&again, b"exe").unwrap();
         let moved = apply(&rule(Match::Ext("exe".into()), Action::MoveTo(to.clone()), false), &again, None).unwrap();
         assert!(!again.exists() && moved.result.exists(), "moved");
+    }
+
+    #[test]
+    fn a_move_that_cannot_remove_the_original_says_so() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("busy.exe");
+        std::fs::write(&file, b"exe").unwrap();
+        // Another program has it open (e.g. a torrent still sharing it): Windows won't move it.
+        #[cfg(windows)]
+        let _held = {
+            use std::os::windows::fs::OpenOptionsExt;
+            // Read and write sharing only (no delete), like most programs open files.
+            std::fs::OpenOptions::new().read(true).share_mode(0x1 | 0x2).open(&file).unwrap()
+        };
+        let to = dir.path().join("Programs");
+        let done = apply(&rule(Match::Ext("exe".into()), Action::MoveTo(to.clone()), false), &file, None).unwrap();
+        assert!(to.join("busy.exe").exists(), "copied over");
+        assert!(file.exists(), "the original is still in use");
+        assert!(done.note.contains("in use"), "the notice doesn't claim a move: {}", done.note);
     }
 
     #[test]
