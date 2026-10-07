@@ -24,9 +24,11 @@ pub fn view(m: &Model, a: Anim, c: Colors) -> Element<'_, Message> {
     let (running, speed) = m.totals();
     let subtitle = if running == 0 { "Nothing downloading".to_string() } else { format!("{running} active · {}", format::speed(speed)) };
     let logo = iced::widget::image(super::icon::logo(c.accent)).width(26).height(26);
-    let title = column![text("Downloads").size(13).font(style::SEMIBOLD), tiny(subtitle, c.text3)].spacing(1);
+    let title = column![text(if m.stats_open { "Stats" } else { "Downloads" }).size(13).font(style::SEMIBOLD), tiny(subtitle, c.text3)].spacing(1);
+    // The filter tabs belong to the list; the stats screen has its own range switch.
+    let tabs: Element<'_, Message> = if m.stats_open { Space::new().into() } else { tabs(m, a, c) };
 
-    let middle = container(row![title, Space::new().width(Fill), tabs(m, a, c), Space::new().width(Fill)].spacing(10).align_y(Alignment::Center))
+    let middle = container(row![title, Space::new().width(Fill), tabs, Space::new().width(Fill)].spacing(10).align_y(Alignment::Center))
         .width(Fill)
         .clip(true);
     let add = button(row![bold(Icon::Plus, 13), text("Add").size(12.5).font(style::SEMIBOLD)].spacing(5).align_y(Alignment::Center))

@@ -104,9 +104,9 @@ impl Model {
         self.items.iter().rev().filter(|i| self.shown(i)).partition(|i| i.status != Status::Done)
     }
 
-    /// The selected item, if the list currently shows it.
+    /// The selected item, if the list currently shows it (the stats screen hides the list).
     pub fn inspected(&self) -> Option<&Item> {
-        let id = self.selected?;
+        let id = self.selected.filter(|_| !self.stats_open)?;
         self.items.iter().find(|i| i.id == id).filter(|i| self.shown(i))
     }
 }
@@ -413,6 +413,7 @@ pub fn motion_targets(m: &Model) -> crate::motion::Targets {
         popover: m.speed_open || m.help_open,
         toast: m.screen == crate::state::Screen::Downloads && (m.toast.is_some() || m.notice.is_some()),
         search: m.search_open,
+        stats: m.stats_open,
     }
 }
 

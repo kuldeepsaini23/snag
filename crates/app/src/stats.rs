@@ -83,6 +83,33 @@ fn site(item: &Item) -> String {
     if item.kind == Kind::Torrent { "Torrents".into() } else { crate::view::host(&item.url) }
 }
 
+/// The sidebar's name for a category.
+pub fn category_label(c: Category) -> &'static str {
+    match c {
+        Category::Video => "Videos",
+        Category::Music => "Music",
+        Category::Image => "Images",
+        Category::Archive => "Archives",
+        Category::Document => "Documents",
+        Category::Program => "Programs",
+        Category::Other => "Other",
+    }
+}
+
+impl crate::state::Model {
+    /// The sidebar's "Stats": the screen replaces the list (popovers close).
+    pub fn open_stats(&mut self) {
+        self.stats_open = true;
+        self.speed_open = false;
+        self.help_open = false;
+    }
+
+    /// Back to the list (a library, a filter tab, Escape).
+    pub fn close_stats(&mut self) {
+        self.stats_open = false;
+    }
+}
+
 pub fn compute(items: &[Item], daily: &BTreeMap<String, DayTotal>, range: Range, today: NaiveDate) -> Stats {
     let finished: Vec<(&Item, NaiveDate)> = items.iter().filter(|i| i.status == Status::Done).filter_map(|i| Some((i, item_day(i)?))).collect();
     let counted_from = daily.keys().next().and_then(|k| NaiveDate::parse_from_str(k, "%Y-%m-%d").ok());
@@ -257,6 +284,24 @@ mod tests {
         assert_eq!(s.bars[0], Bar { label: "Nov".into(), bytes: 5 });
         assert_eq!(s.bars[11], Bar { label: "Oct".into(), bytes: 8 });
         assert_eq!(s.total, 13);
+    }
+
+    #[test]
+    fn the_stats_screen_hides_the_inspector_and_comes_back() {
+        let mut m = crate::state::Model { items: vec![done(1, "https://a.com/1", Category::Video, 1, today())], ..Default::default() };
+        m.selected = Some(rdm_core::ItemId(1));
+        assert!(m.inspected().is_some());
+        m.open_stats();
+        assert!(m.inspected().is_none());
+        assert!(crate::view::motion_targets(&m).stats && !crate::view::motion_targets(&m).inspector);
+        m.close_stats();
+        assert!(m.inspected().is_some(), "the selection is kept");
+    }
+
+    #[test]
+    fn category_labels() {
+        assert_eq!(category_label(Category::Video), "Videos");
+        assert_eq!(category_label(Category::Other), "Other");
     }
 
     #[test]

@@ -11,6 +11,7 @@ mod picker;
 mod popover;
 mod settings;
 mod sidebar;
+mod stats;
 pub mod style;
 pub mod theme;
 mod toolbar;
@@ -43,6 +44,8 @@ pub struct Anim {
     pub popover: f32,
     pub toast: f32,
     pub search: f32,
+    /// The stats charts rising (0 … 1).
+    pub stats: f32,
 }
 
 impl Anim {
@@ -55,6 +58,7 @@ impl Anim {
             popover: m.open(&m.popover, now),
             toast: m.open(&m.toast, now),
             search: m.open(&m.search, now),
+            stats: m.open(&m.stats, now),
         }
     }
 }
@@ -70,7 +74,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
         let panel = row![sidebar::view(m, c), Space::new().width(GAP)];
         body = body.push(slide(panel.into(), (SIDEBAR_WIDTH + GAP) * a.sidebar, true));
     }
-    body = body.push(list::view(m, &app.motion, app.now, c));
+    body = body.push(if m.stats_open { stats::view(m, a.stats, c) } else { list::view(m, &app.motion, app.now, c) });
     // Kept on screen while it slides closed (the selection is already gone by then).
     let inspected = m.inspected().or_else(|| app.inspector_item.and_then(|id| m.items.iter().find(|i| i.id == id)));
     if let Some(item) = inspected.filter(|_| a.inspector > 0.0) {
