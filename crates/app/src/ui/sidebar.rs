@@ -36,6 +36,10 @@ pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
         let lib = Library::Category(cat);
         list = list.push(entry(glyph, name.into(), count(counts.category(cat)), m.library == lib && !m.stats_open, Message::SetLibrary(lib)));
     }
+    // By how they download, not what they hold (a torrent's movie is also under Videos).
+    for (glyph, name, n, lib) in [(Icon::Magnet, "Torrents", counts.torrents, Library::Torrents), (Icon::Browser, "Web pages", counts.pages, Library::Pages)] {
+        list = list.push(entry(glyph, name.into(), count(n), m.library == lib && !m.stats_open, Message::SetLibrary(lib)));
+    }
     list = list.push(entry(Icon::ChartBar, "Stats".into(), Space::new().into(), m.stats_open, Message::OpenStats));
 
     // With only the main queue, "Main" would just repeat "All downloads".

@@ -25,6 +25,10 @@ pub enum Library {
     All,
     Category(Category),
     Queue(QueueId),
+    /// Magnet links and .torrent downloads, whatever they hold.
+    Torrents,
+    /// Web pages saved as one file.
+    Pages,
 }
 
 /// The sidebar's categories, in order.
@@ -36,6 +40,8 @@ pub struct Counts {
     pub active: usize,
     pub done: usize,
     pub scheduled: usize,
+    pub torrents: usize,
+    pub pages: usize,
     categories: Vec<(Category, usize)>,
     queues: Vec<(QueueId, usize)>,
 }
@@ -83,6 +89,8 @@ impl Model {
             c.active += self.passes(i, Filter::Active) as usize;
             c.done += (i.status == Status::Done) as usize;
             c.scheduled += self.passes(i, Filter::Scheduled) as usize;
+            c.torrents += (i.kind == Kind::Torrent) as usize;
+            c.pages += (i.kind == Kind::Page) as usize;
             bump(&mut c.categories, i.category);
             bump(&mut c.queues, i.queue);
         }
@@ -94,6 +102,8 @@ impl Model {
             Library::All => true,
             Library::Category(c) => item.category == c,
             Library::Queue(q) => item.queue == q,
+            Library::Torrents => item.kind == Kind::Torrent,
+            Library::Pages => item.kind == Kind::Page,
         };
         let needle = self.search.trim().to_lowercase();
         in_library && self.passes(item, self.filter) && (needle.is_empty() || item.name.to_lowercase().contains(&needle))
@@ -1117,6 +1127,22 @@ mod tests {
         assert_eq!(card_meta(&Item { status: Status::Queued, ..base.clone() }), "Queued · 1.2 GB");
         assert_eq!(card_meta(&Item { status: Status::Failed("HTTP 403".into()), ..base.clone() }), "Failed · HTTP 403");
         assert_eq!(card_meta(&Item { total: None, downloaded: 0, status: Status::Running, ..base }), "Starting…");
+    }
+
+    #[test]
+    fn torrents_and_saved_pages_have_their_own_sections() {
+        let mut m = Model::default();
+        let movie = Item { kind: Kind::Torrent, ..item(1, "Movie.mkv", Category::Video, Status::Done) };
+        let page = Item { kind: Kind::Page, ..item(2, "Article.html", Category::Document, Status::Done) };
+        m.items = vec![movie, page, item(3, "clip.mp4", Category::Video, Status::Done)];
+        let counts = m.counts();
+        assert_eq!((counts.torrents, counts.pages), (1, 1));
+        m.library = Library::Torrents;
+        assert_eq!(m.visible().1.iter().map(|i| i.id.0).collect::<Vec<_>>(), vec![1]);
+        m.library = Library::Pages;
+        assert_eq!(m.visible().1.iter().map(|i| i.id.0).collect::<Vec<_>>(), vec![2]);
+        m.library = Library::Category(Category::Video);
+        assert_eq!(m.visible().1.len(), 2, "a torrent still counts as the video it is");
     }
 
     #[test]
