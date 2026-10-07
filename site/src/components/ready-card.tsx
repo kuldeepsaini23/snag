@@ -3,7 +3,7 @@ import { CheckCircle, GithubLogo, WindowsLogo } from "@phosphor-icons/react/dist
 import { ButtonLink } from "@/components/button";
 import { LogoMark } from "@/components/logo";
 import { SpeedLine } from "@/components/speed-line";
-import { DOWNLOAD_URL, REPO_URL } from "@/lib/site";
+import { DOWNLOAD_URL, INSTALLER_NAME, REPO_URL } from "@/lib/site";
 
 // The end of the page: the download has finished and is ready to open.
 export function ReadyCard() {
@@ -21,7 +21,7 @@ export function ReadyCard() {
           <div className="mx-auto mt-10 flex max-w-md items-center gap-4 rounded-xl bg-raised p-3 text-left">
             <LogoMark size={44} className="size-11 shrink-0" />
             <div className="min-w-0 flex-1">
-              <p className="truncate font-medium">Snag-Setup-1.0.0.exe</p>
+              <p className="truncate font-medium">{INSTALLER_NAME}</p>
               <p className="font-mono text-xs text-faint">12 MB · Windows 10 &amp; 11</p>
               <div className="mt-2 flex h-1 gap-[3px]" aria-hidden="true">
                 {Array.from({ length: 8 }, (_, i) => (

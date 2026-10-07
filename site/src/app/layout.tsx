@@ -3,7 +3,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 
 import { DownloadBar } from "@/components/download-bar";
 import { SiteFooter } from "@/components/site-footer";
-import { PITCH, SITE_URL } from "@/lib/site";
+import { DOWNLOAD_URL, PITCH, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"], display: "swap" });
@@ -60,14 +60,15 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrains.variable} antialiased`}>
-      <body className="min-h-dvh">
+      {/* Browser extensions often add attributes to <body> before React loads; that is not a real mismatch. */}
+      <body className="min-h-dvh" suppressHydrationWarning>
         <a
           href="#main"
           className="sr-only z-50 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-on-accent focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
         >
           Skip to content
         </a>
-        <DownloadBar />
+        <DownloadBar downloadUrl={DOWNLOAD_URL} />
         <main id="main">{children}</main>
         <SiteFooter />
       </body>

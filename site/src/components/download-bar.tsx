@@ -6,14 +6,13 @@ import { usePathname } from "next/navigation";
 import { CheckCircle, WindowsLogo } from "@phosphor-icons/react";
 
 import { LogoMark } from "@/components/logo";
-import { DOWNLOAD_URL } from "@/lib/site";
 
 // How each of the eight parts keeps pace with the scroll: all start together, some race
 // ahead, some lag, and every one lands at 100% at the bottom of the page.
 const pace = [0.7, 1.35, 0.9, 1.7, 1.1, 0.6, 1.5, 1.0];
 
 // The page is the download: this bar fills as you scroll and finishes at the bottom.
-export function DownloadBar() {
+export function DownloadBar({ downloadUrl }: { downloadUrl: string }) {
   const pathname = usePathname();
   const parts = useRef<(HTMLSpanElement | null)[]>([]);
   const percent = useRef<HTMLSpanElement>(null);
@@ -107,7 +106,7 @@ export function DownloadBar() {
         )}
 
         <a
-          href={DOWNLOAD_URL}
+          href={downloadUrl}
           className="flex h-9 shrink-0 items-center gap-2 rounded-full bg-accent px-4 text-sm font-semibold text-on-accent transition-[filter] hover:brightness-110"
         >
           <WindowsLogo weight="fill" className="size-4" aria-hidden />

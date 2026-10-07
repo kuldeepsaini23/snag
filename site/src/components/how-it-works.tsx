@@ -1,11 +1,13 @@
 import { CursorClick, DownloadSimple, Plug } from "@phosphor-icons/react/dist/ssr";
 
+import { INSTALLER_NAME } from "@/lib/site";
+
 const steps = [
   {
     icon: DownloadSimple,
     title: "Install Snag",
     body: "Run the installer. It sets Snag up for your Windows user only, so it needs no admin rights.",
-    hint: "Snag-Setup-1.0.0.exe · 12 MB",
+    hint: `${INSTALLER_NAME} · 12 MB`,
   },
   {
     icon: Plug,

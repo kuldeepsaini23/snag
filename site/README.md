@@ -35,7 +35,7 @@ Run it again whenever a screenshot or the logo changes, and commit the results. 
 - `src/components/download-bar.tsx`: the sticky bar that fills with scroll
 - `src/components/features.tsx`: the download-list feature rows (edit the `groups` list)
 - `src/app/privacy/page.tsx`: the privacy policy (update the effective date when it changes)
-- `src/lib/site.ts`: the site address, GitHub links and the installer download link (change the version here for a new release)
+- `src/lib/site.ts`: the site address, GitHub links, the installer link (the stable `Snag-Setup.exe` asset of the latest release) and the version, read at build time from `../Cargo.toml`. Nothing to change for a new release; just rebuild.
 - `src/app/sitemap.ts`, `src/app/robots.ts`: `sitemap.xml` and `robots.txt`
 
 ## Deploy
