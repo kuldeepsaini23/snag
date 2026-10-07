@@ -224,7 +224,9 @@ sendSaved();
 // Catch new Chrome downloads and move them to Snag.
 chrome.downloads.onCreated.addListener(async (item) => {
   const url = item.finalUrl || item.url;
-  if (handBack.has(url)) {
+  // One we gave back ourselves, by its first or its final address.
+  if (handBack.has(item.url) || handBack.has(url)) {
+    handBack.delete(item.url);
     handBack.delete(url);
     return;
   }
@@ -244,10 +246,11 @@ chrome.downloads.onCreated.addListener(async (item) => {
     await sendToApp(url, "file", item.referrer);
     flash(true);
   } catch (e) {
-    // Snag unavailable: let Chrome download it after all.
+    // Snag unavailable: let Chrome download it after all, under the name it had.
     console.warn("Snag:", e.message);
-    handBack.add(url);
-    chrome.downloads.download({ url });
+    const again = handBackDownload(item);
+    handBack.add(again.url);
+    chrome.downloads.download(again).catch(() => chrome.downloads.download({ url: again.url }));
     flash(false);
   }
 });
