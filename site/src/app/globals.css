@@ -87,6 +87,46 @@ body {
   border-radius: 6px;
 }
 
+/* ---- The top bar: the page's own download. Parts ease toward the scroll position, then
+   on reaching the bottom the gaps close, a shine runs across, and Done pops in. ---- */
+.dl-bar__fill,
+.dl-bar__line {
+  transition: transform 0.22s cubic-bezier(0.2, 0.7, 0.2, 1);
+  will-change: transform;
+}
+.dl-bar__parts {
+  gap: 3px;
+  transition: gap 0.45s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.dl-bar[data-done] .dl-bar__parts {
+  gap: 0;
+}
+.dl-bar[data-done] .dl-bar__parts::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgb(255 255 255 / 0.55) 50%, transparent 70%);
+  transform: translateX(-100%);
+  animation: bar-shine 0.9s 0.2s ease-out both;
+}
+@keyframes bar-shine {
+  to {
+    transform: translateX(100%);
+  }
+}
+.dl-bar[data-done] .dl-bar__line {
+  box-shadow: 0 0 12px var(--accent);
+}
+.dl-bar__done {
+  animation: done-pop 0.45s cubic-bezier(0.3, 1.5, 0.5, 1) both;
+}
+@keyframes done-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
 /* ---- The hero word, downloaded: eight slices fill left to right at their own speeds. ---- */
 .seg-word {
   position: relative;
