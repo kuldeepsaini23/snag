@@ -1,36 +1,74 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# snag.kuldeepsaini.dev
 
-## Getting Started
+The website for Snag: the landing page (`/`) and the privacy policy for the app and the browser extension (`/privacy/`). Next.js App Router with a static export, Tailwind CSS, Magic UI components (Border Beam, Animated Beam, Marquee) and `motion`.
 
-First, run the development server:
+## Run it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+bun install
+bun run dev        # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Build
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+bun run build      # writes the whole site to out/
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`out/` is plain HTML, CSS, JS and images, so any static host can serve it. To preview the build locally: `bunx serve out`.
 
-## Learn More
+`bun run lint` checks the code.
 
-To learn more about Next.js, take a look at the following resources:
+### Images
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The screenshots in `public/images/`, the Open Graph card `public/og.png` and the icons in `src/app/` (`icon.png`, `apple-icon.png`) are made from `../docs/images/*.png` and `../crates/app/assets/logo/` by:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+bun run images
+```
 
-## Deploy on Vercel
+Run it again whenever a screenshot or the logo changes, and commit the results. `src/app/favicon.ico` is a copy of `crates/app/assets/logo/snag.ico`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Where things are
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `src/app/page.tsx`: the landing page, one component per section in `src/components/`
+- `src/app/privacy/page.tsx`: the privacy policy (update the effective date when it changes)
+- `src/lib/site.ts`: the site address, GitHub links and the installer download link (change the version here for a new release)
+- `src/app/sitemap.ts`, `src/app/robots.ts`: `sitemap.xml` and `robots.txt`
+- `src/components/ui/`: the Magic UI components
+
+## Deploy
+
+The site lives at **https://snag.kuldeepsaini.dev**. Either host works; pick one.
+
+### Cloudflare Pages
+
+1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Pages** → **Connect to Git**, and pick the `kuldeepsaini23/snag` repository.
+2. Build settings:
+   - Production branch: `main` (or the branch you want live)
+   - Framework preset: **None**
+   - Build command: `bun install && bun run build`
+   - Build output directory: `out`
+   - Root directory (advanced): `site`
+3. **Save and Deploy**. The site is then at `<project>.pages.dev`.
+4. Project → **Custom domains** → **Set up a custom domain** → `snag.kuldeepsaini.dev`.
+   - If `kuldeepsaini.dev` is on Cloudflare DNS, Cloudflare adds the record for you.
+   - Otherwise, at your DNS provider add a **CNAME** record: name `snag`, target `<project>.pages.dev`.
+
+Or upload a local build without Git: `bun run build`, then `bunx wrangler pages deploy out --project-name snag-site`.
+
+### Vercel
+
+1. vercel.com → **Add New** → **Project** → import `kuldeepsaini23/snag`.
+2. **Root Directory**: `site`. Framework preset: **Next.js** (it detects the static export). Install command: `bun install`, build command: `bun run build`.
+3. **Deploy**.
+4. Project → **Settings** → **Domains** → add `snag.kuldeepsaini.dev`.
+5. At your DNS provider add a **CNAME** record: name `snag`, target `cname.vercel-dns.com` (Vercel shows the exact value on the Domains page).
+
+HTTPS certificates are issued automatically by both hosts once the CNAME resolves.
+
+### After the first deploy
+
+- Check `https://snag.kuldeepsaini.dev/privacy/` loads; that is the privacy policy URL for the Chrome Web Store, Edge Add-ons and Firefox Add-ons listings.
+- Paste the home page into a link preview (Slack, X, Discord) to check the Open Graph card.
+- Submit `https://snag.kuldeepsaini.dev/sitemap.xml` in Google Search Console if you want it indexed sooner.
