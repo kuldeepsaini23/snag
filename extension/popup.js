@@ -135,7 +135,7 @@ async function showMedia(tab) {
       say("Sending…");
       const kind = item.kind === "file" ? "file" : "media";
       const result = await chrome.runtime.sendMessage({ type: "send", url: item.url, kind, referrer: tab.url });
-      say(result.ok ? "Sent to Snag ✓" : result.error);
+      say(result.ok ? (result.later ? "Saved: goes to Snag when it opens" : "Sent to Snag ✓") : result.error);
     });
     row.append(tag, name, go);
     box.append(row);
@@ -176,7 +176,7 @@ async function init() {
     const sendPage = async () => {
       say("Sending…");
       const result = await chrome.runtime.sendMessage({ type: "send", url: tab.url, referrer: tab.url, tabId: tab.id, withFallback: true });
-      say(result.ok ? "Sent to Snag ✓" : result.error);
+      say(result.ok ? (result.later ? "Saved: goes to Snag when it opens" : "Sent to Snag ✓") : result.error);
     };
     say("Reading the page…");
     const probe = await chrome.runtime.sendMessage({ type: "probe", url: tab.url });

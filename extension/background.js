@@ -1,7 +1,7 @@
 // Snag extension background: finds the desktop app on 127.0.0.1 and hands it links.
 // Chrome runs it as a service worker; Firefox loads catch-rules.js before it (see build.js).
 
-if (typeof importScripts === "function") importScripts("catch-rules.js", "sniffer.js", "quality.js");
+if (typeof importScripts === "function") importScripts("catch-rules.js", "sniffer.js", "quality.js", "later.js");
 
 const PORTS = [47321, 47322, 47323, 47324, 47325, 47326];
 const DEFAULTS = { token: "", catchDownloads: true, minSizeMB: 1 };
@@ -195,12 +195,64 @@ async function addMediaInApp(choice) {
   return body;
 }
 
-/** Brief ✓ / ! on the toolbar icon. */
+/** Brief ✓ / ! on the toolbar icon, then back to the count of links waiting for Snag. */
 function flash(ok) {
   chrome.action.setBadgeBackgroundColor({ color: ok ? "#32d74b" : "#ff453a" });
   chrome.action.setBadgeText({ text: ok ? "✓" : "!" });
-  setTimeout(() => chrome.action.setBadgeText({ text: "" }), 2500);
+  setTimeout(showLater, 2500);
 }
+
+// ---------- links saved while Snag is closed ----------
+
+async function savedLinks() {
+  return (await chrome.storage.local.get(["later"])).later || [];
+}
+
+/** The toolbar badge shows how many links wait for Snag (a tab's media count shows over it). */
+async function showLater() {
+  const list = await savedLinks();
+  chrome.action.setBadgeBackgroundColor({ color: "#8e8e93" });
+  chrome.action.setBadgeText({ text: laterBadge(list) });
+}
+
+/** Sends a link now, or keeps it for when Snag runs again. Returns true if it was kept. */
+async function sendOrSave(url, kind, referrer, fallback) {
+  try {
+    await sendToApp(url, kind, referrer, fallback);
+    return false;
+  } catch (e) {
+    if (e.message !== "Snag isn't running") throw e;
+    const list = addLater(await savedLinks(), { url, kind, referrer, fallback }, Date.now());
+    await chrome.storage.local.set({ later: list });
+    showLater();
+    return true;
+  }
+}
+
+let draining = null;
+/** Hands the waiting links to Snag, in order; whatever fails keeps waiting. One run at a time. */
+function sendSaved() {
+  draining ??= (async () => {
+    const list = await savedLinks();
+    if (!list.length) return;
+    const left = await drainLater(list, (e) => sendToApp(e.url, e.kind, e.referrer, e.fallback));
+    // Links saved while this ran are kept too.
+    const now = await savedLinks();
+    const sent = new Set(list.slice(0, list.length - left.length).map((e) => e.url));
+    await chrome.storage.local.set({ later: now.filter((e) => !sent.has(e.url)) });
+    showLater();
+  })().finally(() => {
+    draining = null;
+  });
+  return draining;
+}
+
+chrome.alarms.create("send-saved", { periodInMinutes: 1 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === "send-saved") sendSaved();
+});
+chrome.runtime.onStartup.addListener(() => sendSaved());
+sendSaved();
 
 // Catch new Chrome downloads and move them to Snag.
 chrome.downloads.onCreated.addListener(async (item) => {
@@ -240,8 +292,8 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.contextMenus.onClicked.addListener((info) => {
   const { url, kind, referrer } = contextTarget(info);
-  sendToApp(url, kind, referrer)
-    .then(() => flash(true))
+  sendOrSave(url, kind, referrer)
+    .then((later) => !later && flash(true))
     .catch((e) => {
       console.warn("Snag:", e.message);
       flash(false);
@@ -266,10 +318,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     const tabId = msg.tabId ?? _sender.tab?.id;
     const best = msg.withFallback && tabId !== undefined ? mediaOf(tabId).then((l) => bestMedia(l.items)) : Promise.resolve(null);
     best
-      .then((b) => sendToApp(msg.url, msg.kind, msg.referrer, b && b.url !== msg.url ? b.url : undefined))
-      .then((result) => {
-        flash(true);
-        reply({ ok: true, result });
+      .then((b) => sendOrSave(msg.url, msg.kind, msg.referrer, b && b.url !== msg.url ? b.url : undefined))
+      .then((later) => {
+        if (!later) flash(true);
+        reply({ ok: true, later });
       })
       .catch((e) => {
         flash(false);

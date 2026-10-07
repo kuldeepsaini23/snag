@@ -134,7 +134,9 @@
     // Snag couldn't list qualities: hand it the page (and the stream it played) as before.
     const sendPage = () => {
       note([el("span", "spinner"), "Sending to Snag…"]);
-      ask({ type: "send", url: location.href, kind: "media", referrer: location.href, withFallback: true }).then((r) => done(r.ok ? "Sent to Snag ✓" : r.error));
+      ask({ type: "send", url: location.href, kind: "media", referrer: location.href, withFallback: true }).then((r) =>
+        done(r.ok ? (r.later ? "Saved: goes to Snag when it opens" : "Sent to Snag ✓") : r.error),
+      );
     };
 
     const header = (info) => {
@@ -219,7 +221,8 @@
       if (panel.classList.contains("open")) return close();
       const status = await askQuick({ type: "status" });
       if (status.ok === false) return done(status.error);
-      if (!status.app) return done("Snag isn't running: start it and try again");
+      // Snag is closed: keep the page for when it opens (the extension sends it then).
+      if (!status.app) return sendPage();
 
       // Open at once with what's known; Snag's full quality list fills in when ready.
       const media = await askQuick({ type: "media-list" });
