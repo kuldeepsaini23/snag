@@ -797,13 +797,6 @@ impl Actor {
             }
             Cmd::Remove(id, delete_file) => {
                 self.cancel_retry(id);
-                // The torrent engine forgets it too (Snag itself handles the files).
-                if let Some(item) = self.state.item(id).filter(|i| i.kind == Kind::Torrent && i.url.starts_with("magnet:"))
-                    && let Some(engine) = self.torrents.engine.get().cloned()
-                {
-                    let source = rdm_torrent::Source::Magnet(item.url.clone());
-                    tokio::spawn(async move { engine.forget(&source).await });
-                }
                 if let Some(r) = self.running.get_mut(&id) {
                     r.stop = Stop::Remove { delete_file };
                     r.cancel.cancel();
@@ -1267,9 +1260,9 @@ impl Actor {
                         progress_tx.send_replace(Progress { downloaded: p.downloaded, total, speed_bps: p.speed_bps, segments: Vec::new() });
                     }
                 });
-                let outcome = engine.download(&source, &base, claimed.as_deref(), cancel, &tx).await;
+                let outcome = engine.download(&url, &source, &base, claimed.as_deref(), cancel, &tx).await;
                 if keep_sharing && matches!(outcome, Ok(rdm_torrent::Outcome::Completed(_))) {
-                    let _ = engine.share(&source, &tx).await;
+                    let _ = engine.share(&url, &source, &tx).await;
                 }
                 drop(tx);
                 let _ = forward.await;
@@ -1496,14 +1489,33 @@ impl Actor {
         if let Some(dir) = item.work_dir.clone() {
             remove_parts(dir);
         }
+        let shared = item.dest.as_ref().is_some_and(|d| self.state.items.iter().any(|other| other.dest.as_ref() == Some(d)));
+        let trash_it = item.dest.clone().filter(|d| delete_file && !shared && d.exists());
         if let Some(dest) = &item.dest {
             let _ = std::fs::remove_file(part_path(dest));
             let _ = std::fs::remove_file(state_path(dest));
-            let shared = self.state.items.iter().any(|other| other.dest.as_ref() == Some(dest));
-            if delete_file && !shared && dest.exists() {
-                // Recycle Bin, never a permanent delete: a misclick must be undoable.
-                let _ = trash::delete(dest);
-            }
+        }
+        // A torrent is stopped and forgotten first (it holds its files open, and must not keep
+        // sharing); then its files can go.
+        let engine = (item.kind == Kind::Torrent).then(|| self.torrents.engine.get().cloned()).flatten();
+        if engine.is_some() || trash_it.is_some() {
+            let (events, url, name) = (self.events.clone(), item.url.clone(), item.name.clone());
+            tokio::spawn(async move {
+                if let Some(engine) = engine {
+                    engine.forget(&url).await;
+                }
+                if let Some(dest) = trash_it {
+                    // Recycle Bin, never a permanent delete: a misclick must be undoable.
+                    let moved = tokio::task::spawn_blocking(move || trash::delete(&dest)).await;
+                    if !matches!(moved, Ok(Ok(()))) {
+                        let why = match moved {
+                            Ok(Err(e)) => e.to_string(),
+                            _ => "it is in use".into(),
+                        };
+                        let _ = events.send(Event::Notice(format!("Couldn't move {name} to the Recycle Bin: {why}")));
+                    }
+                }
+            });
         }
         self.emit(Event::Removed(id));
         self.dirty = true;

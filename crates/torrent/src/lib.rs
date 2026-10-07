@@ -124,6 +124,9 @@ pub struct EngineOptions {
 pub struct TorrentEngine {
     session: Arc<Session>,
     peers: Vec<SocketAddr>,
+    /// Torrents in the session by the caller's key (Snag uses the item's link), so `forget`
+    /// finds exactly the right one without adding anything.
+    loaded: Arc<std::sync::Mutex<std::collections::HashMap<String, usize>>>,
 }
 
 impl TorrentEngine {
@@ -139,7 +142,7 @@ impl TorrentEngine {
             session_opts.listen = Some(ListenerOptions::default());
         }
         let session = Session::new_with_opts(dir.to_path_buf(), session_opts).await.map_err(|e| format!("couldn't start torrents: {e:#}"))?;
-        Ok(Self { session, peers: opts.peers })
+        Ok(Self { session, peers: opts.peers, loaded: Arc::default() })
     }
 
     /// The port peers reach us on.
@@ -163,7 +166,8 @@ impl TorrentEngine {
     /// Downloads into a place under `base` that holds nothing else (`placement`), or into
     /// `claimed` when this torrent already started there; until done, then stops sharing; or
     /// until `cancel` fires (paused: adding it again with its claimed folder continues it).
-    pub async fn download(&self, source: &Source, base: &Path, claimed: Option<&Path>, cancel: CancellationToken, progress: &watch::Sender<Progress>) -> Result<Outcome, String> {
+    /// `key` names it for `forget` (Snag passes the item's link).
+    pub async fn download(&self, key: &str, source: &Source, base: &Path, claimed: Option<&Path>, cancel: CancellationToken, progress: &watch::Sender<Progress>) -> Result<Outcome, String> {
         let initial_peers = (!self.peers.is_empty()).then(|| self.peers.clone());
         // First only read its file list: refuse anything that would write outside the folder.
         let listing = tokio::select! {
@@ -206,6 +210,7 @@ impl TorrentEngine {
             .map_err(|e| format!("couldn't start the torrent: {e:#}"))?
             .into_handle()
             .ok_or("the torrent couldn't be added")?;
+        self.remember(key, handle.id());
         if handle.is_paused() {
             self.session.unpause(&handle).await.map_err(|e| format!("{e:#}"))?;
         }
@@ -236,7 +241,7 @@ impl TorrentEngine {
     }
 
     /// Shares a torrent that is already downloaded ("Keep sharing after download").
-    pub async fn share(&self, source: &Source, _progress: &watch::Sender<Progress>) -> Result<(), String> {
+    pub async fn share(&self, key: &str, source: &Source, _progress: &watch::Sender<Progress>) -> Result<(), String> {
         let handle = self
             .session
             .add_torrent(Self::add_request(source), Some(AddTorrentOptions { overwrite: true, ..Default::default() }))
@@ -244,18 +249,36 @@ impl TorrentEngine {
             .map_err(|e| format!("{e:#}"))?
             .into_handle()
             .ok_or("the torrent couldn't be added")?;
+        self.remember(key, handle.id());
         if handle.is_paused() {
             self.session.unpause(&handle).await.map_err(|e| format!("{e:#}"))?;
         }
         Ok(())
     }
 
-    /// Forgets a torrent (its files stay; Snag handles deleting them).
-    pub async fn forget(&self, source: &Source) {
-        let Ok(AddTorrentResponse::AlreadyManaged(id, _)) = self.session.add_torrent(Self::add_request(source), Some(AddTorrentOptions { paused: true, ..Default::default() })).await else {
-            return;
-        };
-        let _ = self.session.delete(id.into(), false).await;
+    fn remember(&self, key: &str, id: usize) {
+        if let Ok(mut loaded) = self.loaded.lock() {
+            loaded.insert(key.to_string(), id);
+        }
+    }
+
+    /// How many torrents the engine holds (downloading, paused or sharing).
+    pub fn session_len(&self) -> usize {
+        self.session.with_torrents(|t| t.count())
+    }
+
+    /// The torrent under `key` is in the session (downloading, paused or sharing).
+    pub fn is_loaded(&self, key: &str) -> bool {
+        self.loaded.lock().is_ok_and(|l| l.contains_key(key))
+    }
+
+    /// Stops and forgets the torrent under `key`, and returns once its files are released (they
+    /// stay on disk; Snag deletes them if asked). Nothing to do if it isn't loaded.
+    pub async fn forget(&self, key: &str) {
+        let id = self.loaded.lock().ok().and_then(|mut l| l.remove(key));
+        if let Some(id) = id {
+            let _ = self.session.delete(id.into(), false).await;
+        }
     }
 }
 

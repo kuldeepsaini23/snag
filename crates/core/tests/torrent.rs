@@ -38,7 +38,7 @@ async fn magnet_link_downloads_from_a_peer() {
     let torrent = created.as_bytes().unwrap().to_vec();
     let seeder = TorrentEngine::start(seed_dir.path(), EngineOptions { local_only: true, peers: vec![] }).await.unwrap();
     let (tx, _rx) = tokio::sync::watch::channel(TorrentProgress::default());
-    seeder.share(&Source::File(torrent), &tx).await.unwrap();
+    seeder.share("seed", &Source::File(torrent), &tx).await.unwrap();
     let peer: std::net::SocketAddr = ([127, 0, 0, 1], seeder.port().unwrap()).into();
 
     let dir = tempfile::tempdir().unwrap();
