@@ -39,6 +39,7 @@ fn main() -> iced::Result {
         // SAFETY: still single-threaded here; nothing else reads or writes the environment.
         unsafe { std::env::set_var("ICED_BACKEND", backend) };
     }
+    renderer::set_cpu(renderer::on_cpu(std::env::var("ICED_BACKEND").ok().as_deref()));
     // The download manager runs on its own runtime, independent of the UI's.
     let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
     // Only one RDM: a second copy would run the same downloads into the same files.

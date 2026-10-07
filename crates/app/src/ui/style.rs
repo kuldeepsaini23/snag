@@ -45,7 +45,7 @@ pub fn sheet(c: Colors) -> impl Fn(&Theme) -> container::Style {
     move |_| container::Style {
         background: bg(c.panel),
         border: border(c.line_strong, 1.0, 14.0),
-        shadow: Shadow { color: c.shadow, offset: Vector::new(0.0, 18.0), blur_radius: 48.0 },
+        shadow: crate::renderer::shadow(Shadow { color: c.shadow, offset: Vector::new(0.0, 18.0), blur_radius: 48.0 }),
         text_color: Some(c.text),
         ..Default::default()
     }
@@ -384,7 +384,7 @@ pub fn menu(c: Colors) -> impl Fn(&Theme) -> iced::overlay::menu::Style {
         text_color: c.text,
         selected_text_color: c.on_accent,
         selected_background: Background::Color(c.accent),
-        shadow: Shadow { color: Color { a: c.shadow.a * 0.75, ..c.shadow }, offset: Vector::new(0.0, 8.0), blur_radius: 24.0 },
+        shadow: crate::renderer::shadow(Shadow { color: Color { a: c.shadow.a * 0.75, ..c.shadow }, offset: Vector::new(0.0, 8.0), blur_radius: 24.0 }),
     }
 }
 
