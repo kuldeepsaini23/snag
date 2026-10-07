@@ -9,6 +9,7 @@ mod motion;
 mod queues;
 mod report;
 mod rules_form;
+mod sharing;
 #[cfg(debug_assertions)]
 mod snap;
 mod notify;

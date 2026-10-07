@@ -120,7 +120,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
     match (m.screen, &m.picker) {
         (Screen::Picker, Some(p)) => layers = layers.push(modal(picker::view(m, p, sheet_c), sheet_c, Message::CancelPick)),
         (Screen::Settings, _) => {
-            let phone = app.phone.as_ref().map(|(_, link, qr)| (link.as_str(), qr));
+            let phone = app.phone.running.as_ref().map(|(_, link, qr)| (link.as_str(), qr));
             layers = layers.push(modal(settings::view(m, phone, sheet_c), sheet_c, Message::CloseSettings));
         }
         _ => {}
