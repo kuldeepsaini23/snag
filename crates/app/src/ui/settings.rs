@@ -163,6 +163,7 @@ fn general(m: &Model, c: Colors) -> Element<'_, Message> {
                 line("Start downloads immediately", "Otherwise new items wait, paused, until you start them", switch(d.start_immediately, Message::DraftStart, c), c),
                 line("Watch the clipboard for links", "A copied link pops up in the corner, ready to download", switch(d.clipboard_watch, Message::DraftClipboard, c), c),
                 line("Notify when downloads finish", "A Windows notification when a download finishes or fails", switch(d.notify, Message::DraftNotify, c), c),
+                line("Check for updates", "Asks GitHub for a newer Snag at start and every few hours; you choose when to install", switch(d.check_updates, Message::DraftCheckUpdates, c), c),
                 line(
                     "Show the tour again",
                     "The five-step welcome and the tips on the toolbar",

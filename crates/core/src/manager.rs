@@ -329,6 +329,39 @@ impl Manager {
         self.tools.ensure_ffmpeg(|| {}).await
     }
 
+    /// The newest published version of Snag (`None` when GitHub can't be reached or lists nothing
+    /// installable).
+    pub async fn latest_release(&self) -> Option<crate::selfupdate::Release> {
+        let resp = self.tools.client.get(crate::selfupdate::latest_url()).header("Accept", "application/vnd.github+json").send().await.ok()?;
+        crate::selfupdate::parse_latest(&resp.error_for_status().ok()?.text().await.ok()?)
+    }
+
+    /// Downloads `release`'s installer into `updates/` and returns it, only if it matches the
+    /// checksum the release publishes; otherwise it is deleted and never run.
+    pub async fn fetch_update(&self, release: &crate::selfupdate::Release) -> Result<PathBuf, String> {
+        let client = &self.tools.client;
+        let sums = client.get(&release.sums).send().await.and_then(|r| r.error_for_status()).map_err(|e| format!("couldn't get the update's checksum: {e}"))?;
+        let sums = sums.text().await.map_err(|e| e.to_string())?;
+        let expected = crate::selfupdate::checksum_for(&sums, &release.installer_name).ok_or("the update lists no checksum for its installer")?;
+        let dir = self.tools.bin_dir.parent().unwrap_or(&self.tools.bin_dir).join("updates");
+        std::fs::create_dir_all(&dir).map_err(|e| format!("can't create {}: {e}", dir.display()))?;
+        let file = dir.join(&release.installer_name);
+        let _ = std::fs::remove_file(&file);
+        let (progress, _) = watch::channel(Progress::default());
+        match download(client, &release.installer, &file, &DownloadOptions::default(), CancellationToken::new(), &progress).await {
+            Ok(Outcome::Completed(_)) => {}
+            Ok(Outcome::Paused) => return Err("the update download was interrupted".into()),
+            Err(e) => return Err(format!("couldn't download the update: {e}")),
+        }
+        let check = file.clone();
+        let actual = tokio::task::spawn_blocking(move || crate::safety::sha256_file(&check)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())?;
+        if actual != expected {
+            let _ = std::fs::remove_file(&file);
+            return Err("the update didn't match its published checksum, so it wasn't installed".into());
+        }
+        Ok(file)
+    }
+
     pub async fn notify(&self, text: String) {
         let _ = self.events.send(Event::Notice(text));
     }

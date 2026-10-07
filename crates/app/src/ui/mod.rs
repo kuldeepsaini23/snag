@@ -362,7 +362,9 @@ fn toast(m: &Model, c: Colors) -> Option<Element<'_, Message>> {
         .align_y(Alignment::Center);
         return Some(card(body.into()).into());
     }
-    let notice = m.notice.clone()?;
+    let Some(notice) = m.notice.clone() else {
+        return m.update.as_ref().map(|u| card(update_offer(u, c)).into());
+    };
     // Text in the window can't be selected: errors get a Copy button (and go to snag.log).
     let copy = button(row![icon(Icon::Copy, 12), text("Copy").size(11.5)].spacing(5).align_y(Alignment::Center))
         .style(style::ghost(c))
@@ -370,6 +372,28 @@ fn toast(m: &Model, c: Colors) -> Option<Element<'_, Message>> {
         .on_press(Message::CopyText(notice.clone()));
     let body = row![text(notice).size(12.5).width(Fill), copy, close(Message::DismissNotice)].spacing(6).align_y(Alignment::Center);
     Some(card(body.into()).into())
+}
+
+/// "Snag 1.0.2 is ready": What's new (the release page), Update now, or put it off.
+fn update_offer(u: &crate::state::UpdateOffer, c: Colors) -> Element<'static, Message> {
+    let badge = container(icon(Icon::Sparkle, 16).color(c.accent)).center(32).style(style::tag(c.accent_soft, c.accent));
+    let notes = button(text("What's new").size(12).font(style::SEMIBOLD)).style(style::ghost(c)).padding([6, 10]).on_press(Message::UpdateNotes);
+    let install = button(text(if u.busy { "Updating…" } else { "Update now" }).size(12).font(style::SEMIBOLD))
+        .style(style::accent(c))
+        .padding([6, 12])
+        .on_press_maybe((!u.busy).then_some(Message::UpdateNow));
+    let later = button(icon(Icon::X, 13)).style(style::ghost(c)).padding(6).on_press_maybe((!u.busy).then_some(Message::UpdateLater));
+    let line = if u.busy { "Downloading and checking it…".to_string() } else { "Snag closes, updates and opens again".to_string() };
+    row![
+        badge,
+        column![text(format!("Snag {} is ready", u.release.version)).size(13).font(style::SEMIBOLD), small(line, c.text3)].spacing(2).width(Fill),
+        notes,
+        install,
+        later,
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center)
+    .into()
 }
 
 /// Small secondary text (Figma: Inter Regular 11.5).

@@ -128,6 +128,8 @@ pub struct Settings {
     pub preferred_quality: Option<MediaFormat>,
     /// Windows notifications when downloads finish or fail.
     pub notify: bool,
+    /// Look for a newer Snag on GitHub (at start, then daily) and offer it.
+    pub check_updates: bool,
     /// Videos: fetch subtitles and embed them in the file.
     pub subtitles: bool,
     /// Subtitle languages for yt-dlp (`en.*`, `en.*,hi`, `all`).
@@ -185,6 +187,7 @@ impl Default for Settings {
             ask_quality: true,
             preferred_quality: None,
             notify: true,
+            check_updates: true,
             subtitles: false,
             subtitle_langs: "en.*".into(),
             auto_retry: true,
@@ -320,6 +323,7 @@ mod tests {
         assert_eq!(old.theme, ThemeMode::Dark, "existing users keep the dark look");
         assert!(!old.translucent);
         assert!(!old.tour_done);
+        assert!(old.check_updates, "updates are looked for unless switched off");
         assert_eq!(old.accent, "#0a84ff");
         let s = Settings { theme: ThemeMode::System, translucent: true, tour_done: true, ..Settings::default() };
         let json = serde_json::to_string(&s).unwrap();

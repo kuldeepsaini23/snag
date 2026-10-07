@@ -155,6 +155,7 @@ pub struct Draft {
     pub ask_quality: bool,
     pub preferred_quality: Option<MediaFormat>,
     pub notify: bool,
+    pub check_updates: bool,
     pub subtitles: bool,
     pub subtitle_langs: String,
     pub auto_retry: bool,
@@ -183,6 +184,7 @@ impl Draft {
             ask_quality: s.ask_quality,
             preferred_quality: s.preferred_quality.clone(),
             notify: s.notify,
+            check_updates: s.check_updates,
             subtitles: s.subtitles,
             subtitle_langs: s.subtitle_langs.clone(),
             auto_retry: s.auto_retry,
@@ -222,6 +224,7 @@ impl Draft {
             ask_quality: self.ask_quality,
             preferred_quality: self.preferred_quality.clone(),
             notify: self.notify,
+            check_updates: self.check_updates,
             subtitles: self.subtitles,
             subtitle_langs: if self.subtitle_langs.trim().is_empty() { base.subtitle_langs.clone() } else { self.subtitle_langs.trim().to_string() },
             auto_retry: self.auto_retry,
@@ -441,6 +444,10 @@ pub struct Model {
     pub pair_request: Option<(u64, String)>,
     /// "Already downloaded": the finished download a new link matched (nothing was added).
     pub duplicate: Option<Item>,
+    /// A newer Snag to offer (and whether it is being fetched).
+    pub update: Option<UpdateOffer>,
+    /// The version put off with "Later" (this session).
+    pub update_later: Option<String>,
     /// The mouse, in window coordinates (for the right-click menu).
     pub cursor: iced::Point,
     /// A download's right-click menu is open at this point.
@@ -545,6 +552,8 @@ impl Default for Model {
             watches: Vec::new(),
             pair_request: None,
             duplicate: None,
+            update: None,
+            update_later: None,
             cursor: iced::Point::ORIGIN,
             row_menu: None,
             window: iced::Size::new(1280.0, 800.0),
@@ -1246,4 +1255,12 @@ mod tests {
         m.apply(Event::Added(item(3, Status::Paused, 0)));
         assert_eq!(m.totals(), (2, 150));
     }
+}
+
+/// A newer Snag, offered in the corner card.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UpdateOffer {
+    pub release: rdm_core::selfupdate::Release,
+    /// Downloading and checking it.
+    pub busy: bool,
 }

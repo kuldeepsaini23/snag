@@ -100,6 +100,14 @@ pub enum Message {
     /// Show the notifications collected since the last flush.
     FlushNotes,
     DraftNotify(bool),
+    DraftCheckUpdates(bool),
+    /// Look for a newer Snag (at start, then every few hours).
+    CheckUpdate,
+    UpdateFound(Option<rdm_core::selfupdate::Release>),
+    UpdateNow,
+    UpdateFetched(Result<PathBuf, String>),
+    UpdateNotes,
+    UpdateLater,
     DraftSubtitles(bool),
     DraftAutoRetry(bool),
     DraftKeepSharing(bool),
@@ -279,7 +287,9 @@ pub fn boot(manager: Manager, bridge_status: String, data_dir: PathBuf, runtime:
         bug_text: text_editor::Content::new(),
         backdrop_asked: None,
     };
-    (app, Task::perform(async move { m.snapshot().await }, Message::Loaded))
+    // A while after start (not to slow it down), look for a newer Snag.
+    let look = Task::perform(tokio::time::sleep(std::time::Duration::from_secs(8)), |_| Message::CheckUpdate);
+    (app, Task::batch([Task::perform(async move { m.snapshot().await }, Message::Loaded), look]))
 }
 
 /// Runs a manager call in the background; its result isn't needed (events report it).
@@ -587,6 +597,45 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             }
         }
         Message::DraftNotify(v) => model.draft.notify = v,
+        Message::DraftCheckUpdates(v) => model.draft.check_updates = v,
+        Message::CheckUpdate => {
+            if !model.settings.check_updates || model.update.as_ref().is_some_and(|u| u.busy) {
+                return Task::none();
+            }
+            let m = app.manager.clone();
+            return Task::perform(async move { m.latest_release().await }, Message::UpdateFound);
+        }
+        Message::UpdateFound(release) => {
+            if let Some(r) = release.filter(|r| crate::updater::offers(&r.version, crate::changelog::VERSION, model.update_later.as_deref())) {
+                model.update = Some(crate::state::UpdateOffer { release: r, busy: false });
+            }
+        }
+        Message::UpdateNow => {
+            let Some(offer) = model.update.as_mut().filter(|u| !u.busy) else { return Task::none() };
+            offer.busy = true;
+            let (m, release) = (app.manager.clone(), offer.release.clone());
+            return Task::perform(async move { m.fetch_update(&release).await }, Message::UpdateFetched);
+        }
+        Message::UpdateFetched(result) => {
+            let fetched = result.and_then(|file| crate::updater::run(&file).map_err(|e| format!("couldn't start the update: {e}")));
+            match fetched {
+                // The installer closes Snag, replaces it and opens the new one.
+                Ok(()) => return iced::exit(),
+                Err(e) => {
+                    if let Some(u) = model.update.as_mut() {
+                        u.busy = false;
+                    }
+                    log_event(&app.data_dir, &Event::Notice(e.clone()));
+                    model.notice = Some(e);
+                }
+            }
+        }
+        Message::UpdateNotes => {
+            if let Some(u) = &model.update {
+                let _ = std::process::Command::new("explorer").arg(&u.release.page).spawn();
+            }
+        }
+        Message::UpdateLater => model.update_later = model.update.take().map(|u| u.release.version),
         Message::DraftSubtitles(v) => model.draft.subtitles = v,
         Message::DraftAutoRetry(v) => model.draft.auto_retry = v,
         Message::DraftKeepSharing(v) => model.draft.keep_sharing = v,
@@ -1072,6 +1121,7 @@ pub fn subscription(app: &App) -> Subscription<Message> {
         window::resize_events().map(|(_, size)| Message::WinResized(size)),
         window::close_requests().map(|_| Message::HideWindow),
         crate::tray::subscription(),
+        iced::time::every(crate::updater::EVERY).map(|_| Message::CheckUpdate),
     ];
     // Notifications go out in batches, so a finished playlist is one toast.
     if !app.model.notes.is_empty() {

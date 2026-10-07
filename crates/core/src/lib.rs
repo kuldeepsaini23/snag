@@ -10,6 +10,7 @@ pub mod planner;
 pub mod route;
 pub mod rules;
 pub mod safety;
+pub mod selfupdate;
 pub mod schedule;
 pub mod store;
 

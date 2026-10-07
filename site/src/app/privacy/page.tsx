@@ -120,7 +120,9 @@ export default function PrivacyPage() {
           <li>the sites you download from;</li>
           <li>
             <strong>GitHub</strong>, to fetch and update its helpers yt-dlp (for video sites) and gallery-dl (for image
-            galleries);
+            galleries), and to look for a newer Snag (at start and every few hours; nothing about you is sent, and you
+            can switch it off in Settings → General). An update is only installed when you click Update now, and only if
+            it matches the checksum published with it;
           </li>
           <li>
             <strong>gyan.dev</strong>, once, to fetch ffmpeg the first time you need it for HD video or MP3;

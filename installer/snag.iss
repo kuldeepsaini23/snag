@@ -52,8 +52,15 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 ; Through Explorer: a program started by Setup itself inherits Setup's "redirection guard", and
 ; then yt-dlp can't follow linked folders on PATH (e.g. nvm's Node.js) — WinError 448.
 Filename: "{win}\explorer.exe"; Parameters: """{app}\snag.exe"""; Description: "Open Snag now"; Flags: nowait postinstall skipifsilent
+; An update started from inside Snag (/RELAUNCH=1, see crates/app/src/updater.rs): open it again.
+Filename: "{win}\explorer.exe"; Parameters: """{app}\snag.exe"""; Flags: nowait; Check: Relaunch
 
 [Code]
+function Relaunch: Boolean;
+begin
+  Result := ExpandConstant('{param:relaunch|0}') = '1';
+end;
+
 // Asks a running Snag to pause its downloads, save and quit, then waits for it to be gone, so
 // its files can be replaced (update) or removed (uninstall).
 procedure QuitSnag(Exe: String);

@@ -25,6 +25,7 @@ mod tour;
 mod tray;
 mod ui;
 mod update;
+mod updater;
 mod view;
 
 use std::path::PathBuf;

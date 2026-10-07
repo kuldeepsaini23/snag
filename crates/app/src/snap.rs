@@ -305,6 +305,16 @@ fn apply(m: &mut Model, scene: &str) {
         "whats-new" => m.open_info(Info::WhatsNew { since: Some(String::new()) }),
         "whats-new-all" => m.open_info(Info::WhatsNew { since: None }),
         "bug-report" => m.open_info(Info::BugReport),
+        "update" | "updating" => {
+            let release = rdm_core::selfupdate::Release {
+                version: "1.0.2".into(),
+                installer: String::new(),
+                installer_name: "Snag-Setup-1.0.2.exe".into(),
+                sums: String::new(),
+                page: String::new(),
+            };
+            m.update = Some(crate::state::UpdateOffer { release, busy: scene == "updating" });
+        }
         "scroll-test" => {
             m.open_info(Info::WhatsNew { since: None });
             SCROLL_STEPS.store(SCROLL_TEST, std::sync::atomic::Ordering::Relaxed);

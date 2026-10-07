@@ -14,6 +14,7 @@ Newest first. Snag shows the newest entry once after an update; the Help menu (?
 - Pausing a page save no longer leaves a second copy behind.
 
 ### Improved
+- Snag updates itself: when a newer version is out, a card offers it, and Update now downloads it, checks it against its published checksum, installs it and reopens Snag. Switch it off in Settings → General.
 - Report a bug → Report on GitHub opens a filled-in GitHub issue in your browser.
 - Send from your phone uses its own code (the extension's never travels over Wi-Fi) and listens only on your home network.
 - The browser extension is 1.0.1: steadier Download button, "Grab all" of more than 1,000 links, and links waiting for Snag never get stuck.

@@ -1140,3 +1140,41 @@ async fn a_cancelled_probe_leaves_no_cookie_file() {
     let left = std::fs::read_dir(&cookies).map(|d| d.count()).unwrap_or(0);
     assert_eq!(left, 0, "the site's cookies don't stay on disk");
 }
+
+#[tokio::test]
+async fn an_update_is_downloaded_only_when_it_matches_its_checksum() {
+    use axum::{Router, routing::get};
+    use sha2::Digest;
+    let setup = b"MZ pretend installer".to_vec();
+    let good = format!("{:x}", sha2::Sha256::digest(&setup));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let latest = format!(
+        r#"{{"tag_name":"v9.9.9","draft":false,"prerelease":false,"html_url":"{base}/page","assets":[
+            {{"name":"Snag-Setup-9.9.9.exe","browser_download_url":"{base}/Snag-Setup-9.9.9.exe"}},
+            {{"name":"SHA256SUMS-9.9.9.txt","browser_download_url":"{base}/sums"}}]}}"#
+    );
+    let sums = std::sync::Arc::new(std::sync::Mutex::new(format!("{good} *installer/Snag-Setup-9.9.9.exe\n")));
+    let served = sums.clone();
+    let app = Router::new()
+        .route("/latest", get(move || async move { latest }))
+        .route("/Snag-Setup-9.9.9.exe", get(move || async move { setup }))
+        .route("/sums", get(move || async move { served.lock().unwrap().clone() }));
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    // SAFETY: set before anything reads it; only this test asks for updates.
+    unsafe { std::env::set_var("SNAG_UPDATE_URL", format!("{base}/latest")) };
+
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |_| {}).await;
+    let release = m.latest_release().await.expect("the latest release");
+    assert_eq!(release.version, "9.9.9");
+    let file = m.fetch_update(&release).await.expect("downloaded and checked");
+    assert_eq!(std::fs::read(&file).unwrap(), b"MZ pretend installer");
+    assert!(file.ends_with("Snag-Setup-9.9.9.exe"));
+
+    // Tampered with on the way (or a wrong upload): refused, and nothing is left to run.
+    *sums.lock().unwrap() = format!("{} *installer/Snag-Setup-9.9.9.exe\n", "0".repeat(64));
+    let err = m.fetch_update(&release).await.expect_err("checksum mismatch");
+    assert!(err.contains("checksum"), "{err}");
+    assert!(!file.exists(), "the bad download is deleted");
+}
