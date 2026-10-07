@@ -150,3 +150,21 @@ test("the button's listeners are registered once, however often a single-page ap
   for (const fn of p.storageListeners) fn({ buttonCorner: { newValue: "top-left" } });
   assert.strictEqual(p.host().shadow.querySelector(".pill").style.top, "24px");
 });
+
+test("the button's host can't be restyled by the page and ignores clicks a script fakes", async () => {
+  const p = page("https://www.youtube.com/watch?v=1");
+  await p.flush();
+  const css = p.host().style.cssText || "";
+  assert.match(css, /all: initial !important/);
+  assert.match(css, /position: fixed !important/);
+  assert.match(css, /z-index: 2147483647 !important/);
+
+  const pill = p.host().shadow.querySelector(".pill");
+  p.sent.length = 0;
+  pill.dispatch("click", { isTrusted: false });
+  await p.flush();
+  assert.deepStrictEqual(p.sent, [], "a script's click does nothing");
+  pill.dispatch("click", { isTrusted: true });
+  await p.flush();
+  assert.ok(p.sent.includes("status"), "the user's click opens the menu");
+});

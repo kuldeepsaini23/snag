@@ -12,6 +12,9 @@
   function build() {
     const host = document.createElement("div");
     host.id = HOST_ID;
+    host.style.cssText = HOST_STYLE;
+    // Every handler in the button ignores events a page script made up.
+    const on = (node, type, fn) => node.addEventListener(type, trusted(fn));
     const root = host.attachShadow({ mode: "closed" });
     root.innerHTML = `
       <style>
@@ -83,11 +86,11 @@
     // Drag the button anywhere; it settles in the nearest corner and stays there on every site.
     let drag = null;
     let dragged = false;
-    pill.addEventListener("pointerdown", (e) => {
+    on(pill, "pointerdown", (e) => {
       drag = { x: e.clientX, y: e.clientY, moved: false };
       pill.setPointerCapture(e.pointerId);
     });
-    pill.addEventListener("pointermove", (e) => {
+    on(pill, "pointermove", (e) => {
       if (!drag) return;
       if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 6) return;
       drag.moved = true;
@@ -96,7 +99,7 @@
       const r = pill.getBoundingClientRect();
       Object.assign(pill.style, { top: `${e.clientY - r.height / 2}px`, left: `${e.clientX - r.width / 2}px`, bottom: "auto", right: "auto" });
     });
-    pill.addEventListener("pointerup", (e) => {
+    on(pill, "pointerup", (e) => {
       if (drag && drag.moved) {
         dragged = true;
         pill.classList.remove("dragging");
@@ -146,7 +149,7 @@
       head.append(el("div", "title", info.title || document.title));
       const x = el("button", "close", "×");
       x.title = "Close";
-      x.addEventListener("click", close);
+      on(x, "click", close);
       head.append(x);
       return head;
     };
@@ -155,7 +158,7 @@
       const foot = el("div", "foot");
       const hide = el("button", "link", `Hide on ${siteKey(location.hostname)}`);
       hide.title = "Turn it back on from the Snag extension's popup";
-      hide.addEventListener("click", async () => {
+      on(hide, "click", async () => {
         const { hiddenSites } = await chrome.storage.local.get(["hiddenSites"]);
         await chrome.storage.local.set({ hiddenSites: hideSite(hiddenSites, location.hostname) });
       });
@@ -169,7 +172,7 @@
       if (info.playlist > 0) {
         const all = el("button", "row");
         all.append(el("span", "label", `Whole playlist (${info.playlist})`), el("span", "detail", "choose in Snag"));
-        all.addEventListener("click", sendPage);
+        on(all, "click", sendPage);
         box.append(all);
       }
       for (const q of qualityRows(info)) {
@@ -177,7 +180,7 @@
         row.append(el("span", "label", q.label));
         if (q.badge) row.append(el("span", "badge", q.badge));
         row.append(el("span", "detail", q.detail));
-        row.addEventListener("click", () => {
+        on(row, "click", () => {
           note([el("span", "spinner"), `Adding ${q.label}…`]);
           const choice = { url: location.href, title: info.title || document.title, format: q.format, thumbnail: info.thumbnail || undefined, duration: info.duration || undefined };
           ask({ type: "add-media", choice }).then((r) => done(r.ok ? `Downloading ${q.label} ✓` : r.error));
@@ -194,7 +197,7 @@
         const row = el("button", "row");
         row.append(el("span", "label", s.label), el("span", "badge", "NOW"), el("span", "detail", s.detail));
         row.title = s.url;
-        row.addEventListener("click", () => {
+        on(row, "click", () => {
           note([el("span", "spinner"), "Starting…"]);
           const referrer = s.referrer || location.href;
           // A stream goes straight in at the best quality (no reading first, no picker), like IDM.
@@ -209,7 +212,7 @@
       return box;
     };
 
-    pill.addEventListener("click", async () => {
+    on(pill, "click", async () => {
       if (dragged) {
         dragged = false;
         return;

@@ -38,3 +38,12 @@ test("dropping the button snaps it to the nearest corner", () => {
   assert.strictEqual(nearestCorner(900, 50, 1000, 800), "top-right");
   assert.strictEqual(nearestCorner(100, 700, 1000, 800), "bottom-left");
 });
+
+test("only the user's own events reach the button", () => {
+  const { trusted } = require("../pill.js");
+  const seen = [];
+  const handler = trusted((e) => seen.push(e.type));
+  handler({ type: "click", isTrusted: false });
+  handler({ type: "click", isTrusted: true });
+  assert.deepStrictEqual(seen, ["click"]);
+});
