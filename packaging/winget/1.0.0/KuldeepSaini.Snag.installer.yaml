@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.9.0.schema.json
+PackageIdentifier: KuldeepSaini.Snag
+PackageVersion: 1.0.0
+InstallerType: inno
+Scope: user
+InstallModes:
+- interactive
+- silent
+- silentWithProgress
+UpgradeBehavior: install
+ReleaseDate: 2026-10-07
+Installers:
+- Architecture: x64
+  InstallerUrl: https://github.com/kuldeepsaini23/snag/releases/download/v1.0.0/Snag-Setup-1.0.0.exe
+  InstallerSha256: A32C9F0C7E85613FAC3C87613BF1BFD6AE3999CCFF66E7D14B40FAE389B5C50B
+ManifestType: installer
+ManifestVersion: 1.9.0

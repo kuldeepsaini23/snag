@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.9.0.schema.json
+PackageIdentifier: KuldeepSaini.Snag
+PackageVersion: 1.0.0
+PackageLocale: en-US
+Publisher: Kuldeep Saini
+PublisherUrl: https://github.com/kuldeepsaini23
+PublisherSupportUrl: https://github.com/kuldeepsaini23/snag/issues
+PrivacyUrl: https://snag.kuldeepsaini.dev/privacy
+Author: Kuldeep Saini
+PackageName: Snag
+PackageUrl: https://github.com/kuldeepsaini23/snag
+License: MIT
+LicenseUrl: https://github.com/kuldeepsaini23/snag/blob/master/LICENSE
+ShortDescription: A fast, free download manager with a browser extension that catches any video.
+Description: Snag downloads files over up to 8 connections with pause and resume, videos and music from 1,800+ sites (via yt-dlp), image galleries, torrents and whole web pages. Its browser extension adds a quality menu to video pages and catches what the player is playing.
+Moniker: snag
+Tags:
+- download-manager
+- downloader
+- youtube-downloader
+- torrent
+- yt-dlp
+- idm-alternative
+ReleaseNotesUrl: https://github.com/kuldeepsaini23/snag/releases/tag/v1.0.0
+ManifestType: defaultLocale
+ManifestVersion: 1.9.0
