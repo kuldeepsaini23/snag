@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.9.0.schema.json
 PackageIdentifier: KuldeepSaini.Snag
-PackageVersion: 1.0.0
+PackageVersion: 1.0.1
 PackageLocale: en-US
 Publisher: Kuldeep Saini
 PublisherUrl: https://github.com/kuldeepsaini23
@@ -21,6 +21,6 @@ Tags:
 - torrent
 - yt-dlp
 - idm-alternative
-ReleaseNotesUrl: https://github.com/kuldeepsaini23/snag/releases/tag/v1.0.0
+ReleaseNotesUrl: https://github.com/kuldeepsaini23/snag/releases/tag/v1.0.1
 ManifestType: defaultLocale
 ManifestVersion: 1.9.0

@@ -3,10 +3,10 @@ Verification is intended to assist the Chocolatey moderators and community
 in verifying that this package's contents are trustworthy.
 
 The installer is downloaded from the project's GitHub release:
-  https://github.com/kuldeepsaini23/snag/releases/tag/v1.0.0
+  https://github.com/kuldeepsaini23/snag/releases/tag/v1.0.1
 
-Its SHA-256 is published next to it in SHA256SUMS-1.0.0.txt:
-  A32C9F0C7E85613FAC3C87613BF1BFD6AE3999CCFF66E7D14B40FAE389B5C50B
+Its SHA-256 is published next to it in SHA256SUMS-1.0.1.txt:
+  5E0E1444C4DC731BC120140214584E24859378EF5FB5A2DB3B0774FB3D49DACF
 
-To check: download Snag-Setup-1.0.0.exe from the release and run
-  Get-FileHash Snag-Setup-1.0.0.exe -Algorithm SHA256
+To check: download Snag-Setup-1.0.1.exe from the release and run
+  Get-FileHash Snag-Setup-1.0.1.exe -Algorithm SHA256

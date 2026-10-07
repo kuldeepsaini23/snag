@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>snag</id>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <title>Snag</title>
     <authors>Kuldeep Saini</authors>
     <owners>kuldeepsaini23</owners>
@@ -11,7 +11,7 @@
     <packageSourceUrl>https://github.com/kuldeepsaini23/snag/tree/master/packaging/chocolatey</packageSourceUrl>
     <bugTrackerUrl>https://github.com/kuldeepsaini23/snag/issues</bugTrackerUrl>
     <docsUrl>https://github.com/kuldeepsaini23/snag#readme</docsUrl>
-    <releaseNotes>https://github.com/kuldeepsaini23/snag/releases/tag/v1.0.0</releaseNotes>
+    <releaseNotes>https://github.com/kuldeepsaini23/snag/releases/tag/v1.0.1</releaseNotes>
     <licenseUrl>https://github.com/kuldeepsaini23/snag/blob/master/LICENSE</licenseUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <iconUrl>https://raw.githubusercontent.com/kuldeepsaini23/snag/master/extension/icon-128.png</iconUrl>
