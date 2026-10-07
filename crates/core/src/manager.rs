@@ -880,7 +880,10 @@ impl Actor {
         self.push_item(url, title, category, Kind::Media(format), referrer, queue)
     }
 
+    /// Records a video's preview and length. Every recorded thumbnail comes through here, so only
+    /// web ones are kept (see `is_web_link`).
     fn set_meta(&mut self, id: ItemId, thumbnail: Option<String>, duration: Option<f64>) {
+        let thumbnail = thumbnail.filter(|t| crate::model::is_web_link(t));
         if thumbnail.is_none() && duration.is_none() {
             return;
         }

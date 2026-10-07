@@ -387,25 +387,30 @@ fn fetch_thumbs(app: &mut App) -> Task<Message> {
         return Task::none();
     }
     let dir = app.data_dir.join("thumbs");
-    Task::batch(wanted.into_iter().map(|url| {
-        app.model.thumb_pending.insert(url.clone());
-        let file = crate::view::thumb_file(&dir, &url);
-        Task::perform(fetch_thumb(url.clone(), file), move |path| Message::ThumbReady(url.clone(), path))
+    Task::batch(wanted.into_iter().map(|source| {
+        let key = source.key();
+        app.model.thumb_pending.insert(key.clone());
+        let file = crate::view::thumb_file(&dir, &key);
+        Task::perform(fetch_thumb(source, file), move |path| Message::ThumbReady(key.clone(), path))
     }))
 }
 
 /// Downloads a thumbnail once (it stays cached on disk across restarts).
-async fn fetch_thumb(url: String, base: PathBuf) -> Option<PathBuf> {
+async fn fetch_thumb(source: crate::view::ThumbSource, base: PathBuf) -> Option<PathBuf> {
     if let Some(cached) = ["jpg", "png", "webp"].iter().map(|e| base.with_extension(e)).find(|f| f.exists()) {
         return Some(cached);
     }
-    if let Some(src) = crate::view::local_thumb_source(&url).map(PathBuf::from) {
-        // A downloaded picture: decoded on a worker, two at a time (a library of photos would
-        // otherwise decode them all at once).
-        static DECODING: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
-        let _turn = DECODING.acquire().await.ok()?;
-        return tokio::task::spawn_blocking(move || crate::local_thumb::make(&src, &base)).await.ok()?;
-    }
+    let url = match source {
+        crate::view::ThumbSource::Local(src) => {
+            // A downloaded picture: decoded on a worker, two at a time (a library of photos
+            // would otherwise decode them all at once).
+            static DECODING: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
+            let _turn = DECODING.acquire().await.ok()?;
+            return tokio::task::spawn_blocking(move || crate::local_thumb::make(&src, &base)).await.ok()?;
+        }
+        crate::view::ThumbSource::Web(url) if rdm_core::model::is_web_link(&url) => url,
+        crate::view::ThumbSource::Web(_) => return None,
+    };
     let get = rdm_engine::default_client().get(&url).timeout(std::time::Duration::from_secs(20)).send();
     let bytes = get.await.ok()?.error_for_status().ok()?.bytes().await.ok()?;
     // A thumbnail is small; anything huge isn't one.

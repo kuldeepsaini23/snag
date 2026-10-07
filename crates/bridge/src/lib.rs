@@ -231,7 +231,9 @@ async fn add_media_choice(State(manager): State<Manager>, headers: HeaderMap, Js
     if let Some(page) = req.referrer.filter(|r| r.starts_with("http")) {
         manager.remember_referrer(req.url.clone(), page);
     }
-    let id = manager.add_media_meta(req.url, req.title, req.format, 0, req.thumbnail, req.duration).await;
+    // Only a web picture: never a local or network-share path.
+    let thumbnail = req.thumbnail.filter(|t| rdm_core::model::is_web_link(t));
+    let id = manager.add_media_meta(req.url, req.title, req.format, 0, thumbnail, req.duration).await;
     (StatusCode::OK, Json(json!({ "id": id.0 })))
 }
 

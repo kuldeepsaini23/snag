@@ -443,3 +443,21 @@ async fn the_extension_can_save_a_page() {
     assert_eq!(items[0].kind, rdm_core::Kind::Page);
     assert_eq!(items[0].url, "https://example.com/article");
 }
+
+#[tokio::test]
+async fn only_web_pictures_are_taken_as_thumbnails() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path()).await;
+    let b = start(m.clone(), 48381..=48390).await.unwrap();
+    // A file: "thumbnail" would make Snag read a local file, or a network share (sending the
+    // Windows login to whoever runs it).
+    let thumbs = [r"file:\\host\share\a.png", "file:///C:/x.png", r"\\host\share\b.png", "https://i.example/ok.jpg"];
+    for (n, thumbnail) in thumbs.iter().enumerate() {
+        let choice = json!({ "url": format!("https://videos.example/watch/{n}"), "title": "Clip", "format": "AudioMp3", "thumbnail": thumbnail });
+        let (status, reply) = post_to(b.port, "/add-media", choice, TOKEN).await;
+        assert_eq!(status, 200, "{reply}");
+    }
+    let items = m.snapshot().await.items;
+    let kept: Vec<_> = items.iter().map(|i| i.thumbnail.as_deref()).collect();
+    assert_eq!(kept, vec![None, None, None, Some("https://i.example/ok.jpg")]);
+}

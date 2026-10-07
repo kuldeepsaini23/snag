@@ -57,6 +57,14 @@ pub fn gallery_name(url: &str) -> String {
     format!("{} · {:04x}", label.trim_end_matches(['.', ' ']), hash & 0xffff)
 }
 
+/// An http(s) address. The only kind of picture link taken from outside (a page, the extension,
+/// yt-dlp): a `file:` or `\\host\share` one would have Snag read local files, or hand the
+/// Windows login to a network share.
+pub fn is_web_link(url: &str) -> bool {
+    let scheme = url.split_once("://").map(|(s, _)| s);
+    scheme.is_some_and(|s| s.eq_ignore_ascii_case("http") || s.eq_ignore_ascii_case("https"))
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Item {
     pub id: ItemId,
@@ -80,7 +88,7 @@ pub struct Item {
     /// Video downloads: yt-dlp's partial files live here until the final file is moved out.
     #[serde(default)]
     pub work_dir: Option<PathBuf>,
-    /// Videos: a preview image URL.
+    /// Videos: a preview image URL (http(s) only, see `is_web_link`).
     #[serde(default)]
     pub thumbnail: Option<String>,
     /// Videos: length in seconds.
