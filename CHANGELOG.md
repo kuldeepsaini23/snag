@@ -2,6 +2,21 @@
 
 Newest first. Snag shows the newest entry once after an update; the Help menu (?) has the full list.
 
+## 1.0.1 — 2026-10-07
+
+### Fixed
+- Dialogs no longer turn black after a while when Snag draws with the CPU (the default).
+- "Grab all" skips links you've already downloaded and says how many, instead of a popup for each.
+- A "move to folder" rule says "copied" when the original file is in use and has to stay.
+- Saved web pages no longer pack whole videos into the .html file.
+- Links like `?ref=…` or `?share=…` count as different downloads outside YouTube.
+- Pausing a page save no longer leaves a second copy behind.
+
+### Improved
+- Report a bug → **Report on GitHub** opens a filled-in GitHub issue in your browser.
+- Send from your phone uses its own code (the extension's never travels over Wi-Fi) and listens only on your home network.
+- The browser extension is 1.0.1: steadier Download button, "Grab all" of more than 1,000 links, and links waiting for Snag never get stuck.
+
 ## 1.0.0 — 2026-10-07 (first release)
 
 ### Downloads
