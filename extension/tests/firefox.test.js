@@ -5,7 +5,7 @@ const base = require("../manifest.json");
 
 test("firefox manifest runs the background as scripts, catch rules first", () => {
   const ff = firefoxManifest(base);
-  assert.deepStrictEqual(ff.background, { scripts: ["catch-rules.js", "sniffer.js", "quality.js", "later.js", "background.js"] });
+  assert.deepStrictEqual(ff.background, { scripts: ["catch-rules.js", "sniffer.js", "quality.js", "later.js", "connect.js", "background.js"] });
   assert.strictEqual(ff.background.service_worker, undefined);
 });
 
@@ -37,7 +37,7 @@ test("build writes both browser folders", () => {
   const out = fs.mkdtempSync(path.join(os.tmpdir(), "rdm-ext-"));
   require("../build.js").build(out);
   for (const target of ["chrome", "firefox"]) {
-    for (const f of ["manifest.json", "background.js", "catch-rules.js", "sniffer.js", "content.js", "popup.html", "popup.js"]) {
+    for (const f of ["manifest.json", "background.js", "catch-rules.js", "sniffer.js", "connect.js", "content.js", "popup.html", "popup.js"]) {
       assert.ok(fs.existsSync(path.join(out, target, f)), `${target}/${f}`);
     }
   }

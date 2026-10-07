@@ -262,7 +262,8 @@
     if (on && !existing) document.documentElement.appendChild(build());
     if (!on && existing) existing.remove();
   }
-  let prefetched = "";
+  // Known video pages only (never just because something played), once the address settles.
+  const prefetch = new PrefetchPlan(1500, isVideoPage);
   let hiddenSites = [];
   chrome.storage.local.get(["hiddenSites"]).then((s) => {
     hiddenSites = s.hiddenSites || [];
@@ -281,13 +282,12 @@
       lastUrl = location.href;
       mediaSeen = 0;
     }
-    const on = (isVideoPage(location.hostname, location.pathname) || mediaSeen > 0) && !isHiddenOn(location.hostname, hiddenSites);
+    const hidden = isHiddenOn(location.hostname, hiddenSites);
+    const on = (isVideoPage(location.hostname, location.pathname) || mediaSeen > 0) && !hidden;
     show(on);
     // Snag starts reading the page now, so the qualities are ready by the time you click.
-    if (on && prefetched !== location.href) {
-      prefetched = location.href;
-      askQuick({ type: "prefetch", url: location.href });
-    }
+    const page = prefetch.next(hidden ? "" : location.href, Date.now());
+    if (page) askQuick({ type: "prefetch", url: page });
   }
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.type === "media-count") {
