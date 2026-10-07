@@ -12,7 +12,7 @@ use crate::update::Message;
 use crate::view;
 use iced::widget::{Space, button, column, container, pick_list, row, rule, scrollable, text, text_input, toggler};
 use iced::{Alignment, Color, Element, Fill, Length};
-use rdm_core::Status;
+use rdm_core::{Status, ThemeMode};
 
 /// `phone`: the phone page link and its QR code, while phone sharing is on.
 pub fn view<'a>(m: &'a Model, phone: Option<(&'a str, &'a iced::widget::qr_code::Data)>, c: Colors) -> Element<'a, Message> {
@@ -35,7 +35,7 @@ pub fn view<'a>(m: &'a Model, phone: Option<(&'a str, &'a iced::widget::qr_code:
 
     let (title, subtitle) = match m.settings_tab {
         SettingsTab::General => ("General", "Where files go and what happens when they finish"),
-        SettingsTab::Appearance => ("Appearance", "Make Snag yours: pick any accent colour"),
+        SettingsTab::Appearance => ("Appearance", "Make Snag yours: light or dark, and any accent colour"),
         SettingsTab::Connections => ("Connections", "How hard Snag pushes each server"),
         SettingsTab::Speed => ("Speed & Schedule", "Cap bandwidth and run queues on a schedule"),
         SettingsTab::Extension => ("Extension", "Catch downloads and videos straight from Chrome"),
@@ -149,6 +149,12 @@ fn general(m: &Model, c: Colors) -> Element<'_, Message> {
                 line("Start downloads immediately", "Otherwise new items wait, paused, until you start them", switch(d.start_immediately, Message::DraftStart, c), c),
                 line("Watch the clipboard for links", "A copied link pops up in the corner, ready to download", switch(d.clipboard_watch, Message::DraftClipboard, c), c),
                 line("Notify when downloads finish", "A Windows notification when a download finishes or fails", switch(d.notify, Message::DraftNotify, c), c),
+                line(
+                    "Show the tour again",
+                    "The five-step welcome and the tips on the toolbar",
+                    button(text("Show tour").size(12.5)).style(style::outline(c)).padding([7, 12]).on_press(Message::ShowTour).into(),
+                    c,
+                ),
             ],
             c,
         ),
@@ -200,14 +206,35 @@ fn appearance(m: &Model, c: Colors) -> Element<'_, Message> {
     .spacing(4)
     .padding(iced::Padding { top: 8.0, right: 8.0, ..Default::default() })
     .width(Fill);
-    column![section(
-        "Accent colour",
-        vec![
-            line("Accent", "Used for progress, links and highlights", swatches.into(), c),
-            row![picker, side].spacing(12).padding([6, 6]).into(),
-        ],
-        c,
-    )]
+    let modes = [(ThemeMode::Dark, "Dark"), (ThemeMode::Light, "Light"), (ThemeMode::System, "Follow Windows")];
+    let segments = modes.iter().fold(row![].spacing(2), |r, &(mode, label)| {
+        let on = m.draft.theme == mode;
+        r.push(button(text(label).size(12).font(if on { style::SEMIBOLD } else { style::INTER })).padding([4, 10]).style(style::choice(c, on, 5.0)).on_press(Message::DraftTheme(mode)))
+    });
+    let mica = if m.draft.translucent && !m.backdrop && m.settings.translucent {
+        "Mica isn't available here, so the window stays solid"
+    } else {
+        "Mica behind the window on Windows 11 (acrylic on Windows 10), with slightly see-through panels"
+    };
+    column![
+        section(
+            "Window",
+            vec![
+                line("Theme", "Follow Windows switches with your app mode in Windows settings", container(segments).padding(3).style(style::segmented(c)).into(), c),
+                line("Translucent window", mica, switch(m.draft.translucent, Message::DraftTranslucent, c), c),
+            ],
+            c,
+        ),
+        section(
+            "Accent colour",
+            vec![
+                line("Accent", "Used for progress, links and highlights", swatches.into(), c),
+                row![picker, side].spacing(12).padding([6, 6]).into(),
+            ],
+            c,
+        ),
+    ]
+    .spacing(18)
     .into()
 }
 

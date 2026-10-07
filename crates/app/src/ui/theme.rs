@@ -94,6 +94,13 @@ impl Colors {
         }
     }
 
+    /// Translucent window (Mica behind it): the canvas and the panels let some of it through.
+    /// Text, cards and controls stay solid.
+    pub fn translucent(self) -> Colors {
+        let see = |c: Color, a: f32| Color { a: c.a * a, ..c };
+        Colors { canvas: see(self.canvas, 0.5), panel: see(self.panel, 0.86), sidebar: see(self.sidebar, 0.86), ..self }
+    }
+
     /// A fixed colour (white buttons, shadows) faded along with the tokens.
     pub fn fixed(&self, c: Color) -> Color {
         Color { a: c.a * self.alpha, ..c }
@@ -355,6 +362,15 @@ mod tests {
         // Orange keeps its hue, only deeper.
         let orange = colors_for(DEFAULT_ACCENT, true).accent;
         assert!(orange.r > orange.g && orange.g > orange.b && orange.r > 0.7, "{orange:?}");
+    }
+
+    #[test]
+    fn translucent_panels_only() {
+        let c = colors(DEFAULT_ACCENT);
+        let t = c.translucent();
+        assert!(t.panel.a < 1.0 && t.panel.a > 0.7 && t.canvas.a < t.panel.a);
+        assert_eq!((t.text, t.accent, t.raised), (c.text, c.accent, c.raised), "text and controls stay solid");
+        assert_eq!(Colors { canvas: c.canvas, panel: c.panel, sidebar: c.sidebar, ..t }, c);
     }
 
     #[test]

@@ -7,6 +7,7 @@ use super::{Anim, tiny};
 use crate::format;
 use crate::motion;
 use crate::state::{Model, SettingsTab};
+use crate::tour::Mark;
 use crate::update::{Message, search_input};
 use crate::view::{FILTERS, Filter};
 use iced::widget::{Space, button, column, container, mouse_area, row, sensor, text, text_input};
@@ -38,9 +39,9 @@ pub fn view(m: &Model, a: Anim, c: Colors) -> Element<'_, Message> {
         tool(Icon::Sidebar, false, Message::ToggleSidebar, c),
         middle,
         search(m, a, c),
-        tool(Icon::Gauge, m.speed_open, Message::ToggleSpeed, c),
+        tool(Icon::Gauge, m.speed_open || m.coach() == Some(Mark::Speed), Message::ToggleSpeed, c),
         tool(Icon::Gear, false, Message::OpenSettings(SettingsTab::General), c),
-        tool(Icon::Question, m.help_open, Message::ToggleHelp, c),
+        tool(Icon::Question, m.help_open || m.coach() == Some(Mark::Help), Message::ToggleHelp, c),
         add,
     ]
     .spacing(8)

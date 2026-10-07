@@ -1,5 +1,7 @@
+mod appearance;
 mod changelog;
 mod choices;
+mod dropped;
 mod format;
 mod hsv;
 mod motion;
@@ -9,6 +11,7 @@ mod report;
 mod snap;
 mod notify;
 mod state;
+mod tour;
 mod tray;
 mod ui;
 mod update;
@@ -38,6 +41,8 @@ fn main() -> iced::Result {
     if quit {
         return Ok(()); // nothing running
     }
+    // A translucent window has to be created see-through (Mica goes behind it once it's open).
+    let translucent = rdm_core::store::load(&state_path).settings.translucent;
     let manager = {
         let _enter = runtime.enter();
         rdm_core::Manager::start(state_path)
@@ -55,13 +60,14 @@ fn main() -> iced::Result {
         min_size: Some(iced::Size::new(960.0, 600.0)),
         // The toolbar is the title bar (spec §2.5).
         decorations: false,
+        transparent: translucent,
         icon: iced::window::icon::from_rgba(tray::ICON_64.to_vec(), 64, 64).ok(),
         ..Default::default()
     };
     let result = iced::application(move || update::boot(boot_manager.clone(), bridge_status.clone(), boot_dir.clone(), boot_runtime.clone()), update::update, ui::view)
         .title("Snag")
         .subscription(update::subscription)
-        .theme(|app: &update::App| ui::theme::theme(&ui::theme::colors(app.model.accent_hex())))
+        .theme(|app: &update::App| ui::theme::theme(&ui::colors(&app.model)))
         .font(ui::icon::INTER_REGULAR)
         .font(ui::icon::INTER_MEDIUM)
         .font(ui::icon::INTER_SEMIBOLD)

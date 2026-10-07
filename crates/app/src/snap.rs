@@ -94,6 +94,9 @@ fn apply(m: &mut Model, scene: &str) {
     m.more_open = false;
     m.help_open = false;
     m.info = None;
+    m.tour = None;
+    m.drop_hover = false;
+    m.settings_error = None;
     freeze(scene.starts_with("mid-").then(|| Instant::now() + MID));
     // The row that shows Pause/Resume and Cancel: the paused ISO.
     let paused = m.items.iter().find(|i| i.status == Status::Paused).map(|i| i.id);
@@ -186,6 +189,36 @@ fn apply(m: &mut Model, scene: &str) {
         "blue" => m.settings.accent = "#0a84ff".into(),
         "white" => m.settings.accent = "#f5f5f7".into(),
         "orange" => m.settings.accent = "#ff9f0a".into(),
+        // Light and dark stay for the scenes after them (like the accent scenes).
+        "light" => m.settings.theme = rdm_core::ThemeMode::Light,
+        "dark" => m.settings.theme = rdm_core::ThemeMode::Dark,
+        // The translucent tokens (a screenshot can't show the Mica behind them).
+        "translucent" => (m.settings.translucent, m.backdrop) = (true, true),
+        "solid" => (m.settings.translucent, m.backdrop) = (false, false),
+        // The tour's sheet steps (tour-1 … tour-5), a bad folder, and its coach marks.
+        "tour-bad-folder" => {
+            m.start_tour();
+            m.tour = Some(crate::tour::Step::Folder);
+            m.draft.download_dir = String::new();
+            m.tour_next();
+        }
+        s if s.starts_with("tour-") => {
+            m.start_tour();
+            let k: usize = s[5..].parse().unwrap_or(1);
+            m.tour = crate::tour::SHEET.get(k.saturating_sub(1)).copied();
+        }
+        "coach-add" | "coach-speed" | "coach-help" | "coach-try" => {
+            let mark = match scene {
+                "coach-speed" => crate::tour::Mark::Speed,
+                "coach-help" => crate::tour::Mark::Help,
+                _ => crate::tour::Mark::Add,
+            };
+            if scene == "coach-try" {
+                m.url = crate::tour::SAMPLE_LINK.into();
+            }
+            m.tour = Some(crate::tour::Step::Coach(mark));
+        }
+        "drop" => m.drop_hover = true,
         "help-menu" => m.help_open = true,
         "shortcuts" => m.open_info(Info::Shortcuts),
         "help" => m.open_info(Info::Help),

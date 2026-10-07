@@ -12,6 +12,7 @@ mod sidebar;
 pub mod style;
 pub mod theme;
 mod toolbar;
+mod tour;
 
 use crate::format;
 use crate::motion::Motion;
@@ -57,9 +58,16 @@ impl Anim {
     }
 }
 
+/// The tokens the window draws with: the accent, light or dark, and see-through panels while
+/// Mica is behind the window.
+pub fn colors(m: &Model) -> Colors {
+    let c = theme::colors_for(m.accent_hex(), m.light());
+    if m.translucent() { c.translucent() } else { c }
+}
+
 pub fn view(app: &App) -> Element<'_, Message> {
     let m = &app.model;
-    let c = theme::colors(m.accent_hex());
+    let c = colors(m);
     let a = Anim::at(&app.motion, app.now);
 
     let mut body = row![].padding(Padding { top: 0.0, right: GAP, bottom: 0.0, left: GAP }).height(Fill);
@@ -117,8 +125,22 @@ pub fn view(app: &App) -> Element<'_, Message> {
         // Help, What's new and the bug report go over anything else that is open.
         layers = layers.push(modal(help::sheet(m, info, &app.bug_text, sheet_c), sheet_c, Message::CloseInfo));
     }
+    if let Some(step) = m.tour {
+        // The first-run tour: its sheet (a click beside it does nothing: Skip is in it), then
+        // tooltips under the toolbar buttons.
+        match step {
+            crate::tour::Step::Coach(mark) => {
+                let bubble = float(tour::coach(m, mark, c.faded(a.popover))).translate(move |_, _| Vector::new(0.0, -8.0 * (1.0 - a.popover)));
+                layers = layers.push(container(opaque(bubble)).width(Fill).height(Fill).align_x(Alignment::End).padding(tour::coach_padding(mark)));
+            }
+            _ => layers = layers.push(modal(tour::sheet(m, step, sheet_c), sheet_c, Message::Done)),
+        }
+    }
     if m.pair_request.is_some() {
         layers = layers.push(modal(confirm_pair(sheet_c), sheet_c, Message::AnswerPair(false)));
+    }
+    if m.drop_hover {
+        layers = layers.push(drop_target(c));
     }
     if m.screen == Screen::Downloads
         && let Some(t) = toast(m, c.faded(a.toast))
@@ -164,6 +186,24 @@ fn resize_grips<'a>() -> Element<'a, Message> {
         ],
     ]
     .into()
+}
+
+/// Files dragged over the window: what dropping them does.
+fn drop_target<'a>(c: Colors) -> Element<'a, Message> {
+    let badge = container(icon(Icon::TrayDown, 26).color(c.accent)).center(56).style(style::tag(c.accent_soft, c.accent));
+    let card = column![
+        badge,
+        text("Drop to download").size(17).font(style::SEMIBOLD),
+        small("A list of links (.txt), a .torrent file or a web shortcut (.url)", c.text2),
+    ]
+    .spacing(8)
+    .align_x(Alignment::Center);
+    let card = container(card).padding([22, 30]).style(move |t| {
+        let mut s = style::sheet(c)(t);
+        s.border = iced::Border { color: c.accent, width: 1.5, radius: 14.0.into() };
+        s
+    });
+    container(card).width(Fill).height(Fill).center(Fill).style(style::scrim(c.scrim, 0.7)).into()
 }
 
 /// A browser extension asks to connect (one-click pairing).
@@ -220,8 +260,9 @@ fn confirm_quit(m: &Model, c: Colors) -> Element<'_, Message> {
     container(content).width(440).padding(20).style(style::sheet(c)).into()
 }
 
-/// A sheet over a dimmed window; clicking the dim area sends `on_blur`. While `t` goes 0 → 1
-/// the dim fades in and the sheet scales up from 97% and rises a few pixels.
+/// A sheet over a dimmed window; clicking the dim area sends `on_blur`. `c` are the sheet's
+/// colours: while their alpha goes 0 → 1 the dim fades in and the sheet scales up from 97% and
+/// rises a few pixels.
 fn modal<'a>(content: Element<'a, Message>, c: Colors, on_blur: Message) -> Element<'a, Message> {
     let t = c.alpha;
     let sheet = float(opaque(content)).scale(0.97 + 0.03 * t).translate(move |_, _| Vector::new(0.0, 10.0 * (1.0 - t)));

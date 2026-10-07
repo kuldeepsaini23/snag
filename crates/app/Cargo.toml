@@ -21,6 +21,8 @@ tray-icon = "0.26.0"
 tauri-winrt-notification = "0.8.1"
 winreg = "0.56.0"
 windows-sys = { version = "0.61.2", features = ["Win32_UI_WindowsAndMessaging"] }
+window-vibrancy = "0.8.1"
+sha1_smol = "1.0.1"
 
 [dev-dependencies]
 tempfile.workspace = true
