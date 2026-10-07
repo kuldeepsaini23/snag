@@ -4,3 +4,6 @@
 *.rdmstate
 extension/dist/
 .claude/worktrees/
+
+# Chocolatey build output
+packaging/chocolatey/*.nupkg

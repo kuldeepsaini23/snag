@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>snag</id>
+    <version>1.0.0</version>
+    <title>Snag</title>
+    <authors>Kuldeep Saini</authors>
+    <owners>kuldeepsaini23</owners>
+    <projectUrl>https://snag.kuldeepsaini.dev</projectUrl>
+    <projectSourceUrl>https://github.com/kuldeepsaini23/snag</projectSourceUrl>
+    <packageSourceUrl>https://github.com/kuldeepsaini23/snag/tree/master/packaging/chocolatey</packageSourceUrl>
+    <bugTrackerUrl>https://github.com/kuldeepsaini23/snag/issues</bugTrackerUrl>
+    <docsUrl>https://github.com/kuldeepsaini23/snag#readme</docsUrl>
+    <releaseNotes>https://github.com/kuldeepsaini23/snag/releases/tag/v1.0.0</releaseNotes>
+    <licenseUrl>https://github.com/kuldeepsaini23/snag/blob/master/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <iconUrl>https://raw.githubusercontent.com/kuldeepsaini23/snag/master/extension/icon-128.png</iconUrl>
+    <copyright>2026 Kuldeep Saini</copyright>
+    <tags>snag download-manager downloader video-downloader youtube-downloader torrent yt-dlp idm-alternative foss</tags>
+    <summary>A fast, free download manager with a browser extension that catches any video.</summary>
+    <description><![CDATA[Snag is a free, open-source download manager for Windows.
+
+- Big files download over up to 8 connections, with pause and resume (even after a restart).
+- Video and music from 1,800+ sites (via yt-dlp): 4K, 1080p, MP3, playlists, subtitles, live recordings.
+- A browser extension (Chrome, Edge, Brave, Firefox) adds a Download button with a quality menu and catches what a page's player is playing.
+- Image galleries, torrents and magnet links, whole web pages as one file, GitHub repos as ZIP.
+- Rules after download, an optional VirusTotal check, stats, light and dark themes.
+- No account, no analytics: everything stays on your PC.
+
+The package installs Snag for the current user. The browser extension is in the `browser-extension` folder of the install folder (load it unpacked) until it's in the stores.
+]]></description>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

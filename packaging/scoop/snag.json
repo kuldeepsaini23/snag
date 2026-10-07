@@ -1,0 +1,27 @@
+{
+    "version": "1.0.0",
+    "description": "A fast, free download manager with a browser extension that catches any video.",
+    "homepage": "https://snag.kuldeepsaini.dev",
+    "license": "MIT",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/kuldeepsaini23/snag/releases/download/v1.0.0/Snag-Setup-1.0.0.exe",
+            "hash": "a32c9f0c7e85613fac3c87613bf1bfd6ae3999ccff66e7d14b40fae389b5c50b"
+        }
+    },
+    "innosetup": true,
+    "bin": "snag.exe",
+    "shortcuts": [["snag.exe", "Snag"]],
+    "notes": "The browser extension is in $dir\browser-extension (load it unpacked in chrome://extensions).",
+    "checkver": "github",
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/kuldeepsaini23/snag/releases/download/v$version/Snag-Setup-$version.exe"
+            }
+        },
+        "hash": {
+            "url": "$baseurl/SHA256SUMS-$version.txt"
+        }
+    }
+}
