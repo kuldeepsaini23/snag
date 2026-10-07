@@ -1,73 +1,59 @@
 import { GithubLogo, WindowsLogo } from "@phosphor-icons/react/dist/ssr";
 
 import { ButtonLink } from "@/components/button";
-import { LogoMark } from "@/components/logo";
-import { SegmentBar } from "@/components/segment-bar";
+import { SegmentedWord } from "@/components/segments";
+import { SpeedLine } from "@/components/speed-line";
 import { DOWNLOAD_URL, PITCH, REPO_URL } from "@/lib/site";
-
-function intro(delay: number) {
-  return { "--intro-delay": `${delay}s` } as React.CSSProperties;
-}
 
 export function Hero() {
   return (
-    <section id="top" aria-label="Snag">
-      <div className="flex min-h-10 items-center justify-between gap-4 border-b border-line px-5 py-3 sm:px-8">
-        <p className="label text-muted">Snag 1.0 / Windows</p>
-        <p className="label hidden text-faint sm:block">Free · Open source · MIT</p>
-      </div>
-
-      <div className="relative overflow-hidden px-5 pt-10 pb-12 sm:px-8 md:pt-14 md:pb-16">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute top-0 left-1/2 h-72 w-[40rem] -translate-x-1/2 bg-[radial-gradient(closest-side,color-mix(in_oklab,var(--accent)_14%,transparent),transparent)]"
-        />
-        <div className="relative flex justify-center animate-intro">
-          <LogoMark size={72} className="size-16 md:size-[72px]" />
-        </div>
-
-        <h1
-          className="display relative mt-10 text-[clamp(3.1rem,12.5vw,7.25rem)] animate-intro md:mt-12"
-          style={intro(0.3)}
-        >
-          Download <em>anything.</em>
-        </h1>
-        <SegmentBar className="mt-7 h-1.5 max-w-xl md:mt-9" />
-
-        <div className="relative animate-intro" style={intro(0.5)}>
-          <p className="mt-8 max-w-[46ch] text-lg leading-relaxed text-muted md:text-xl">{PITCH}</p>
-          <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-            <ButtonLink href={DOWNLOAD_URL}>
-              <WindowsLogo weight="fill" className="size-4" aria-hidden />
-              Download for Windows
-            </ButtonLink>
-            <ButtonLink href={REPO_URL} variant="outline">
-              <GithubLogo weight="fill" className="size-4" aria-hidden />
-              View on GitHub
-            </ButtonLink>
+    <section className="relative overflow-hidden">
+      <div className="relative mx-auto max-w-6xl px-4 pt-12 sm:px-6 md:pt-20">
+        <div className="grid gap-x-12 gap-y-8 lg:grid-cols-[auto_1fr] lg:items-end">
+          <h1 className="text-[clamp(6rem,38vw,11rem)] leading-[0.85] font-extrabold tracking-[-0.055em] lg:text-[13rem]">
+            <SegmentedWord text="Snag" />
+          </h1>
+          <div className="max-w-xl lg:pb-4">
+            <p className="text-xl leading-snug font-medium text-balance md:text-2xl">{PITCH}</p>
+            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+              <ButtonLink href={DOWNLOAD_URL}>
+                <WindowsLogo weight="fill" className="size-5" aria-hidden />
+                Download for Windows
+              </ButtonLink>
+              <ButtonLink href={REPO_URL} variant="secondary">
+                <GithubLogo weight="fill" className="size-5" aria-hidden />
+                View on GitHub
+              </ButtonLink>
+            </div>
+            <p className="mt-4 font-mono text-xs text-faint">Windows 10 &amp; 11 · 12 MB · Mac &amp; Linux soon</p>
           </div>
-          <p className="label mt-6 leading-relaxed text-faint">Windows 10 &amp; 11 · 12 MB · Mac &amp; Linux coming soon</p>
         </div>
       </div>
 
-      {/* Full column width between hairlines; on phones it runs off the right edge rather than shrinking. */}
-      <figure className="overflow-hidden border-t border-line bg-sunk">
-        <picture>
-          <source
-            type="image/webp"
-            srcSet="/images/main-760.webp 760w, /images/main-1382.webp 1382w"
-            sizes="(min-width: 1056px) 1056px, (min-width: 640px) 100vw, 720px"
-          />
-          <img
-            src="/images/main-1382.webp"
-            alt="Snag's main window: three downloads in progress, one at 8.4 MB/s, with its segment map and speed graph"
-            width={1382}
-            height={864}
-            fetchPriority="high"
-            className="block h-auto w-[720px] max-w-none sm:w-full"
-          />
-        </picture>
-      </figure>
+      {/* The app in its own window, with its speed graph running behind it. On phones the window runs
+          off the right edge rather than shrinking past legibility. */}
+      <div className="relative mt-14 md:mt-20">
+        <SpeedLine id="hero" className="absolute inset-x-0 -top-12 h-28 opacity-50 md:-top-28 md:h-52" />
+        <div className="relative mx-auto max-w-6xl pl-4 sm:px-6">
+          <figure className="w-[720px] max-w-none overflow-hidden rounded-xl bg-panel shadow-[0_40px_90px_-30px_rgba(0,0,0,0.85),0_0_0_1px_var(--line-strong)] sm:w-full">
+            <picture>
+              <source
+                type="image/webp"
+                srcSet="/images/main-760.webp 760w, /images/main-1382.webp 1382w"
+                sizes="(min-width: 1152px) 1104px, (min-width: 640px) calc(100vw - 48px), 720px"
+              />
+              <img
+                src="/images/main-1382.webp"
+                alt="Snag's main window: three downloads in progress, one at 8.4 MB/s, with its segment map and speed graph"
+                width={1382}
+                height={864}
+                fetchPriority="high"
+                className="block h-auto w-full"
+              />
+            </picture>
+          </figure>
+        </div>
+      </div>
     </section>
   );
 }

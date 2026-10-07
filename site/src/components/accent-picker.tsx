@@ -27,7 +27,7 @@ export function AccentPicker() {
     setAccent(value);
     const root = document.documentElement.style;
     root.setProperty("--accent", value);
-    root.setProperty("--on-accent", isLight(value) ? "#111216" : "#ffffff");
+    root.setProperty("--on-accent", isLight(value) ? "#1a1816" : "#ffffff");
   }
 
   return (
@@ -39,14 +39,14 @@ export function AccentPicker() {
           onClick={() => choose(swatch.value)}
           aria-pressed={accent === swatch.value}
           aria-label={swatch.name}
-          className="size-10 ring-offset-2 ring-offset-sunk transition-transform hover:scale-105 aria-pressed:ring-1 aria-pressed:ring-text"
+          className="size-9 rounded-full ring-offset-2 ring-offset-panel transition-transform hover:scale-110 aria-pressed:ring-2 aria-pressed:ring-text"
           style={{ background: swatch.value }}
         />
       ))}
-      <label className="label relative flex h-10 cursor-pointer items-center gap-2 border border-line-strong px-3 text-muted transition-colors focus-within:outline-2 focus-within:outline-accent hover:text-text">
+      <label className="relative flex h-9 cursor-pointer items-center gap-2 rounded-full bg-raised px-3 text-sm text-muted transition-colors focus-within:outline-2 focus-within:outline-accent hover:text-text">
         <span
           aria-hidden="true"
-          className="size-3.5 bg-[conic-gradient(#ff5c5c,#ffd60a,#34c759,#3d9bff,#b78cff,#ff5c5c)]"
+          className="size-4 rounded-full bg-[conic-gradient(#ff5c5c,#ffd60a,#34c759,#3d9bff,#b78cff,#ff5c5c)]"
         />
         Any colour
         <input

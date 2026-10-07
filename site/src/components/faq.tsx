@@ -1,11 +1,11 @@
-import { Plus } from "@phosphor-icons/react/dist/ssr";
+import { CaretDown } from "@phosphor-icons/react/dist/ssr";
 
-import { Section, SectionIntro } from "@/components/section";
 import { RELEASES_URL, REPO_URL } from "@/lib/site";
 
-const questions: { q: string; a: React.ReactNode }[] = [
+const questions: { q: string; value: string; a: React.ReactNode }[] = [
   {
     q: "Is it free?",
+    value: "Yes · MIT",
     a: (
       <>
         Yes, completely. Snag is open source under the MIT licence: no trial, no ads, no paid tier. The code is on{" "}
@@ -18,6 +18,7 @@ const questions: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "Is it safe?",
+    value: "Open source",
     a: (
       <>
         <p>
@@ -37,42 +38,42 @@ const questions: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "Is there a Mac or Linux version?",
+    value: "Coming",
     a: "Not yet. Both are coming. For now Snag runs on Windows 10 and 11.",
   },
   {
     q: "Can it download from Netflix or Spotify?",
+    value: "No · DRM",
     a: "No. Those services protect their streams with DRM, and Snag does not and will not break DRM. Please download only what you have the right to, and respect the work of the people who made it.",
   },
   {
     q: "Why does it need ffmpeg?",
+    value: "Once · 35 MB",
     a: "To join HD video with its sound and to make MP3s. Snag fetches it once, the first time you need it (about 35 MB, checked against its published checksum). Ordinary file downloads never need it.",
   },
 ];
 
+// Styled after the app's details panel: a label on the left, its value on the right; open a row for the rest.
 export function Faq() {
   return (
-    <Section id="faq" label="04 / FAQ" note="Still wondering?">
-      <SectionIntro
-        title={
-          <>
-            Questions, <em>answered.</em>
-          </>
-        }
-      />
-      <div className="border-t border-line">
-        {questions.map(({ q, a }, i) => (
-          <details key={q} className="group border-b border-line last:border-0" data-reveal>
-            <summary className="flex cursor-pointer items-center gap-5 px-5 py-5 transition-colors hover:bg-white/[0.02] sm:px-8">
-              <span className="label w-6 shrink-0 text-faint">{String(i + 1).padStart(2, "0")}</span>
-              <span className="font-display text-lg leading-snug font-bold [font-stretch:110%]">{q}</span>
-              <span className="ml-auto grid size-8 shrink-0 place-items-center border border-line-strong text-muted">
-                <Plus weight="bold" className="size-3.5 transition-transform duration-200 group-open:rotate-45" aria-hidden />
-              </span>
+    <section id="faq" className="mx-auto max-w-6xl px-4 pt-24 sm:px-6 md:pt-32">
+      <h2 className="text-4xl font-bold tracking-tight md:text-5xl">Questions</h2>
+      <div className="mt-10 max-w-3xl divide-y divide-line overflow-hidden rounded-2xl bg-panel shadow-[0_0_0_1px_var(--line)]">
+        {questions.map(({ q, value, a }) => (
+          <details key={q} className="group">
+            <summary className="flex cursor-pointer items-center gap-4 px-5 py-4 transition-colors hover:bg-raised/50 group-open:bg-raised/50">
+              <span className="font-medium">{q}</span>
+              <span className="ml-auto hidden shrink-0 font-mono text-sm text-muted sm:inline">{value}</span>
+              <CaretDown
+                weight="bold"
+                className="size-4 shrink-0 text-faint transition-transform duration-200 group-open:rotate-180"
+                aria-hidden
+              />
             </summary>
-            <div className="max-w-[64ch] px-5 pb-7 pl-[3.25rem] leading-relaxed text-muted sm:px-8 sm:pl-[4.75rem]">{a}</div>
+            <div className="max-w-[64ch] px-5 pt-1 pb-5 leading-relaxed text-muted">{a}</div>
           </details>
         ))}
       </div>
-    </Section>
+    </section>
   );
 }
