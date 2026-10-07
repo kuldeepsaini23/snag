@@ -410,6 +410,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             log_event(&app.data_dir, &event);
             let pick = matches!(event, Event::PickMedia { .. } | Event::Focus | Event::PairRequest(_));
             model.apply(event);
+            model.speeds.sample(&model.items, Instant::now());
             if pick {
                 // The extension sent a video, or RDM was started again: bring the (maybe hidden) window forward.
                 return show_window();

@@ -83,6 +83,12 @@ impl Default for Speeds {
 }
 
 impl Speeds {
+    /// Second 0 at `base` (snapshots fill a minute that started before the window opened).
+    #[cfg(debug_assertions)]
+    pub fn since(base: Instant) -> Self {
+        Self { base, ..Self::default() }
+    }
+
     pub fn sec(&self, at: Instant) -> u64 {
         at.saturating_duration_since(self.base).as_secs()
     }

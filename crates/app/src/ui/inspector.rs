@@ -1,5 +1,6 @@
 //! The right panel: preview, details table, error card, actions.
 
+use super::charts;
 use super::icon::{Icon, icon};
 use super::list::tile;
 use super::style;
@@ -12,8 +13,9 @@ use crate::view;
 use iced::widget::{Space, button, column, container, pick_list, row, rule, scrollable, text};
 use iced::{Alignment, Element, Fill};
 use rdm_core::{Item, Kind, MediaFormat, Status};
+use std::time::Instant;
 
-pub fn view<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
+pub fn view<'a>(m: &'a Model, i: &'a Item, now: Instant, c: Colors) -> Element<'a, Message> {
     let quality = match &i.kind {
         Kind::Media(MediaFormat::Video { max_height }) => format!("Up to {max_height}p"),
         Kind::Media(MediaFormat::AudioMp3) => "MP3 audio".into(),
@@ -58,6 +60,12 @@ pub fn view<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
         container(table).style(style::card(c)),
     ]
     .spacing(12);
+    if let Some(map) = segment_map(m, i, c) {
+        details = details.push(map);
+    }
+    if let Some(graph) = speed_graph(m, i, now, c) {
+        details = details.push(graph);
+    }
     if let Some(card) = problem(i, c) {
         details = details.push(card);
     }
@@ -109,6 +117,37 @@ pub fn view<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Element<'a, Message> {
     );
 
     container(panel).width(290).height(Fill).padding(10).style(style::panel(c)).into()
+}
+
+/// Figma frame 01: "Segments · 8 parallel connections" over one bar per connection, each placed
+/// over its range of the file and filled as far as it got (segmented downloads only).
+fn segment_map<'a>(m: &'a Model, i: &'a Item, c: Colors) -> Option<Element<'a, Message>> {
+    let segments = m.segments.get(&i.id).filter(|s| !s.is_empty() && i.status == Status::Running)?;
+    let busy = segments.iter().filter(|s| s.remaining() > 0).count();
+    let what = match busy {
+        0 => "finishing".to_string(),
+        1 => "1 connection".to_string(),
+        n => format!("{n} parallel connections"),
+    };
+    let caption = text(format!("Segments · {what}")).size(11.5).color(c.text3);
+    Some(column![caption, charts::segment_map(segments.clone(), 18.0, c)].spacing(8).into())
+}
+
+/// The item's speed over the last minute, with its peak; shown once it has downloaded.
+fn speed_graph<'a>(m: &'a Model, i: &'a Item, now: Instant, c: Colors) -> Option<Element<'a, Message>> {
+    let values = m.speeds.item(i.id)?.values(m.speeds.sec(now));
+    let peak = values.iter().copied().max().unwrap_or(0);
+    if peak == 0 {
+        return None;
+    }
+    let caption = row![
+        text("Speed · last minute").size(11.5).color(c.text3),
+        Space::new().width(Fill),
+        text(format!("peak {}", format::speed(peak))).size(11).font(style::MONO).color(c.text3),
+    ]
+    .align_y(Alignment::Center);
+    let graph = container(charts::sparkline(values, Fill, 40.0, c)).padding([8, 0]);
+    Some(column![caption, graph].spacing(2).into())
 }
 
 /// Hairlines between table rows.

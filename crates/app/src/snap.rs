@@ -180,6 +180,12 @@ fn apply(m: &mut Model, scene: &str) {
             m.items = items;
             m.selected = m.items.iter().rev().find(|i| i.status == Status::Running).map(|i| i.id);
         }
+        // The inspector's segment map and speed graph, and the footer's sparkline.
+        "graph" => {
+            m.items = demo_items();
+            m.selected = m.items.iter().find(|i| i.status == Status::Running).map(|i| i.id);
+            demo_speeds(m);
+        }
         "toast" => m.toast = Some("https://vimeo.com/824123456".into()),
         "notice" => m.notice = Some("Added “Rust Async Explained” (1080p)".into()),
         "empty" => m.items.clear(),
@@ -218,6 +224,34 @@ fn apply(m: &mut Model, scene: &str) {
         }
         _ => {}
     }
+}
+
+/// A minute of a running download's speed (a wavy 6 – 11 MB/s with a dip) and its 8 connections.
+fn demo_speeds(m: &mut Model) {
+    let Some(id) = m.items.iter().find(|i| i.status == Status::Running).map(|i| i.id) else { return };
+    let now = Instant::now();
+    m.speeds = crate::speed_history::Speeds::since(now - Duration::from_secs(120));
+    let mut items = m.items.clone();
+    for k in 0..60u64 {
+        let x = k as f64;
+        let mb = 8.5 + 1.6 * (x / 4.0).sin() + 0.8 * (x / 1.7).cos() - if (34..40).contains(&k) { 4.0 } else { 0.0 };
+        if let Some(i) = items.iter_mut().find(|i| i.id == id) {
+            i.speed_bps = (mb * 1024.0 * 1024.0) as u64;
+        }
+        m.speeds.sample(&items, now - Duration::from_secs(59 - k));
+    }
+    let total = m.items.iter().find(|i| i.id == id).and_then(|i| i.total).unwrap_or(0);
+    let part = total / 8;
+    let done = [1.0, 1.0, 0.86, 0.62, 0.55, 0.4, 0.17, 0.08];
+    let segments = (0..8u64)
+        .map(|k| {
+            let end = if k == 7 { total } else { (k + 1) * part };
+            let mut s = rdm_engine::segments::Segment::new(k * part, end);
+            s.written = ((end - k * part) as f64 * done[k as usize]) as u64;
+            s
+        })
+        .collect();
+    m.segments.insert(id, segments);
 }
 
 fn open_picker(m: &mut Model, info: MediaInfo, choice: usize) {
