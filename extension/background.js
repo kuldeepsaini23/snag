@@ -107,7 +107,8 @@ async function sendToApp(url, kind, referrer, fallback, { mayPair = false } = {}
     body: JSON.stringify({ url, kind, referrer: referrer || undefined, fallback: fallback || undefined, cookies: await cookiesFor(url) }),
   });
   const body = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new Error(body.error || `Snag answered ${resp.status}`);
+  // `permanent`: Snag will never take this link, so a waiting one is dropped (see drainLater).
+  if (!resp.ok) throw Object.assign(new Error(body.error || `Snag answered ${resp.status}`), { permanent: isPermanent(resp.status) });
   return body;
 }
 
@@ -193,7 +194,8 @@ async function sendOrSave(url, kind, referrer, fallback) {
 
 let draining = null;
 /**
- * Hands the waiting links to Snag, in order; whatever fails keeps waiting. One run at a time.
+ * Hands the waiting links to Snag, in order; whatever fails keeps waiting, except links Snag
+ * refuses for good, which are dropped. One run at a time.
  * It runs on its own (every minute), so it never connects: until the user does, links wait.
  */
 function sendSaved() {
