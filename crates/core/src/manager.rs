@@ -547,6 +547,8 @@ enum Msg {
     Retry(ItemId, u64),
     /// VirusTotal answered about a finished program.
     Safety(ItemId, crate::safety::Safety),
+    /// A torrent picked its folder: remembered so a resume writes there again.
+    TorrentFolder(ItemId, PathBuf),
     /// An after-download rule finished (the item now points at its result).
     RuleDone(ItemId, Result<crate::rules::Applied, String>),
 }
@@ -1057,7 +1059,7 @@ impl Actor {
             return;
         }
         if kind == Kind::Torrent {
-            self.start_torrent(id, url, share, cancel, progress_tx);
+            self.start_torrent(id, url, work_dir, share, cancel, progress_tx);
             return;
         }
         if kind == Kind::Page {
@@ -1226,7 +1228,8 @@ impl Actor {
 
     /// Torrents go to `<download>/Torrents` (a folder per multi-file torrent). Stopping pauses
     /// them; starting again continues from the pieces already on disk.
-    fn start_torrent(&mut self, id: ItemId, url: String, limit_bps: u64, cancel: CancellationToken, progress_tx: watch::Sender<Progress>) {
+    /// `claimed`: the folder this torrent started in before (kept in `work_dir`), if any.
+    fn start_torrent(&mut self, id: ItemId, url: String, claimed: Option<PathBuf>, limit_bps: u64, cancel: CancellationToken, progress_tx: watch::Sender<Progress>) {
         let settings = &self.state.settings;
         let base = if settings.sort_into_folders { settings.download_dir.join("Torrents") } else { settings.download_dir.clone() };
         let data_dir = self.path.parent().unwrap_or(Path::new(".")).to_path_buf();
@@ -1251,14 +1254,20 @@ impl Actor {
                 };
                 engine.set_limit(limit_bps);
                 let (tx, mut rx) = watch::channel(rdm_torrent::Progress::default());
+                let folder_tx = msg_tx.clone();
                 let forward = tokio::spawn(async move {
+                    let mut told = None;
                     while rx.changed().await.is_ok() {
                         let p = rx.borrow_and_update().clone();
+                        if p.folder.is_some() && p.folder != told {
+                            told = p.folder.clone();
+                            let _ = folder_tx.send(Msg::TorrentFolder(id, p.folder.clone().unwrap_or_default()));
+                        }
                         let total = (p.total > 0).then_some(p.total);
                         progress_tx.send_replace(Progress { downloaded: p.downloaded, total, speed_bps: p.speed_bps, segments: Vec::new() });
                     }
                 });
-                let outcome = engine.download(&source, &base, cancel, &tx).await;
+                let outcome = engine.download(&source, &base, claimed.as_deref(), cancel, &tx).await;
                 if keep_sharing && matches!(outcome, Ok(rdm_torrent::Outcome::Completed(_))) {
                     let _ = engine.share(&source, &tx).await;
                 }
@@ -1313,6 +1322,12 @@ impl Actor {
                     self.set_meta(id, e.thumbnail, e.duration);
                 }
                 self.watches_changed();
+            }
+            Msg::TorrentFolder(id, folder) => {
+                if let Some(item) = self.state.item_mut(id).filter(|i| i.kind == Kind::Torrent) {
+                    item.work_dir = Some(folder);
+                    self.dirty = true;
+                }
             }
             Msg::RuleDone(id, outcome) => {
                 let Some(item) = self.state.item_mut(id) else { return };

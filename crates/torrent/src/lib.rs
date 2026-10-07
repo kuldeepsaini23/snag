@@ -17,6 +17,8 @@ pub struct Progress {
     pub speed_bps: u64,
     /// Known once the torrent's metadata arrived.
     pub name: Option<String>,
+    /// The folder this torrent writes into (see `placement`); kept so a resume uses it again.
+    pub folder: Option<PathBuf>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -94,6 +96,22 @@ pub fn safe_component(part: &str) -> bool {
         && !RESERVED.contains(&stem.as_str())
 }
 
+/// Where a torrent's files go: never onto files or folders that already exist. A single file
+/// goes into `base` when its name is free, else into a free folder `<stem> (n)`; several files
+/// get a free folder named after the torrent.
+pub fn placement(base: &Path, name: Option<&str>, files: &[PathBuf], exists: impl Fn(&Path) -> bool) -> PathBuf {
+    let free_folder = |stem: &str| (1..).map(|n| if n == 1 { base.join(stem) } else { base.join(format!("{stem} ({n})")) }).find(|p| !exists(p)).expect("a free name");
+    match files {
+        [] => base.to_path_buf(),
+        [single] if !exists(&base.join(single)) => base.to_path_buf(),
+        [single] => {
+            let stem = single.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "torrent".into());
+            (2..).map(|n| base.join(format!("{stem} ({n})"))).find(|p| !exists(p)).expect("a free name")
+        }
+        _ => free_folder(name.filter(|n| safe_component(n)).unwrap_or("torrent")),
+    }
+}
+
 #[derive(Default)]
 pub struct EngineOptions {
     /// Turn off DHT and trackers, and listen on localhost only (tests).
@@ -142,9 +160,10 @@ impl TorrentEngine {
         }
     }
 
-    /// Downloads into `base` (a multi-file torrent gets a folder of its own there) until done,
-    /// then stops sharing; or until `cancel` fires (paused: adding it again continues it).
-    pub async fn download(&self, source: &Source, base: &Path, cancel: CancellationToken, progress: &watch::Sender<Progress>) -> Result<Outcome, String> {
+    /// Downloads into a place under `base` that holds nothing else (`placement`), or into
+    /// `claimed` when this torrent already started there; until done, then stops sharing; or
+    /// until `cancel` fires (paused: adding it again with its claimed folder continues it).
+    pub async fn download(&self, source: &Source, base: &Path, claimed: Option<&Path>, cancel: CancellationToken, progress: &watch::Sender<Progress>) -> Result<Outcome, String> {
         let initial_peers = (!self.peers.is_empty()).then(|| self.peers.clone());
         // First only read its file list: refuse anything that would write outside the folder.
         let listing = tokio::select! {
@@ -162,20 +181,20 @@ impl TorrentEngine {
                     }
                 }
                 let name = list.info.name().map(|n| n.to_string());
-                let folder = match (&name, files.len()) {
-                    (Some(n), 2..) if safe_component(n) => base.join(n),
-                    (_, 2..) => base.join("torrent"),
-                    _ => base.to_path_buf(),
-                };
+                // Never onto existing files: an earlier download, or the user's own.
+                let folder = claimed.map(Path::to_path_buf).unwrap_or_else(|| placement(base, name.as_deref(), &files, |p| p.exists()));
                 (folder, name, files)
             }
-            _ => (base.to_path_buf(), None, Vec::new()),
+            _ => (claimed.unwrap_or(base).to_path_buf(), None, Vec::new()),
         };
         let output = match files.as_slice() {
             [single] => folder.join(single),
             _ => folder.clone(),
         };
-        progress.send_modify(|p| p.name = name.clone());
+        progress.send_modify(|p| {
+            p.name = name.clone();
+            p.folder = Some(folder.clone());
+        });
 
         let handle = self
             .session
@@ -243,6 +262,23 @@ impl TorrentEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_torrent_never_lands_on_existing_files() {
+        let base = Path::new("C:/dl/Torrents");
+        let taken = |paths: Vec<PathBuf>| move |p: &Path| paths.iter().any(|t| t == p);
+        let one = vec![PathBuf::from("video.mkv")];
+        // A single file goes straight into the folder when its name is free…
+        assert_eq!(placement(base, Some("video.mkv"), &one, taken(vec![])), base);
+        // …and into a folder of its own when a file of that name is already there.
+        assert_eq!(placement(base, Some("video.mkv"), &one, taken(vec![base.join("video.mkv")])), base.join("video (2)"));
+        assert_eq!(placement(base, Some("video.mkv"), &one, taken(vec![base.join("video.mkv"), base.join("video (2)")])), base.join("video (3)"));
+        // Several files: a folder named after the torrent, never one that exists.
+        let many = vec![PathBuf::from("a.txt"), PathBuf::from("b.txt")];
+        assert_eq!(placement(base, Some("Album"), &many, taken(vec![])), base.join("Album"));
+        assert_eq!(placement(base, Some("Album"), &many, taken(vec![base.join("Album")])), base.join("Album (2)"));
+        assert_eq!(placement(base, Some("../x"), &many, taken(vec![])), base.join("torrent"), "an unsafe name isn't used");
+    }
 
     #[test]
     fn torrent_links() {
