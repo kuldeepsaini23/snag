@@ -22,6 +22,14 @@ tempfile = "3"
 clap = { version = "4", features = ["derive"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
+# Debug builds (tests): line numbers for our code, no debug info for libraries. Full debug info
+# made each test program ~300 MB and the target folder grow by gigabytes per rebuild.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 # Smaller, faster release builds (the installer ships snag.exe).
 [profile.release]
 lto = "thin"
