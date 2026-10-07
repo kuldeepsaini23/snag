@@ -1178,3 +1178,24 @@ async fn an_update_is_downloaded_only_when_it_matches_its_checksum() {
     assert!(err.contains("checksum"), "{err}");
     assert!(!file.exists(), "the bad download is deleted");
 }
+
+#[tokio::test]
+async fn a_download_refused_for_stale_cookies_is_retried_without_them() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let m = manager(dir.path(), |_| {}).await;
+    let mut rx = m.subscribe();
+    // The extension sends the tab's cookies with the download; YouTube rotated them meanwhile.
+    m.remember_cookies(vec![Cookie {
+        domain: ".video.test".into(),
+        host_only: false,
+        path: "/".into(),
+        secure: true,
+        expiration_date: None,
+        name: "SID".into(),
+        value: "rotated".into(),
+    }]);
+    let id = m.add_media("https://www.video.test/stale".into(), "Clip".into(), MediaFormat::Video { max_height: 480 }).await;
+    let item = wait_item(&mut rx, |i| i.id == id && matches!(i.status, Status::Done | Status::Failed(_))).await;
+    assert_eq!(item.status, Status::Done, "fetched without the stale cookies");
+}

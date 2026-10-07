@@ -2,6 +2,11 @@
 
 Newest first. Snag shows the newest entry once after an update; the Help menu (?) has the full list.
 
+## 1.0.2 — 2026-10-07
+
+### Fixed
+- YouTube downloads no longer fail with "The page needs to be reloaded": when the browser's cookies have gone stale, Snag tries again without them.
+
 ## 1.0.1 — 2026-10-07
 
 ### Fixed

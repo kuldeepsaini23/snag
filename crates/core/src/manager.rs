@@ -623,6 +623,11 @@ impl Drop for DeleteOnDrop {
     }
 }
 
+/// yt-dlp refused because the browser's cookies are out of date ("The page needs to be reloaded").
+fn stale_cookies(error: &str) -> bool {
+    error.to_ascii_lowercase().contains("page needs to be reloaded")
+}
+
 /// Writes the browser cookies for `url` as a cookies.txt for yt-dlp; `None` when there are none.
 fn cookie_file(jar: &Mutex<Jar>, dir: &Path, key: &str, url: &str) -> Option<PathBuf> {
     let text = jar.lock().ok()?.netscape(url)?;
@@ -1275,7 +1280,7 @@ impl Actor {
         let referer = self.state.item(id).and_then(|i| i.referrer.clone());
         let mut opts = MediaOptions { cookies: cookies.clone(), limit_bps, temp_dir: work_dir, subtitles, referer, ffmpeg: None };
         let events = self.events.clone();
-        let (tools, msg_tx) = (self.tools.clone(), self.msg_tx.clone());
+        let (tools, msg_tx, jar) = (self.tools.clone(), self.msg_tx.clone(), self.jar.clone());
         tokio::spawn(async move {
             let result = async {
                 let ytdlp = tokio::select! {
@@ -1298,7 +1303,16 @@ impl Actor {
                         progress_tx.send_replace(Progress { downloaded: p.downloaded, total: p.total, speed_bps: p.speed_bps, segments: Vec::new() });
                     }
                 });
-                let outcome = rdm_media::download(&ytdlp, &url, &format, &dir, &opts, cancel, &media_tx).await;
+                let mut outcome = rdm_media::download(&ytdlp, &url, &format, &dir, &opts, cancel.clone(), &media_tx).await;
+                // The browser's cookies went stale (YouTube rotates them while the tab is open):
+                // once more without them, and stop sending them for this site.
+                if opts.cookies.is_some() && outcome.as_ref().is_err_and(|e| stale_cookies(&e.to_string())) {
+                    opts.cookies = None;
+                    if let Ok(mut jar) = jar.lock() {
+                        jar.forget(&url);
+                    }
+                    outcome = rdm_media::download(&ytdlp, &url, &format, &dir, &opts, cancel, &media_tx).await;
+                }
                 drop(media_tx);
                 let _ = forward.await;
                 Ok(match outcome? {
