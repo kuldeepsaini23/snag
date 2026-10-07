@@ -439,6 +439,20 @@ pub fn main_action(item: &Item) -> Option<MainAction> {
     }
 }
 
+/// The selected sidebar entry as a number (for the highlight's animation).
+pub fn sidebar_key(m: &Model) -> u32 {
+    if m.stats_open {
+        return 1;
+    }
+    match m.library {
+        Library::All => 0,
+        Library::Category(c) => 10 + CATEGORIES.iter().position(|k| *k == c).unwrap_or(0) as u32,
+        Library::Torrents => 20,
+        Library::Pages => 21,
+        Library::Queue(q) => 100 + q,
+    }
+}
+
 /// What the animations aim at right now.
 pub fn motion_targets(m: &Model) -> crate::motion::Targets {
     crate::motion::Targets {
@@ -450,6 +464,7 @@ pub fn motion_targets(m: &Model) -> crate::motion::Targets {
         toast: m.screen == crate::state::Screen::Downloads && (m.toast.is_some() || m.notice.is_some() || m.duplicate.is_some()),
         search: m.search_open,
         stats: m.stats_open,
+        library: sidebar_key(m),
     }
 }
 

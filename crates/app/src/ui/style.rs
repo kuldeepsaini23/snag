@@ -224,6 +224,23 @@ pub fn choice(c: Colors, selected: bool, radius: f32) -> impl Fn(&Theme, button:
     }
 }
 
+/// `a` blended towards `b` by `t` (0 … 1).
+pub fn mix(a: Color, b: Color, t: f32) -> Color {
+    let t = t.clamp(0.0, 1.0);
+    Color { r: a.r + (b.r - a.r) * t, g: a.g + (b.g - a.g) * t, b: a.b + (b.b - a.b) * t, a: a.a + (b.a - a.a) * t }
+}
+
+/// A sidebar entry lit by `amount` (0 … 1, animated when the selection moves): the raised
+/// surface fades in and the text brightens; hovering a dark entry washes it lightly.
+pub fn choice_lit(c: Colors, amount: f32, radius: f32) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |_, s| {
+        let lit = Color { a: c.raised.a * amount, ..c.raised };
+        let fill = if amount > 0.0 { Some(lit) } else { (s == button::Status::Hovered).then_some(wash(c, 0.05)) };
+        let text = mix(c.text2, c.text, amount);
+        button_style(fill, text, Color::TRANSPARENT, radius)
+    }
+}
+
 /// A download row; selected rows get the raised surface and a hairline. `glow` (1 → 0) tints it
 /// with the accent just after it finished.
 pub fn row(c: Colors, selected: bool, failed: bool, glow: f32) -> impl Fn(&Theme, button::Status) -> button::Style {

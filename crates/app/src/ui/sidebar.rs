@@ -11,20 +11,27 @@ use iced::widget::{Space, button, column, container, row, scrollable, text};
 use iced::{Alignment, Color, Element, Fill};
 use rdm_core::Category;
 
-pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
+/// The key of entries that are never selected (they open Settings).
+const NEVER: u32 = u32::MAX;
+
+/// `lit(key)`: how lit each entry is (the highlight crosses over when the selection moves; keys
+/// as in `view::sidebar_key`).
+pub fn view<'a>(m: &'a Model, lit: impl Fn(u32) -> f32, c: Colors) -> Element<'a, Message> {
     let counts = m.counts();
-    let entry = |glyph: Icon, label: String, trailing: Element<'static, Message>, selected: bool, msg: Message| {
-        // The selected item's icon is filled, the rest Bold.
-        let glyph = if selected { filled(glyph, 16).color(c.accent) } else { bold(glyph, 16).color(c.text2) };
+    let entry = |glyph: Icon, label: String, trailing: Element<'static, Message>, key: u32, msg: Message| {
+        let amount = lit(key);
+        // The selected item's icon is filled (and turns accent as it lights up), the rest Bold.
+        let color = style::mix(c.text2, c.accent, amount);
+        let glyph = if amount > 0.5 { filled(glyph, 16).color(color) } else { bold(glyph, 16).color(color) };
         let content = row![glyph, text(label).size(13).width(Fill), trailing].spacing(10).align_y(Alignment::Center);
-        button(content).style(style::choice(c, selected, 7.0)).padding([7, 10]).width(Fill).on_press(msg)
+        button(content).style(style::choice_lit(c, amount, 7.0)).padding([7, 10]).width(Fill).on_press(msg)
     };
     let count = |n: usize| -> Element<'static, Message> { tiny(n.to_string(), c.text3).into() };
     let on_off = |on: bool| -> Element<'static, Message> { tiny(if on { "On" } else { "Off" }, if on { c.accent } else { c.text3 }).into() };
 
     let mut list = column![heading("Library", c)].spacing(1);
-    list = list.push(entry(Icon::Folder, "All downloads".into(), count(counts.all), m.library == Library::All && !m.stats_open, Message::SetLibrary(Library::All)));
-    for cat in CATEGORIES {
+    list = list.push(entry(Icon::Folder, "All downloads".into(), count(counts.all), 0, Message::SetLibrary(Library::All)));
+    for (k, cat) in CATEGORIES.into_iter().enumerate() {
         let (glyph, name) = match cat {
             Category::Video => (Icon::FilmStrip, "Videos"),
             Category::Music => (Icon::MusicNotes, "Music"),
@@ -34,13 +41,13 @@ pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
             _ => (Icon::AppWindow, "Programs"),
         };
         let lib = Library::Category(cat);
-        list = list.push(entry(glyph, name.into(), count(counts.category(cat)), m.library == lib && !m.stats_open, Message::SetLibrary(lib)));
+        list = list.push(entry(glyph, name.into(), count(counts.category(cat)), 10 + k as u32, Message::SetLibrary(lib)));
     }
     // By how they download, not what they hold (a torrent's movie is also under Videos).
-    for (glyph, name, n, lib) in [(Icon::Magnet, "Torrents", counts.torrents, Library::Torrents), (Icon::Browser, "Web pages", counts.pages, Library::Pages)] {
-        list = list.push(entry(glyph, name.into(), count(n), m.library == lib && !m.stats_open, Message::SetLibrary(lib)));
+    for (glyph, name, n, key, lib) in [(Icon::Magnet, "Torrents", counts.torrents, 20, Library::Torrents), (Icon::Browser, "Web pages", counts.pages, 21, Library::Pages)] {
+        list = list.push(entry(glyph, name.into(), count(n), key, Message::SetLibrary(lib)));
     }
-    list = list.push(entry(Icon::ChartBar, "Stats".into(), Space::new().into(), m.stats_open, Message::OpenStats));
+    list = list.push(entry(Icon::ChartBar, "Stats".into(), Space::new().into(), 1, Message::OpenStats));
 
     // With only the main queue, "Main" would just repeat "All downloads".
     if m.queues.len() > 1 {
@@ -54,7 +61,7 @@ pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
                 Icon::ListNumbers
             };
             let lib = Library::Queue(q.id);
-            list = list.push(entry(glyph, q.name.clone(), count(counts.queue(q.id)), m.library == lib && !m.stats_open, Message::SetLibrary(lib)));
+            list = list.push(entry(glyph, q.name.clone(), count(counts.queue(q.id)), 100 + q.id, Message::SetLibrary(lib)));
         }
     }
 
@@ -72,8 +79,8 @@ pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
             list = list.push(container(row).padding([4, 10]).clip(true));
         }
         let extension_on = m.bridge_status.starts_with("Listening");
-        list = list.push(entry(Icon::Browser, "Chrome extension".into(), on_off(extension_on), false, Message::OpenSettings(SettingsTab::Extension)));
-        list = list.push(entry(Icon::ClipboardText, "Clipboard watch".into(), on_off(m.settings.clipboard_watch), false, Message::OpenSettings(SettingsTab::General)));
+        list = list.push(entry(Icon::Browser, "Chrome extension".into(), on_off(extension_on), NEVER, Message::OpenSettings(SettingsTab::Extension)));
+        list = list.push(entry(Icon::ClipboardText, "Clipboard watch".into(), on_off(m.settings.clipboard_watch), NEVER, Message::OpenSettings(SettingsTab::General)));
     }
 
     container(scrollable(list.padding([4, 0])).style(style::scroll(c)).height(Fill))

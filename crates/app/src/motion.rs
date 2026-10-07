@@ -30,6 +30,8 @@ pub struct Targets {
     pub search: bool,
     /// The stats screen is showing.
     pub stats: bool,
+    /// Which sidebar entry is selected (`view::sidebar_key`).
+    pub library: u32,
 }
 
 /// A download row, read off the model.
@@ -71,6 +73,9 @@ pub struct Motion {
     pub toast: Animation<bool>,
     pub search: Animation<bool>,
     pub stats: Animation<bool>,
+    /// The sidebar highlight crossing from `library_from` to the selected entry.
+    library: Animation<bool>,
+    library_from: u32,
     last: Targets,
     rows: HashMap<u64, Row>,
 }
@@ -97,6 +102,8 @@ impl Motion {
             toast: flag(start.toast, d),
             search: flag(start.search, d),
             stats: flag(start.stats, if reduced { Duration::ZERO } else { GROW }),
+            library: flag(true, d),
+            library_from: start.library,
             last: start,
             rows: HashMap::new(),
         }
@@ -160,6 +167,10 @@ impl Motion {
                 anim.go_mut(new, now);
             }
         }
+        if t.library != self.last.library {
+            self.library_from = self.last.library;
+            self.library = flag(false, self.span(DURATION)).go(true, now);
+        }
         // The charts grow in each time the screen opens; closing is instant.
         if t.stats != self.last.stats {
             let closed = flag(false, self.span(GROW));
@@ -179,7 +190,21 @@ impl Motion {
                 || self.toast.is_animating(now)
                 || self.search.is_animating(now)
                 || self.stats.is_animating(now)
+                || self.library.is_animating(now)
                 || self.rows.values().any(|r| r.progress.is_animating(now) || r.appear.is_animating(now) || r.pulse.is_animating(now)))
+    }
+
+    /// How lit sidebar entry `key` is (0 … 1): the new selection fades in while the old one
+    /// fades out; every other entry stays dark.
+    pub fn selection(&self, key: u32, now: Instant) -> f32 {
+        let p = if self.reduced { 1.0 } else { self.library.interpolate(0.0, 1.0, now) };
+        if key == self.last.library {
+            p
+        } else if key == self.library_from {
+            1.0 - p
+        } else {
+            0.0
+        }
     }
 
     /// Where the tab indicator is, in tab units (1.5 = halfway between the 2nd and 3rd tab).
@@ -234,6 +259,26 @@ pub fn system_reduced_motion() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_sidebar_highlight_moves_from_the_old_entry_to_the_new() {
+        let t0 = Instant::now();
+        let mut m = Motion::new(Targets { library: 0, ..start() }, false);
+        assert_eq!(m.selection(0, t0), 1.0, "the start: fully lit");
+        m.sync(Targets { library: 3, ..start() }, t0);
+        assert!(m.animating(t0));
+        let mid = t0 + Duration::from_millis(90);
+        let (new, old) = (m.selection(3, mid), m.selection(0, mid));
+        assert!(new > 0.0 && new < 1.0 && old > 0.0 && old < 1.0, "both partly lit halfway: {new} {old}");
+        assert_eq!(m.selection(5, mid), 0.0, "other entries stay dark");
+        let end = t0 + Duration::from_secs(1);
+        assert_eq!((m.selection(3, end), m.selection(0, end)), (1.0, 0.0));
+        assert!(!m.animating(end));
+        // Animation effects off: it jumps.
+        let mut r = Motion::new(Targets { library: 0, ..start() }, true);
+        r.sync(Targets { library: 3, ..start() }, t0);
+        assert_eq!((r.selection(3, t0), r.selection(0, t0)), (1.0, 0.0));
+    }
 
     fn start() -> Targets {
         Targets { tab: 0, sidebar: true, ..Default::default() }

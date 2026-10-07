@@ -80,7 +80,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
     let mut body = row![].padding(Padding { top: 0.0, right: GAP, bottom: 0.0, left: GAP }).height(Fill);
     if a.sidebar > 0.0 {
         // Slides in from the left edge: the panel keeps its size, the strip showing it grows.
-        let panel = row![sidebar::view(m, c), Space::new().width(GAP)];
+        let panel = row![sidebar::view(m, |key| app.motion.selection(key, app.now), c), Space::new().width(GAP)];
         body = body.push(slide(panel.into(), (SIDEBAR_WIDTH + GAP) * a.sidebar, true));
     }
     body = body.push(if m.stats_open { stats::view(m, a.stats, c) } else { list::view(m, &app.motion, app.now, c) });
