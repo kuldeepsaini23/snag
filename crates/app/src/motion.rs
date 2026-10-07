@@ -9,6 +9,8 @@ const DURATION: Duration = Duration::from_millis(180);
 const PROGRESS: Duration = Duration::from_millis(320);
 const APPEAR: Duration = Duration::from_millis(240);
 const PULSE: Duration = Duration::from_millis(900);
+/// The stats charts rising as the screen opens.
+const GROW: Duration = Duration::from_millis(520);
 /// Progress steps smaller than this (of the whole bar) just move: a big file gains a little every
 /// tick, and easing each step would keep the frame loop running for the whole download.
 const EASE_MIN: f32 = 0.02;
@@ -26,6 +28,8 @@ pub struct Targets {
     pub toast: bool,
     /// The toolbar search is a field.
     pub search: bool,
+    /// The stats screen is showing.
+    pub stats: bool,
 }
 
 /// A download row, read off the model.
@@ -66,6 +70,7 @@ pub struct Motion {
     pub popover: Animation<bool>,
     pub toast: Animation<bool>,
     pub search: Animation<bool>,
+    pub stats: Animation<bool>,
     last: Targets,
     rows: HashMap<u64, Row>,
 }
@@ -90,6 +95,7 @@ impl Motion {
             popover: flag(start.popover, d),
             toast: flag(start.toast, d),
             search: flag(start.search, d),
+            stats: flag(start.stats, if reduced { Duration::ZERO } else { GROW }),
             last: start,
             rows: HashMap::new(),
         }
@@ -153,6 +159,11 @@ impl Motion {
                 anim.go_mut(new, now);
             }
         }
+        // The charts grow in each time the screen opens; closing is instant.
+        if t.stats != self.last.stats {
+            let closed = flag(false, self.span(GROW));
+            self.stats = if t.stats { closed.go(true, now) } else { closed };
+        }
         self.last = t;
     }
 
@@ -166,6 +177,7 @@ impl Motion {
                 || self.popover.is_animating(now)
                 || self.toast.is_animating(now)
                 || self.search.is_animating(now)
+                || self.stats.is_animating(now)
                 || self.rows.values().any(|r| r.progress.is_animating(now) || r.appear.is_animating(now) || r.pulse.is_animating(now)))
     }
 
@@ -307,6 +319,25 @@ mod tests {
         assert!(m.animating(t1 + Duration::from_millis(50)));
         assert_eq!(m.open(&m.sidebar, t1 + Duration::from_millis(400)), 1.0);
         assert!(!m.animating(t1 + Duration::from_millis(400)));
+    }
+
+    #[test]
+    fn stats_charts_grow_in_once() {
+        let t0 = Instant::now();
+        let mut m = Motion::new(start(), false);
+        assert_eq!(m.open(&m.stats, t0), 0.0);
+        m.sync(Targets { stats: true, ..start() }, t0);
+        let mid = m.open(&m.stats, t0 + Duration::from_millis(150));
+        assert!(mid > 0.0 && mid < 1.0, "grows: {mid}");
+        assert!(m.animating(t0 + Duration::from_millis(150)));
+        // Slower than a panel: the bars rise for about half a second.
+        assert!(m.animating(t0 + Duration::from_millis(300)));
+        let done = t0 + Duration::from_secs(1);
+        assert_eq!(m.open(&m.stats, done), 1.0);
+        assert!(!m.animating(done), "drawn once grown: no frames while it is open");
+        let mut reduced = Motion::new(start(), true);
+        reduced.sync(Targets { stats: true, ..start() }, t0);
+        assert_eq!(reduced.open(&reduced.stats, t0), 1.0);
     }
 
     #[test]

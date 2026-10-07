@@ -2,6 +2,7 @@ mod changelog;
 mod choices;
 mod format;
 mod hsv;
+mod local_thumb;
 mod motion;
 mod queues;
 mod report;
@@ -9,6 +10,8 @@ mod rules_form;
 #[cfg(debug_assertions)]
 mod snap;
 mod notify;
+mod speed_history;
+mod stats;
 mod state;
 mod tray;
 mod ui;

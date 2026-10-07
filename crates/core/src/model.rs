@@ -177,6 +177,17 @@ pub struct AppState {
     pub watches: Vec<crate::watch::Watch>,
     /// VirusTotal's verdict on downloaded programs (see `safety`).
     pub safety: std::collections::BTreeMap<ItemId, crate::safety::Safety>,
+    /// Downloaded per local day ("2026-10-07"), for the stats screen.
+    pub daily: std::collections::BTreeMap<String, DayTotal>,
+}
+
+/// One day's downloading: bytes received and the time spent receiving them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DayTotal {
+    pub bytes: u64,
+    /// Milliseconds during which something was downloading.
+    pub ms: u64,
 }
 
 impl Default for AppState {
@@ -188,6 +199,7 @@ impl Default for AppState {
             settings: Settings::default(),
             watches: Vec::new(),
             safety: Default::default(),
+            daily: Default::default(),
         }
     }
 }
@@ -219,6 +231,16 @@ impl AppState {
     pub fn queue(&self, id: QueueId) -> Option<&Queue> {
         self.queues.iter().find(|q| q.id == id)
     }
+
+    /// Adds to `day`'s total (a day with nothing downloaded gets no entry).
+    pub fn count_download(&mut self, day: &str, bytes: u64, ms: u64) {
+        if bytes == 0 && ms == 0 {
+            return;
+        }
+        let total = self.daily.entry(day.to_string()).or_default();
+        total.bytes += bytes;
+        total.ms += ms;
+    }
 }
 
 #[cfg(test)]
@@ -232,5 +254,26 @@ mod tests {
         assert_eq!(a.len(), 32);
         assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn downloaded_bytes_add_up_per_day() {
+        let mut s = AppState::default();
+        s.count_download("2026-10-07", 100, 250);
+        s.count_download("2026-10-07", 50, 250);
+        s.count_download("2026-10-08", 7, 0);
+        assert_eq!(s.daily["2026-10-07"], DayTotal { bytes: 150, ms: 500 });
+        assert_eq!(s.daily["2026-10-08"], DayTotal { bytes: 7, ms: 0 });
+        s.count_download("2026-10-09", 0, 0);
+        assert!(!s.daily.contains_key("2026-10-09"), "nothing downloaded: no entry");
+    }
+
+    #[test]
+    fn state_from_before_the_day_counter_loads() {
+        let s: AppState = serde_json::from_str(r#"{"next_id": 4}"#).unwrap();
+        assert_eq!(s.next_id, 4);
+        assert!(s.daily.is_empty());
+        let round: AppState = serde_json::from_str(&serde_json::to_string(&AppState { daily: [("2026-10-07".to_string(), DayTotal { bytes: 9, ms: 1 })].into(), ..s }).unwrap()).unwrap();
+        assert_eq!(round.daily["2026-10-07"].bytes, 9);
     }
 }

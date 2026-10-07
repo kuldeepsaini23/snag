@@ -72,6 +72,7 @@ pub enum Icon {
     Browser,
     Bug,
     CaretDown,
+    ChartBar,
     CaretRight,
     Check,
     CheckCircle,
@@ -106,9 +107,11 @@ pub enum Icon {
     Plus,
     Question,
     Queue,
+    Rows,
     Sidebar,
     Sparkle,
     Square,
+    SquaresFour,
     Trash,
     TrayDown,
     WarningCircle,
@@ -119,7 +122,7 @@ pub enum Icon {
 impl Icon {
     /// Every icon (the font test checks each one).
     #[cfg(test)]
-    pub const ALL: [Icon; 48] = [Icon::AppWindow, Icon::ArrowClockwise, Icon::ArrowRight, Icon::Browser, Icon::Bug, Icon::CaretDown, Icon::CaretRight, Icon::Check, Icon::CheckCircle, Icon::DeviceMobile, Icon::ClipboardText, Icon::Clock, Icon::Copy, Icon::Download, Icon::File, Icon::FilePdf, Icon::FileText, Icon::FileZip, Icon::FilmStrip, Icon::FolderOpen, Icon::Folder, Icon::Gauge, Icon::Gear, Icon::Image, Icon::Keyboard, Icon::Lifebuoy, Icon::Link, Icon::ListNumbers, Icon::Magnet, Icon::MagnifyingGlass, Icon::MusicNote, Icon::MusicNotes, Icon::Palette, Icon::Pause, Icon::Play, Icon::PlayFill, Icon::Plug, Icon::Plus, Icon::Question, Icon::Queue, Icon::Sidebar, Icon::Sparkle, Icon::Square, Icon::Trash, Icon::TrayDown, Icon::WarningCircle, Icon::Wrench, Icon::X];
+    pub const ALL: [Icon; 51] = [Icon::ChartBar, Icon::Rows, Icon::SquaresFour, Icon::AppWindow, Icon::ArrowClockwise, Icon::ArrowRight, Icon::Browser, Icon::Bug, Icon::CaretDown, Icon::CaretRight, Icon::Check, Icon::CheckCircle, Icon::DeviceMobile, Icon::ClipboardText, Icon::Clock, Icon::Copy, Icon::Download, Icon::File, Icon::FilePdf, Icon::FileText, Icon::FileZip, Icon::FilmStrip, Icon::FolderOpen, Icon::Folder, Icon::Gauge, Icon::Gear, Icon::Image, Icon::Keyboard, Icon::Lifebuoy, Icon::Link, Icon::ListNumbers, Icon::Magnet, Icon::MagnifyingGlass, Icon::MusicNote, Icon::MusicNotes, Icon::Palette, Icon::Pause, Icon::Play, Icon::PlayFill, Icon::Plug, Icon::Plus, Icon::Question, Icon::Queue, Icon::Sidebar, Icon::Sparkle, Icon::Square, Icon::Trash, Icon::TrayDown, Icon::WarningCircle, Icon::Wrench, Icon::X];
 
     pub fn ch(self) -> char {
         let code = match self {
@@ -129,6 +132,7 @@ impl Icon {
             Self::Browser => 0xe0f4,
             Self::Bug => 0xe5f4,
             Self::CaretDown => 0xe136,
+            Self::ChartBar => 0xe150,
             Self::CaretRight => 0xe13a,
             Self::Check => 0xe182,
             Self::CheckCircle => 0xe184,
@@ -162,9 +166,11 @@ impl Icon {
             Self::Plus => 0xe3d4,
             Self::Question => 0xe3e8,
             Self::Queue => 0xe6ac,
+            Self::Rows => 0xe5a2,
             Self::Sidebar => 0xec24,
             Self::Sparkle => 0xe6a2,
             Self::Square => 0xe45e,
+            Self::SquaresFour => 0xe464,
             Self::Trash => 0xe4a6,
             Self::TrayDown => 0xe010,
             Self::WarningCircle => 0xe4e2,

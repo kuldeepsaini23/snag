@@ -125,6 +125,14 @@ pub enum Message {
     // List
     SetFilter(Filter),
     SetLibrary(Library),
+    /// The sidebar's "Stats" (the day counter is reloaded with it).
+    OpenStats,
+    StatsRange(crate::stats::Range),
+    /// While the stats screen is open and something downloads: fetch the day counter again.
+    StatsTick,
+    DailyLoaded(std::collections::BTreeMap<String, rdm_core::DayTotal>),
+    /// Videos or Images: show the grid of thumbnails (true) or the list.
+    SetGrid(rdm_core::Category, bool),
     Search(String),
     /// The magnifier or Ctrl+K: open the search field and focus it.
     FocusSearch,
@@ -341,6 +349,13 @@ async fn fetch_thumb(url: String, base: PathBuf) -> Option<PathBuf> {
     if let Some(cached) = ["jpg", "png", "webp"].iter().map(|e| base.with_extension(e)).find(|f| f.exists()) {
         return Some(cached);
     }
+    if let Some(src) = crate::view::local_thumb_source(&url).map(PathBuf::from) {
+        // A downloaded picture: decoded on a worker, two at a time (a library of photos would
+        // otherwise decode them all at once).
+        static DECODING: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
+        let _turn = DECODING.acquire().await.ok()?;
+        return tokio::task::spawn_blocking(move || crate::local_thumb::make(&src, &base)).await.ok()?;
+    }
     let get = rdm_engine::default_client().get(&url).timeout(std::time::Duration::from_secs(20)).send();
     let bytes = get.await.ok()?.error_for_status().ok()?.bytes().await.ok()?;
     // A thumbnail is small; anything huge isn't one.
@@ -360,6 +375,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::AddUrl => {
             if model.url.trim().is_empty() {
                 model.screen = Screen::Downloads;
+                model.close_stats();
                 return operation::focus(url_input());
             }
             return update(app, Message::Add);
@@ -430,6 +446,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             log_event(&app.data_dir, &event);
             let pick = matches!(event, Event::PickMedia { .. } | Event::Focus | Event::PairRequest(_) | Event::Duplicate(_));
             model.apply(event);
+            model.speeds.sample(&model.items, Instant::now());
             if pick {
                 // The extension sent a video, or RDM was started again: bring the (maybe hidden) window forward.
                 return show_window();
@@ -561,8 +578,31 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             });
         }
         Message::WinResize(edge) => return window::latest().and_then(move |id| window::drag_resize(id, edge)),
-        Message::SetFilter(f) => model.filter = f,
-        Message::SetLibrary(l) => model.library = l,
+        Message::SetFilter(f) => {
+            model.filter = f;
+            model.close_stats();
+        }
+        Message::SetLibrary(l) => {
+            model.library = l;
+            model.close_stats();
+        }
+        Message::OpenStats => {
+            model.open_stats();
+            return update(app, Message::StatsTick);
+        }
+        Message::StatsRange(range) => model.stats_range = range,
+        Message::StatsTick => {
+            let m = app.manager.clone();
+            return Task::perform(async move { m.snapshot().await.daily }, Message::DailyLoaded);
+        }
+        Message::DailyLoaded(daily) => model.daily = daily,
+        Message::SetGrid(library, on) => {
+            if on {
+                model.grid.insert(library);
+            } else {
+                model.grid.remove(&library);
+            }
+        }
         Message::Search(s) => model.search = s,
         Message::FocusSearch => {
             model.open_search();
@@ -598,6 +638,8 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
                 return update(app, Message::CancelPick);
             } else if model.search_open && model.search.trim().is_empty() {
                 model.search_open = false;
+            } else if model.stats_open {
+                model.close_stats();
             } else {
                 model.escape_downloads();
             }
@@ -860,6 +902,14 @@ pub fn subscription(app: &App) -> Subscription<Message> {
     // Frames only while something moves: an idle window draws nothing.
     if app.motion.animating(Instant::now()) {
         subs.push(window::frames().map(|_| Message::Frame));
+    }
+    // The stats screen follows the day counter while something downloads.
+    #[cfg(debug_assertions)]
+    let snapping = crate::snap::dir().is_some(); // scenes bring their own counter
+    #[cfg(not(debug_assertions))]
+    let snapping = false;
+    if app.model.stats_open && app.model.totals().0 > 0 && !snapping {
+        subs.push(iced::time::every(std::time::Duration::from_secs(5)).map(|_| Message::StatsTick));
     }
     // An empty search folds away once a click moves the focus elsewhere.
     if app.model.search_open && app.model.search.trim().is_empty() {

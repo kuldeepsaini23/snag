@@ -23,7 +23,7 @@ pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
     let on_off = |on: bool| -> Element<'static, Message> { tiny(if on { "On" } else { "Off" }, if on { c.accent } else { c.text3 }).into() };
 
     let mut list = column![heading("Library", c)].spacing(1);
-    list = list.push(entry(Icon::Folder, "All downloads".into(), count(counts.all), m.library == Library::All, Message::SetLibrary(Library::All)));
+    list = list.push(entry(Icon::Folder, "All downloads".into(), count(counts.all), m.library == Library::All && !m.stats_open, Message::SetLibrary(Library::All)));
     for cat in CATEGORIES {
         let (glyph, name) = match cat {
             Category::Video => (Icon::FilmStrip, "Videos"),
@@ -34,8 +34,9 @@ pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
             _ => (Icon::AppWindow, "Programs"),
         };
         let lib = Library::Category(cat);
-        list = list.push(entry(glyph, name.into(), count(counts.category(cat)), m.library == lib, Message::SetLibrary(lib)));
+        list = list.push(entry(glyph, name.into(), count(counts.category(cat)), m.library == lib && !m.stats_open, Message::SetLibrary(lib)));
     }
+    list = list.push(entry(Icon::ChartBar, "Stats".into(), Space::new().into(), m.stats_open, Message::OpenStats));
 
     // With only the main queue, "Main" would just repeat "All downloads".
     if m.queues.len() > 1 {
@@ -49,7 +50,7 @@ pub fn view(m: &Model, c: Colors) -> Element<'_, Message> {
                 Icon::ListNumbers
             };
             let lib = Library::Queue(q.id);
-            list = list.push(entry(glyph, q.name.clone(), count(counts.queue(q.id)), m.library == lib, Message::SetLibrary(lib)));
+            list = list.push(entry(glyph, q.name.clone(), count(counts.queue(q.id)), m.library == lib && !m.stats_open, Message::SetLibrary(lib)));
         }
     }
 

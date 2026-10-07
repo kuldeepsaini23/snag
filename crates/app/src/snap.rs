@@ -99,6 +99,7 @@ fn apply(m: &mut Model, scene: &str) {
     m.help_open = false;
     m.info = None;
     m.duplicate = None;
+    m.stats_open = false;
     freeze(scene.starts_with("mid-").then(|| Instant::now() + MID));
     // The row that shows Pause/Resume and Cancel: the paused ISO.
     let paused = m.items.iter().find(|i| i.status == Status::Paused).map(|i| i.id);
@@ -193,6 +194,43 @@ fn apply(m: &mut Model, scene: &str) {
             m.items = items;
             m.selected = m.items.iter().rev().find(|i| i.status == Status::Running).map(|i| i.id);
         }
+        // The inspector's segment map and speed graph, and the footer's sparkline.
+        "graph" => {
+            m.items = demo_items();
+            m.selected = m.items.iter().find(|i| i.status == Status::Running).map(|i| i.id);
+            demo_speeds(m);
+        }
+        // The Videos library as a grid: YouTube thumbnails, every status's ring.
+        "grid-videos" => {
+            m.items = grid_videos();
+            m.library = crate::view::Library::Category(Category::Video);
+            m.grid.insert(Category::Video);
+            m.selected = Some(ItemId(1005));
+        }
+        // Images: the downloaded files are their own thumbnails.
+        "grid-images" => {
+            m.items = grid_images();
+            m.library = crate::view::Library::Category(Category::Image);
+            m.grid.insert(Category::Image);
+            m.selected = None;
+        }
+        // The stats screen over four months of demo history (the counter started 40 days ago);
+        // mid-stats: its charts halfway up.
+        s if s.trim_start_matches("mid-").starts_with("stats") => {
+            m.items = demo_items();
+            m.selected = None;
+            demo_history(m);
+            m.stats_range = match s {
+                "stats-month" => crate::stats::Range::Month,
+                "stats-all" => crate::stats::Range::All,
+                _ => crate::stats::Range::Week,
+            };
+            if s == "stats-empty" {
+                m.items.clear();
+                m.daily.clear();
+            }
+            m.open_stats();
+        }
         "toast" => m.toast = Some("https://vimeo.com/824123456".into()),
         "notice" => m.notice = Some("Added “Rust Async Explained” (1080p)".into()),
         "empty" => m.items.clear(),
@@ -239,6 +277,130 @@ fn apply(m: &mut Model, scene: &str) {
         }
         _ => {}
     }
+}
+
+/// The demo list plus more videos, all with YouTube thumbnails and lengths.
+fn grid_videos() -> Vec<Item> {
+    const MB: u64 = 1024 * 1024;
+    let mut items = demo_items();
+    let more = [
+        ("Building a tiny executor.mp4", Status::Queued, 0, 1100.0),
+        ("Pinning without pain.mp4", Status::Done, 380, 1360.0),
+        ("Channels, select! and cancellation.mp4", Status::Failed("HTTP 403".into()), 120, 1520.0),
+        ("Tokio runtime internals.mp4", Status::Done, 702, 2210.0),
+    ];
+    for (k, (name, status, mb, secs)) in more.into_iter().enumerate() {
+        let mut i = items[1].clone();
+        (i.id, i.name, i.status, i.added) = (ItemId(1100 + k as u64), name.into(), status, i.added - 400 * k as i64);
+        (i.downloaded, i.total, i.duration) = (mb * MB, Some(if mb == 120 { 540 * MB } else { mb.max(1) * MB }), Some(secs));
+        items.push(i);
+    }
+    let ids = ["aqz-KE-bpKQ", "jNQXAC9IVRw", "dQw4w9WgXcQ", "9bZkp7q19f0", "kJQP7kiw5Fk", "OPf0YbXqDm0", "fJ9rUzIMcZQ"];
+    let mut videos: Vec<&mut Item> = items.iter_mut().filter(|i| i.category == Category::Video).collect();
+    for (item, id) in videos.iter_mut().zip(ids) {
+        item.thumbnail = Some(format!("https://i.ytimg.com/vi/{id}/mqdefault.jpg"));
+        item.duration = item.duration.or(Some(2538.0));
+    }
+    items
+}
+
+/// Finished pictures written to the snapshot folder (soft gradients in the accent's family), and
+/// one still downloading.
+fn grid_images() -> Vec<Item> {
+    let Some(dir) = dir().map(|d| d.join("pictures")) else { return Vec::new() };
+    let _ = std::fs::create_dir_all(&dir);
+    let shapes = [(640, 400, [255u8, 159, 10]), (400, 600, [10, 132, 255]), (800, 450, [50, 215, 75]), (500, 500, [191, 90, 242]), (720, 480, [255, 55, 95])];
+    let mut items: Vec<Item> = shapes
+        .iter()
+        .enumerate()
+        .map(|(k, (w, h, rgb))| {
+            let path = dir.join(format!("photo-{k}.png"));
+            if !path.exists() {
+                let img = image::RgbImage::from_fn(*w, *h, |x, y| {
+                    let t = (x as f32 / *w as f32 + y as f32 / *h as f32) / 2.0;
+                    image::Rgb(rgb.map(|v| (v as f32 * (1.0 - 0.7 * t) + 20.0 * t) as u8))
+                });
+                let _ = img.save(&path);
+            }
+            let mut i = demo_items()[0].clone();
+            let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            (i.id, i.name, i.category, i.status) = (ItemId(1200 + k as u64), format!("photo-{k}.png"), Category::Image, Status::Done);
+            (i.dest, i.downloaded, i.total) = (Some(path), size, Some(size));
+            i
+        })
+        .collect();
+    let mut loading = items[0].clone();
+    (loading.id, loading.name, loading.status, loading.dest) = (ItemId(1299), "wallpaper-8k.jpg".into(), Status::Running, None);
+    (loading.downloaded, loading.total, loading.speed_bps) = (14 * 1024 * 1024, Some(38 * 1024 * 1024), 3_400_000);
+    items.push(loading);
+    items
+}
+
+/// Finished downloads from many sites over the last four months, and a day counter for the last
+/// 40 days (with time spent, for the average speed).
+fn demo_history(m: &mut Model) {
+    const MB: u64 = 1024 * 1024;
+    let today = chrono::Local::now();
+    let sites = [
+        ("https://www.youtube.com/watch?v=a", Category::Video, "talk.mp4", 640),
+        ("https://releases.ubuntu.com/24.04/x.iso", Category::Archive, "ubuntu.iso", 5900),
+        ("https://github.com/o/r/archive/main.zip", Category::Archive, "main.zip", 48),
+        ("https://vimeo.com/824123456", Category::Video, "short.mp4", 210),
+        ("https://soundcloud.com/a/b", Category::Music, "mix.mp3", 96),
+        ("https://arxiv.org/pdf/2401.1", Category::Document, "paper.pdf", 4),
+        ("https://www.pexels.com/photo/1", Category::Image, "photo.jpg", 9),
+        ("https://code.visualstudio.com/x", Category::Program, "VSCodeSetup.exe", 98),
+    ];
+    let mut id = 5000;
+    for day in 0..120i64 {
+        // A few downloads most days, more on weekends, now and then a big one.
+        let n = (day * 7 + 3) % 4 + if day % 7 < 2 { 2 } else { 0 };
+        for k in 0..n {
+            let (url, category, name, mb) = sites[((day * 3 + k * 5) % sites.len() as i64) as usize];
+            let mut i = m.items[0].clone();
+            let size = mb * MB * (1 + ((day + k) % 3) as u64) / 2;
+            id += 1;
+            (i.id, i.url, i.category, i.name, i.status) = (ItemId(id), url.into(), category, name.into(), Status::Done);
+            (i.downloaded, i.total, i.added, i.kind) = (size, Some(size), today.timestamp() - day * 86_400 - k * 600, Kind::Http);
+            m.items.push(i);
+        }
+    }
+    m.daily.clear();
+    for day in 0..40i64 {
+        let date = (today - chrono::Duration::days(day)).format("%Y-%m-%d").to_string();
+        let bytes = m.items.iter().filter(|i| i.status == Status::Done && (today.timestamp() - i.added) / 86_400 == day).map(|i| i.total.unwrap_or(0)).sum::<u64>();
+        if bytes > 0 {
+            m.daily.insert(date, rdm_core::DayTotal { bytes, ms: bytes / (7 * MB) * 1000 + 500 });
+        }
+    }
+}
+
+/// A minute of a running download's speed (a wavy 6 – 11 MB/s with a dip) and its 8 connections.
+fn demo_speeds(m: &mut Model) {
+    let Some(id) = m.items.iter().find(|i| i.status == Status::Running).map(|i| i.id) else { return };
+    let now = Instant::now();
+    m.speeds = crate::speed_history::Speeds::since(now - Duration::from_secs(120));
+    let mut items = m.items.clone();
+    for k in 0..60u64 {
+        let x = k as f64;
+        let mb = 8.5 + 1.6 * (x / 4.0).sin() + 0.8 * (x / 1.7).cos() - if (34..40).contains(&k) { 4.0 } else { 0.0 };
+        if let Some(i) = items.iter_mut().find(|i| i.id == id) {
+            i.speed_bps = (mb * 1024.0 * 1024.0) as u64;
+        }
+        m.speeds.sample(&items, now - Duration::from_secs(59 - k));
+    }
+    let total = m.items.iter().find(|i| i.id == id).and_then(|i| i.total).unwrap_or(0);
+    let part = total / 8;
+    let done = [1.0, 1.0, 0.86, 0.62, 0.55, 0.4, 0.17, 0.08];
+    let segments = (0..8u64)
+        .map(|k| {
+            let end = if k == 7 { total } else { (k + 1) * part };
+            let mut s = rdm_engine::segments::Segment::new(k * part, end);
+            s.written = ((end - k * part) as f64 * done[k as usize]) as u64;
+            s
+        })
+        .collect();
+    m.segments.insert(id, segments);
 }
 
 fn open_picker(m: &mut Model, info: MediaInfo, choice: usize) {

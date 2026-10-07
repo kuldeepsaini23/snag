@@ -1,7 +1,9 @@
 //! The Figma views. Logic lives in `state.rs` / `view.rs` / `update.rs`; this module only draws.
 
 pub mod icon;
+mod charts;
 mod color_picker;
+mod grid;
 mod help;
 mod inspector;
 mod list;
@@ -10,6 +12,7 @@ mod popover;
 mod settings;
 pub use settings::SCROLL as SETTINGS_SCROLL;
 mod sidebar;
+mod stats;
 pub mod style;
 pub mod theme;
 mod toolbar;
@@ -42,6 +45,8 @@ pub struct Anim {
     pub popover: f32,
     pub toast: f32,
     pub search: f32,
+    /// The stats charts rising (0 … 1).
+    pub stats: f32,
 }
 
 impl Anim {
@@ -54,6 +59,7 @@ impl Anim {
             popover: m.open(&m.popover, now),
             toast: m.open(&m.toast, now),
             search: m.open(&m.search, now),
+            stats: m.open(&m.stats, now),
         }
     }
 }
@@ -69,14 +75,14 @@ pub fn view(app: &App) -> Element<'_, Message> {
         let panel = row![sidebar::view(m, c), Space::new().width(GAP)];
         body = body.push(slide(panel.into(), (SIDEBAR_WIDTH + GAP) * a.sidebar, true));
     }
-    body = body.push(list::view(m, &app.motion, app.now, c));
+    body = body.push(if m.stats_open { stats::view(m, a.stats, c) } else { list::view(m, &app.motion, app.now, c) });
     // Kept on screen while it slides closed (the selection is already gone by then).
     let inspected = m.inspected().or_else(|| app.inspector_item.and_then(|id| m.items.iter().find(|i| i.id == id)));
     if let Some(item) = inspected.filter(|_| a.inspector > 0.0) {
-        let panel = row![Space::new().width(GAP), inspector::view(m, item, c)];
+        let panel = row![Space::new().width(GAP), inspector::view(m, item, app.now, c)];
         body = body.push(slide(panel.into(), (INSPECTOR_WIDTH + GAP) * a.inspector, false));
     }
-    let base = container(column![toolbar::view(m, a, c), body, footer(m, c)]).style(style::window(c)).width(Fill).height(Fill);
+    let base = container(column![toolbar::view(m, a, c), body, footer(m, app.now, c)]).style(style::window(c)).width(Fill).height(Fill);
 
     let mut layers = stack![base].width(Fill).height(Fill);
     if m.speed_open {
@@ -228,8 +234,11 @@ fn modal<'a>(content: Element<'a, Message>, t: f32, on_blur: Message) -> Element
     opaque(mouse_area(container(sheet).width(Fill).height(Fill).center(Fill).style(style::scrim(t))).on_press(on_blur))
 }
 
-fn footer(m: &Model, c: Colors) -> Element<'_, Message> {
+fn footer(m: &Model, now: Instant, c: Colors) -> Element<'_, Message> {
     let (_, speed) = m.totals();
+    // The last minute of the total speed, once anything has downloaded.
+    let history = m.speeds.total.values(m.speeds.sec(now));
+    let graph: Element<'_, Message> = if history.iter().any(|v| *v > 0) { charts::sparkline(history, 72.0, 14.0, c) } else { Space::new().into() };
     let limit = match m.settings.speed_limit_bps {
         0 => "Limit: none".to_string(),
         bps => format!("Limit: {}", format::speed(bps)),
@@ -237,9 +246,11 @@ fn footer(m: &Model, c: Colors) -> Element<'_, Message> {
     let next = view::next_queue_start(&m.queues, rdm_core::Now::local()).map(|t| format!("  ·  Next queue {t}")).unwrap_or_default();
     row![
         small(format!("↓ {}", format::speed(speed)), c.text3),
+        graph,
         Space::new().width(Fill),
         small(format!("{limit}{next}"), c.text3),
     ]
+    .spacing(10)
     .padding([6, 16])
     .align_y(Alignment::Center)
     .into()
