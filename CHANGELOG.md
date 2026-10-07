@@ -15,6 +15,10 @@ Newest first. Snag shows the newest entry once after an update; the Help menu (?
 - Some video streams hide their pieces as images; Snag repairs them into a video that plays.
 - Failed downloads try again by themselves after a timeout or a busy server.
 - "Refresh link": give an expired or stopped download a fresh link and it carries on.
+- After-download rules: convert to MP3, make a video smaller, unpack .zip/.7z, or move files to a folder, by file type, site or category.
+- Save a web page as one offline file, with its styles and pictures inside.
+- Already downloaded? Snag says so instead of downloading the same thing twice.
+- Safety check: programs you download can be looked up on VirusTotal with your own free key (only a fingerprint of the file is sent).
 
 ### Browser extension
 - Send any download from Chrome, Edge or Firefox to Snag. Connecting takes one click: press Connect in the extension, then Allow in Snag.
@@ -22,6 +26,8 @@ Newest first. Snag shows the newest entry once after an update; the Help menu (?
 - Finds videos and streams on any page, and "Grab all" sends every link and picture on a page in one go.
 - Right-click a picture to send the picture itself.
 - The extension follows Snag's accent colour.
+- Put the Download button in any corner (drag it), or hide it on sites you choose.
+- Links sent while Snag is closed wait in the extension and go to Snag when it opens.
 
 ### Around the app
 - Copy a link anywhere and Snag offers to download it.
@@ -31,6 +37,12 @@ Newest first. Snag shows the newest entry once after an update; the Help menu (?
 - Closing the window keeps Snag downloading in the tray, and a Windows notification says when downloads finish or fail.
 - A new look: animated tabs, panels and sheets, a cleaner toolbar, thumbnails for videos, and Cancel for downloads you no longer want.
 - Pick any accent colour from the swatches, a hex value or the colour picker; the logo and tiles follow it.
+- Light theme, or follow Windows.
+- Stats: what you downloaded per day, by type and by site.
+- Grid view for videos and pictures, a live speed graph, and a map of each download's connections.
+- Torrents and saved web pages have their own sections.
+- Drop links, .torrent files or a .txt list of links onto the window.
+- A short tour on first start, which also asks what Snag may use on your PC.
 - A Help menu (?) with keyboard shortcuts, help, this list, and Report a bug, which saves a report on your Desktop and sends nothing anywhere.
 
 ### Fixed

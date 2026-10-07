@@ -5,6 +5,8 @@ members = ["crates/engine", "crates/media", "crates/torrent", "crates/core", "cr
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+repository = "https://github.com/kuldeepsaini23/snag"
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }
