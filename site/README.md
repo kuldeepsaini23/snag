@@ -45,7 +45,7 @@ The site lives at **https://snag.kuldeepsaini.dev**. Either host works; pick one
 
 1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Pages** → **Connect to Git**, and pick the `kuldeepsaini23/snag` repository.
 2. Build settings:
-   - Production branch: `main` (or the branch you want live)
+   - Production branch: `master`
    - Framework preset: **None**
    - Build command: `bun install && bun run build`
    - Build output directory: `out`
