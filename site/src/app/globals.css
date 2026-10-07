@@ -1,24 +1,27 @@
 @import "tailwindcss";
 
-/* Snag's own look: warm greys with an orange accent, the same as the desktop app. */
+/* A dark drafting table: near-black canvas, hairline rules, one orange accent used sparingly. */
 :root {
-  --bg: #1c1a18;
-  --surface: #242120;
-  --raised: #2e2a27;
-  --line: #3b3632;
-  --line-strong: #4d4640;
-  --text: #f4efe8;
-  --muted: #b9afa3;
-  --faint: #a39a8f;
+  --bg: #111216;
+  --sunk: #0b0c0f;
+  --raised: #1a1b21;
+  --line: rgba(255, 255, 255, 0.09);
+  --line-strong: rgba(255, 255, 255, 0.18);
+  --text: #f1f0ed;
+  --muted: #a6a6ae;
+  --faint: #8d8d96;
   --accent: #ff9f0a;
-  --on-accent: #1c1a18;
+  --on-accent: #111216;
+
+  --header-h: 2.75rem;
+  --rail-w: 15rem;
 
   color-scheme: dark;
 }
 
 @theme inline {
   --color-bg: var(--bg);
-  --color-surface: var(--surface);
+  --color-sunk: var(--sunk);
   --color-raised: var(--raised);
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
@@ -28,10 +31,15 @@
   --color-accent: var(--accent);
   --color-on-accent: var(--on-accent);
 
-  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-instrument), ui-serif, Georgia, serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "Cascadia Mono", monospace;
 
   --animate-marquee: marquee var(--duration) infinite linear;
   --animate-fill: fill var(--fill-duration, 1.6s) var(--fill-delay, 0s) cubic-bezier(0.45, 0.05, 0.25, 1) both;
+  --animate-fill-loop: fill-loop var(--fill-duration, 4s) var(--fill-delay, 0s) cubic-bezier(0.45, 0.05, 0.25, 1) infinite;
+  --animate-intro: intro 0.9s var(--intro-delay, 0s) cubic-bezier(0.2, 0.7, 0.2, 1) both;
 
   @keyframes marquee {
     from {
@@ -50,12 +58,37 @@
       transform: scaleX(1);
     }
   }
+
+  /* A part fills, holds while the others catch up, then the next file starts. */
+  @keyframes fill-loop {
+    0% {
+      transform: scaleX(0);
+    }
+    70%,
+    92% {
+      transform: scaleX(1);
+    }
+    100% {
+      transform: scaleX(0);
+    }
+  }
+
+  @keyframes intro {
+    from {
+      opacity: 0;
+      filter: blur(12px);
+    }
+    to {
+      opacity: 1;
+      filter: blur(0);
+    }
+  }
 }
 
 html {
   background: var(--bg);
   scroll-behavior: smooth;
-  scroll-padding-top: 5rem;
+  scroll-padding-top: calc(var(--header-h) + 1rem);
 }
 
 body {
@@ -72,23 +105,46 @@ body {
 
 :focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 3px;
+  outline-offset: 2px;
 }
 
-/* Wide, heavy Archivo for display type; body copy stays at the normal width. */
+/* Wide, heavy grotesk for headlines; the one italic serif word sits on the same baseline. */
 .display {
+  font-family: var(--font-display);
   font-stretch: 125%;
-  font-weight: 800;
-  letter-spacing: -0.025em;
-  line-height: 0.9;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  text-wrap: balance;
+}
+.display em {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 400;
+  font-stretch: normal;
+  letter-spacing: -0.01em;
 }
 
-.heading {
-  font-stretch: 115%;
-  font-weight: 760;
-  letter-spacing: -0.015em;
-  line-height: 1.05;
-  text-wrap: balance;
+/* Mono micro-labels for section and card headers. */
+.label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* Scroll reveal: blurred and faded until it enters the viewport. Only when scripts run,
+   so the page is complete without them. */
+html.js [data-reveal] {
+  transition:
+    opacity 0.9s cubic-bezier(0.2, 0.7, 0.2, 1),
+    filter 0.9s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition-delay: var(--reveal-delay, 0s);
+}
+html.js [data-reveal]:not([data-shown]) {
+  opacity: 0;
+  filter: blur(12px);
 }
 
 details > summary {
@@ -110,7 +166,12 @@ details > summary::-webkit-details-marker {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
-  .animate-marquee {
+  .animate-marquee,
+  .animate-fill-loop {
     animation: none !important;
+  }
+  html.js [data-reveal]:not([data-shown]) {
+    opacity: 1;
+    filter: none;
   }
 }

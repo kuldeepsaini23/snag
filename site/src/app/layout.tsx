@@ -1,15 +1,30 @@
 import type { Metadata, Viewport } from "next";
-import { Archivo } from "next/font/google";
+import { Archivo, Instrument_Serif, Inter, JetBrains_Mono } from "next/font/google";
 
+import { RevealObserver } from "@/components/reveal-observer";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { PITCH, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
+const inter = Inter({ variable: "--font-inter", subsets: ["latin"], display: "swap" });
 const archivo = Archivo({
   variable: "--font-archivo",
   subsets: ["latin"],
   axes: ["wdth"],
+  display: "swap",
+});
+const instrument = Instrument_Serif({
+  variable: "--font-instrument",
+  subsets: ["latin"],
+  weight: "400",
+  style: "italic",
+  display: "swap",
+});
+const jetbrains = JetBrains_Mono({
+  variable: "--font-jetbrains",
+  subsets: ["latin"],
+  weight: ["400", "500"],
   display: "swap",
 });
 
@@ -52,25 +67,37 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1c1a18",
+  themeColor: "#111216",
   colorScheme: "dark",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${archivo.variable} antialiased`}>
-      <body className="flex min-h-dvh flex-col">
+    <html
+      suppressHydrationWarning
+      lang="en"
+      className={`${inter.variable} ${archivo.variable} ${instrument.variable} ${jetbrains.variable} antialiased`}
+    >
+      <head>
+        {/* Scroll reveals hide content only when scripts run, so the page is whole without them. */}
+        <script dangerouslySetInnerHTML={{ __html: "document.documentElement.classList.add('js')" }} />
+      </head>
+      <body className="min-h-dvh">
         <a
           href="#main"
-          className="sr-only z-50 rounded-full bg-accent px-4 py-2 font-semibold text-on-accent focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
+          className="label sr-only z-50 bg-accent px-4 py-3 text-on-accent focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
         >
           Skip to content
         </a>
         <SiteHeader />
-        <main id="main" className="flex-1">
-          {children}
-        </main>
-        <SiteFooter />
+        {/* The column: hairlines down both sides, centred in the space left of the desktop rail. */}
+        <div className="lg:pr-(--rail-w)">
+          <div className="mx-auto max-w-[66rem] border-line sm:border-x">
+            <main id="main">{children}</main>
+            <SiteFooter />
+          </div>
+        </div>
+        <RevealObserver />
       </body>
     </html>
   );
