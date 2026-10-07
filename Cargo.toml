@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/engine", "crates/media", "crates/torrent", "crates/core", "crates/bridge", "crates/cli", "crates/app"]
+exclude = ["vendor"]
 
 [workspace.package]
 version = "1.0.1"
@@ -35,3 +36,7 @@ debug = false
 lto = "thin"
 codegen-units = 1
 strip = true
+
+# iced's CPU renderer, with Snag's fixes (see vendor/iced_tiny_skia/SNAG.md).
+[patch.crates-io]
+iced_tiny_skia = { path = "vendor/iced_tiny_skia" }

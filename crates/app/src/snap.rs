@@ -43,7 +43,30 @@ fn scenes() -> Vec<String> {
 }
 
 pub fn subscription() -> Subscription<Message> {
-    if dir().is_some() { iced::time::every(std::time::Duration::from_millis(1200)).map(|_| Message::Snap) } else { Subscription::none() }
+    if dir().is_none() {
+        return Subscription::none();
+    }
+    let scenes = iced::time::every(std::time::Duration::from_millis(1200)).map(|_| Message::Snap);
+    if SCROLL_STEPS.load(std::sync::atomic::Ordering::Relaxed) == 0 {
+        return scenes;
+    }
+    Subscription::batch([scenes, iced::time::every(std::time::Duration::from_millis(16)).map(|_| Message::SnapScroll)])
+}
+
+/// Scroll steps left in the "scroll-test" scene (down, then back up).
+static SCROLL_STEPS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+const SCROLL_TEST: u32 = 120;
+
+/// One wheel-like step through the open sheet: 60 down, 60 up.
+pub fn scroll_step() -> Task<Message> {
+    use std::sync::atomic::Ordering;
+    let left = SCROLL_STEPS.load(Ordering::Relaxed);
+    if left == 0 {
+        return Task::none();
+    }
+    SCROLL_STEPS.store(left - 1, Ordering::Relaxed);
+    let dy = if left > SCROLL_TEST / 2 { 24.0 } else { -24.0 };
+    iced::widget::operation::scroll_by(crate::ui::SHEET_SCROLL, iced::widget::scrollable::AbsoluteOffset { x: 0.0, y: dy })
 }
 
 /// Alternates: set up the next scene, then (next tick, once it has been drawn) capture it.
@@ -282,6 +305,10 @@ fn apply(m: &mut Model, scene: &str) {
         "whats-new" => m.open_info(Info::WhatsNew { since: Some(String::new()) }),
         "whats-new-all" => m.open_info(Info::WhatsNew { since: None }),
         "bug-report" => m.open_info(Info::BugReport),
+        "scroll-test" => {
+            m.open_info(Info::WhatsNew { since: None });
+            SCROLL_STEPS.store(SCROLL_TEST, std::sync::atomic::Ordering::Relaxed);
+        }
         // The colour picker after a drag: purple from the strip, a little muted in the square.
         "accent-picker" => {
             m.open_settings(SettingsTab::Appearance);

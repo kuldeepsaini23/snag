@@ -43,6 +43,9 @@ pub fn sheet<'a>(m: &'a Model, info: &'a Info, bug_text: &'a text_editor::Conten
     }
 }
 
+/// The scrolling body of a sheet (What's new, Help).
+pub const SHEET_SCROLL: &str = "sheet-scroll";
+
 /// A sheet with a title, a close button and `body` (scrolls when `height` is fixed).
 fn frame<'a>(title: &str, subtitle: &str, body: Element<'a, Message>, height: Length, c: Colors) -> Element<'a, Message> {
     let close = button(container(icon(Icon::X, 13)).center(Fill)).width(28).height(28).padding(0).style(style::secondary(c)).on_press(Message::CloseInfo);
@@ -50,7 +53,7 @@ fn frame<'a>(title: &str, subtitle: &str, body: Element<'a, Message>, height: Le
     let body: Element<'a, Message> = if height == Length::Shrink {
         body
     } else {
-        scrollable(container(body).padding(iced::Padding { right: 12.0, ..Default::default() })).style(style::scroll(c)).height(Fill).into()
+        scrollable(container(body).padding(iced::Padding { right: 12.0, ..Default::default() })).id(SHEET_SCROLL).style(style::scroll(c)).height(Fill).into()
     };
     container(column![head, body].spacing(16)).width(580).height(height).padding([20, 22]).style(style::sheet(c)).into()
 }

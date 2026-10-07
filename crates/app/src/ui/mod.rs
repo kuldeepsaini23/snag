@@ -11,6 +11,8 @@ mod picker;
 mod popover;
 mod context_menu;
 mod settings;
+#[cfg(debug_assertions)]
+pub use help::SHEET_SCROLL;
 #[cfg(debug_assertions)] // only the debug snapshot tool scrolls it
 pub use settings::SCROLL as SETTINGS_SCROLL;
 mod sidebar;

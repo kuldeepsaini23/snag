@@ -254,6 +254,9 @@ pub enum Message {
     Snap,
     #[cfg(debug_assertions)]
     Snapped(window::Screenshot),
+    /// Debug: one step of the automatic scroll test (`RDM_SNAP_SCENES=…,scroll-test`).
+    #[cfg(debug_assertions)]
+    SnapScroll,
     Done,
 }
 
@@ -1007,6 +1010,8 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::Snap => return crate::snap::take(app),
         #[cfg(debug_assertions)]
         Message::Snapped(shot) => crate::snap::save(&shot),
+        #[cfg(debug_assertions)]
+        Message::SnapScroll => return crate::snap::scroll_step(),
         Message::Done => {}
     }
     Task::none()

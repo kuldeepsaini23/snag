@@ -82,6 +82,9 @@ fn main() -> iced::Result {
         transparent: translucent,
         icon: iced::window::icon::from_rgba(tray::ICON_64.to_vec(), 64, 64).ok(),
         visible: !background,
+        // Debug: tests that need a drawn (visible) window open it off-screen.
+        #[cfg(debug_assertions)]
+        position: if std::env::var_os("RDM_TEST_OFFSCREEN").is_some() { iced::window::Position::Specific(iced::Point::new(-4000.0, 40.0)) } else { Default::default() },
         ..Default::default()
     };
     let result = iced::application(move || update::boot(boot_manager.clone(), bridge_status.clone(), boot_dir.clone(), boot_runtime.clone()), update::update, ui::view)

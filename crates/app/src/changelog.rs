@@ -141,6 +141,10 @@ Intro text that isn't part of any release.
         let latest = releases.first().expect("CHANGELOG.md has a release");
         assert_eq!(latest.version, VERSION, "the newest CHANGELOG.md entry is this build's version");
         assert!(latest.sections.iter().all(|s| !s.items.is_empty()), "no empty sections");
+        // The app shows items as plain text: Markdown marks would appear as they are.
+        for item in releases.iter().flat_map(|r| &r.sections).flat_map(|s| &s.items) {
+            assert!(!item.contains("**") && !item.contains('`'), "plain text only: {item}");
+        }
     }
 
     #[test]
