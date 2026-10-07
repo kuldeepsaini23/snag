@@ -1,6 +1,6 @@
 # snag.kuldeepsaini.dev
 
-The website for Snag: the landing page (`/`) and the privacy policy for the app and the browser extension (`/privacy/`). Next.js App Router with a static export, Tailwind CSS, Magic UI components (Animated Beam, Marquee) and `motion`.
+The website for Snag: the landing page (`/`) and the privacy policy for the app and the browser extension (`/privacy/`). Next.js App Router with a static export and Tailwind CSS. The idea: the page is a download. The top bar fills its eight segments as you scroll, the hero word downloads in parallel parts, and each feature is a row in a download list. All motion is CSS plus two small IntersectionObserver/scroll scripts, and it all stops for reduced motion.
 
 ## Run it
 
@@ -32,10 +32,11 @@ Run it again whenever a screenshot or the logo changes, and commit the results. 
 ### Where things are
 
 - `src/app/page.tsx`: the landing page, one component per section in `src/components/`
+- `src/components/download-bar.tsx`: the sticky bar that fills with scroll
+- `src/components/features.tsx`: the download-list feature rows (edit the `groups` list)
 - `src/app/privacy/page.tsx`: the privacy policy (update the effective date when it changes)
 - `src/lib/site.ts`: the site address, GitHub links and the installer download link (change the version here for a new release)
 - `src/app/sitemap.ts`, `src/app/robots.ts`: `sitemap.xml` and `robots.txt`
-- `src/components/ui/`: the Magic UI components
 
 ## Deploy
 

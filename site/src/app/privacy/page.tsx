@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 
-import { ScrollRail } from "@/components/scroll-rail";
 import { ISSUES_URL, REPO_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -20,67 +19,44 @@ export const metadata: Metadata = {
 };
 
 function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
-  const index = sections.findIndex((s) => s.id === id) + 1;
   return (
-    <section id={id} className="border-t border-line">
-      <div className="flex min-h-10 items-center border-b border-line px-5 py-3 sm:px-8">
-        <p className="label text-muted">{String(index).padStart(2, "0")} / {title}</p>
-      </div>
-      <div className="px-5 pt-10 pb-14 sm:px-8" data-reveal>
-        <h2 className="display text-2xl md:text-[2rem]">{title}</h2>
-        <div className="mt-6 grid max-w-[68ch] gap-4 leading-relaxed text-muted [&_strong]:font-semibold [&_strong]:text-text">
-          {children}
-        </div>
+    <section id={id} className="mt-4 rounded-2xl bg-panel p-5 shadow-[0_0_0_1px_var(--line)] sm:p-8">
+      <h2 className="text-2xl font-bold tracking-tight">{title}</h2>
+      <div className="mt-4 grid max-w-[68ch] gap-4 leading-relaxed text-muted [&_strong]:font-semibold [&_strong]:text-text">
+        {children}
       </div>
     </section>
   );
 }
 
-const sections = [
-  { id: "policy", label: "Policy" },
-  { id: "extension", label: "Extension" },
-  { id: "app", label: "The app" },
-  { id: "never", label: "Never" },
-  { id: "website", label: "This website" },
-  { id: "contact", label: "Contact" },
-];
-
 function List({ children }: { children: React.ReactNode }) {
-  return <ul className="grid list-disc gap-2 pl-5 marker:text-faint">{children}</ul>;
+  return <ul className="grid list-disc gap-2 pl-5 marker:text-accent">{children}</ul>;
 }
 
 function Code({ children }: { children: React.ReactNode }) {
-  return <code className="bg-raised px-1.5 py-0.5 font-mono text-[0.85em] text-text">{children}</code>;
+  return <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[0.85em] text-text">{children}</code>;
 }
 
 const link = "text-accent underline decoration-accent/40 underline-offset-4 hover:decoration-accent";
 
 export default function PrivacyPage() {
   return (
-    <article>
-      <header id="policy">
-        <div className="flex min-h-10 items-center justify-between gap-4 border-b border-line px-5 py-3 sm:px-8">
-          <p className="label text-muted">Privacy policy</p>
-          <p className="label text-faint">Effective 7 October 2026</p>
-        </div>
-        <div className="px-5 pt-14 pb-14 sm:px-8 md:pt-20">
-          <h1 className="display text-[clamp(2.8rem,9vw,5.5rem)] animate-intro">
-            Privacy <em>policy.</em>
-          </h1>
-          <p className="mt-6 max-w-[60ch] text-lg leading-relaxed text-muted">
-            For the Snag desktop app and the Snag browser extension for Chrome, Edge and Firefox. Effective 7 October
-            2026.
-          </p>
-        </div>
-        <div className="border-t border-line bg-sunk px-5 py-8 sm:px-8">
-          <p className="label text-accent">In short</p>
-          <p className="mt-4 max-w-[68ch] text-lg leading-relaxed">
-            Snag has no account, no analytics, no ads and no server of its own. The extension sends what it reads only
-            to the Snag app on the same computer. Nothing is sent to the developer or to any third party, and nothing is
-            sold.
-          </p>
-        </div>
+    <article className="mx-auto max-w-3xl px-4 pt-12 pb-24 sm:px-6 md:pt-20">
+      <header>
+        <p className="font-mono text-xs text-faint">Effective 7 October 2026</p>
+        <h1 className="mt-3 text-5xl font-bold tracking-tight md:text-6xl">Privacy policy</h1>
+        <p className="mt-5 max-w-[60ch] text-lg leading-relaxed text-muted">
+          For the Snag desktop app and the Snag browser extension for Chrome, Edge and Firefox.
+        </p>
       </header>
+
+      <div className="mt-10 rounded-2xl bg-raised p-5 sm:p-8">
+        <p className="flex items-center gap-2 font-mono text-xs text-accent">In short</p>
+        <p className="mt-3 text-lg leading-relaxed">
+          Snag has no account, no analytics, no ads and no server of its own. The extension sends what it reads only to
+          the Snag app on the same computer. Nothing is sent to the developer or to any third party, and nothing is sold.
+        </p>
+      </div>
 
       <Section id="extension" title="The browser extension">
         <p>The extension exists to hand downloads to the Snag app on your computer. To do that, it reads:</p>
@@ -203,7 +179,6 @@ export default function PrivacyPage() {
           .
         </p>
       </Section>
-      <ScrollRail sections={sections} />
     </article>
   );
 }
