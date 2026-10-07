@@ -49,7 +49,9 @@ Name: "{autodesktop}\Snag"; Filename: "{app}\snag.exe"; Tasks: desktopicon
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Snag"; ValueData: """{app}\snag.exe"" --background"; Tasks: autostart; Flags: uninsdeletevalue
 
 [Run]
-Filename: "{app}\snag.exe"; Description: "Open Snag now"; Flags: nowait postinstall skipifsilent
+; Through Explorer: a program started by Setup itself inherits Setup's "redirection guard", and
+; then yt-dlp can't follow linked folders on PATH (e.g. nvm's Node.js) — WinError 448.
+Filename: "{win}\explorer.exe"; Parameters: """{app}\snag.exe"""; Description: "Open Snag now"; Flags: nowait postinstall skipifsilent
 
 [Code]
 // Asks a running Snag to pause its downloads, save and quit, then waits for it to be gone, so
