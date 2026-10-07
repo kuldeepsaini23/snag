@@ -18,7 +18,11 @@ use std::time::Instant;
 pub fn view<'a>(m: &'a Model, motion: &Motion, now: Instant, c: Colors) -> Element<'a, Message> {
     let item_row = |m: &'a Model, i: &'a Item, c: Colors| item_row(m, i, motion.row(i.id.0, now), c);
     let mut page = column![url_bar(m, c)].spacing(10);
-    page = page.push(container(text(view::url_hint(m)).size(12).color(c.text3)).padding([0, 2]));
+    let hint = container(text(view::url_hint(m)).size(12).color(c.text3)).padding([0, 2]).width(Fill);
+    page = page.push(match view::grid_library(m.library) {
+        Some(cat) => row![hint, super::grid::toggle(cat, m.grid_shown(), c)].align_y(Alignment::Center).into(),
+        None => Element::from(hint),
+    });
 
     if m.items.is_empty() {
         page = page.push(empty_state(c));
@@ -30,7 +34,7 @@ pub fn view<'a>(m: &'a Model, motion: &Motion, now: Instant, c: Colors) -> Eleme
             let speed: u64 = down.iter().map(|i| i.speed_bps).sum();
             let n = down.len();
             groups = groups.push(group_title("Downloading", format!("{n} item{} · {}", plural(n), format::speed(speed)), c));
-            groups = down.into_iter().fold(groups, |g, i| g.push(item_row(m, i, c)));
+            groups = if m.grid_shown() { groups.push(super::grid::cards(m, down, c)) } else { down.into_iter().fold(groups, |g, i| g.push(item_row(m, i, c))) };
         }
         if !recent.is_empty() {
             let size: u64 = recent.iter().map(|i| i.total.unwrap_or(i.downloaded)).sum();
@@ -40,7 +44,7 @@ pub fn view<'a>(m: &'a Model, motion: &Motion, now: Instant, c: Colors) -> Eleme
                 .align_y(Alignment::Center)
                 .padding(iced::Padding { right: 12.0, ..Default::default() });
             groups = groups.push(title);
-            groups = recent.into_iter().fold(groups, |g, i| g.push(item_row(m, i, c)));
+            groups = if m.grid_shown() { groups.push(super::grid::cards(m, recent, c)) } else { recent.into_iter().fold(groups, |g, i| g.push(item_row(m, i, c))) };
         }
         if nothing {
             groups = groups.push(container(small("Nothing here matches.", c.text3)).padding([24, 4]));
@@ -78,25 +82,32 @@ fn group_title<'a>(title: &'a str, meta: String, c: Colors) -> Element<'a, Messa
 
 /// The video's thumbnail (with its length), or a coloured square with a kind icon.
 pub fn tile<'a>(item: &Item, thumb: Option<&std::path::Path>, width: f32, height: f32, glyph_size: u16, c: Colors) -> Element<'a, Message> {
+    with_duration(picture(item, thumb, width, height, glyph_size, c), item.duration, width, height)
+}
+
+/// The thumbnail alone, or the coloured square with a kind icon.
+pub fn picture<'a>(item: &Item, thumb: Option<&std::path::Path>, width: f32, height: f32, glyph_size: u16, c: Colors) -> Element<'a, Message> {
     if let Some(path) = thumb {
-        let picture = iced::widget::image(iced::widget::image::Handle::from_path(path))
+        return iced::widget::image(iced::widget::image::Handle::from_path(path))
             .width(Length::Fixed(width))
             .height(Length::Fixed(height))
             .content_fit(iced::ContentFit::Cover)
             .border_radius(7.0)
-            .opacity(c.alpha);
-        return with_duration(picture.into(), item.duration, width, height);
+            .opacity(c.alpha)
+            .into();
     }
-    let plain = plain_tile(item, width, height, glyph_size, c);
-    with_duration(plain, item.duration, width, height)
+    plain_tile(item, width, height, glyph_size, c)
+}
+
+/// "42:18" on a dark tag, for the corner of a picture.
+pub fn badge<'a>(label: String) -> Element<'a, Message> {
+    container(text(label).size(10).font(style::MONO).color(Color::WHITE)).padding([1, 4]).style(style::tag(Color::from_rgba(0.0, 0.0, 0.0, 0.65), Color::WHITE)).into()
 }
 
 /// Puts "42:18" in the bottom-right corner of a tile.
 pub fn with_duration<'a>(tile: Element<'a, Message>, duration: Option<f64>, width: f32, height: f32) -> Element<'a, Message> {
     let Some(secs) = duration else { return tile };
-    let badge = container(text(view::duration_label(secs)).size(10).font(style::MONO).color(Color::WHITE))
-        .padding([1, 4])
-        .style(style::tag(Color::from_rgba(0.0, 0.0, 0.0, 0.65), Color::WHITE));
+    let badge = badge(view::duration_label(secs));
     let corner = container(badge).width(Length::Fixed(width)).height(Length::Fixed(height)).align_x(Alignment::End).align_y(Alignment::End).padding(4);
     iced::widget::stack![tile, corner].into()
 }

@@ -186,6 +186,20 @@ fn apply(m: &mut Model, scene: &str) {
             m.selected = m.items.iter().find(|i| i.status == Status::Running).map(|i| i.id);
             demo_speeds(m);
         }
+        // The Videos library as a grid: YouTube thumbnails, every status's ring.
+        "grid-videos" => {
+            m.items = grid_videos();
+            m.library = crate::view::Library::Category(Category::Video);
+            m.grid.insert(Category::Video);
+            m.selected = Some(ItemId(1005));
+        }
+        // Images: the downloaded files are their own thumbnails.
+        "grid-images" => {
+            m.items = grid_images();
+            m.library = crate::view::Library::Category(Category::Image);
+            m.grid.insert(Category::Image);
+            m.selected = None;
+        }
         "toast" => m.toast = Some("https://vimeo.com/824123456".into()),
         "notice" => m.notice = Some("Added “Rust Async Explained” (1080p)".into()),
         "empty" => m.items.clear(),
@@ -224,6 +238,63 @@ fn apply(m: &mut Model, scene: &str) {
         }
         _ => {}
     }
+}
+
+/// The demo list plus more videos, all with YouTube thumbnails and lengths.
+fn grid_videos() -> Vec<Item> {
+    const MB: u64 = 1024 * 1024;
+    let mut items = demo_items();
+    let more = [
+        ("Building a tiny executor.mp4", Status::Queued, 0, 1100.0),
+        ("Pinning without pain.mp4", Status::Done, 380, 1360.0),
+        ("Channels, select! and cancellation.mp4", Status::Failed("HTTP 403".into()), 120, 1520.0),
+        ("Tokio runtime internals.mp4", Status::Done, 702, 2210.0),
+    ];
+    for (k, (name, status, mb, secs)) in more.into_iter().enumerate() {
+        let mut i = items[1].clone();
+        (i.id, i.name, i.status, i.added) = (ItemId(1100 + k as u64), name.into(), status, i.added - 400 * k as i64);
+        (i.downloaded, i.total, i.duration) = (mb * MB, Some(if mb == 120 { 540 * MB } else { mb.max(1) * MB }), Some(secs));
+        items.push(i);
+    }
+    let ids = ["aqz-KE-bpKQ", "jNQXAC9IVRw", "dQw4w9WgXcQ", "9bZkp7q19f0", "kJQP7kiw5Fk", "OPf0YbXqDm0", "fJ9rUzIMcZQ"];
+    let mut videos: Vec<&mut Item> = items.iter_mut().filter(|i| i.category == Category::Video).collect();
+    for (item, id) in videos.iter_mut().zip(ids) {
+        item.thumbnail = Some(format!("https://i.ytimg.com/vi/{id}/mqdefault.jpg"));
+        item.duration = item.duration.or(Some(2538.0));
+    }
+    items
+}
+
+/// Finished pictures written to the snapshot folder (soft gradients in the accent's family), and
+/// one still downloading.
+fn grid_images() -> Vec<Item> {
+    let Some(dir) = dir().map(|d| d.join("pictures")) else { return Vec::new() };
+    let _ = std::fs::create_dir_all(&dir);
+    let shapes = [(640, 400, [255u8, 159, 10]), (400, 600, [10, 132, 255]), (800, 450, [50, 215, 75]), (500, 500, [191, 90, 242]), (720, 480, [255, 55, 95])];
+    let mut items: Vec<Item> = shapes
+        .iter()
+        .enumerate()
+        .map(|(k, (w, h, rgb))| {
+            let path = dir.join(format!("photo-{k}.png"));
+            if !path.exists() {
+                let img = image::RgbImage::from_fn(*w, *h, |x, y| {
+                    let t = (x as f32 / *w as f32 + y as f32 / *h as f32) / 2.0;
+                    image::Rgb(rgb.map(|v| (v as f32 * (1.0 - 0.7 * t) + 20.0 * t) as u8))
+                });
+                let _ = img.save(&path);
+            }
+            let mut i = demo_items()[0].clone();
+            let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            (i.id, i.name, i.category, i.status) = (ItemId(1200 + k as u64), format!("photo-{k}.png"), Category::Image, Status::Done);
+            (i.dest, i.downloaded, i.total) = (Some(path), size, Some(size));
+            i
+        })
+        .collect();
+    let mut loading = items[0].clone();
+    (loading.id, loading.name, loading.status, loading.dest) = (ItemId(1299), "wallpaper-8k.jpg".into(), Status::Running, None);
+    (loading.downloaded, loading.total, loading.speed_bps) = (14 * 1024 * 1024, Some(38 * 1024 * 1024), 3_400_000);
+    items.push(loading);
+    items
 }
 
 /// A minute of a running download's speed (a wavy 6 – 11 MB/s with a dip) and its 8 connections.

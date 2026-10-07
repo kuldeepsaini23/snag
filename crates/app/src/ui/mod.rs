@@ -3,6 +3,7 @@
 pub mod icon;
 mod charts;
 mod color_picker;
+mod grid;
 mod help;
 mod inspector;
 mod list;

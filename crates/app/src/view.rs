@@ -179,11 +179,63 @@ pub fn youtube_id(url: &str) -> Option<&str> {
 /// The picture a row shows: the one recorded with the item, else YouTube's own for its video
 /// (items added before thumbnails were recorded, and paths that don't record one).
 pub fn thumb_url(item: &Item) -> Option<String> {
+    if let Some(path) = local_picture(item) {
+        return Some(format!("{LOCAL}{}", path.display()));
+    }
     if item.thumbnail.is_some() {
         return item.thumbnail.clone();
     }
     let id = youtube_id(&item.url).filter(|_| matches!(item.kind, Kind::Media(_)))?;
     Some(format!("https://i.ytimg.com/vi/{id}/mqdefault.jpg"))
+}
+
+/// A thumbnail "URL" that is a downloaded picture on disk (made smaller locally, not fetched).
+const LOCAL: &str = "file:";
+
+/// Picture formats the thumbnail decoder reads.
+const PICTURES: [&str; 6] = ["jpg", "jpeg", "png", "gif", "webp", "bmp"];
+
+/// A finished picture: the file itself is its thumbnail.
+fn local_picture(item: &Item) -> Option<&std::path::Path> {
+    let path = item.dest.as_deref().filter(|_| item.status == Status::Done && item.category == Category::Image && item.kind != Kind::Gallery)?;
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    PICTURES.contains(&ext.as_str()).then_some(path)
+}
+
+/// The picture behind a local thumbnail "URL" (None: a web address).
+pub fn local_thumb_source(url: &str) -> Option<&std::path::Path> {
+    url.strip_prefix(LOCAL).map(std::path::Path::new)
+}
+
+/// The library whose list can switch to a grid of thumbnails (Videos and Images).
+pub fn grid_library(library: Library) -> Option<Category> {
+    match library {
+        Library::Category(c @ (Category::Video | Category::Image)) => Some(c),
+        _ => None,
+    }
+}
+
+impl Model {
+    /// The list shows as a grid: Videos or Images, switched to grid.
+    pub fn grid_shown(&self) -> bool {
+        grid_library(self.library).is_some_and(|c| self.grid.contains(&c))
+    }
+}
+
+/// A grid card's line under its title: the size, or how far it got.
+pub fn card_meta(item: &Item) -> String {
+    match (&item.status, item.total) {
+        (Status::Done, _) => format::size(item.total.unwrap_or(item.downloaded)),
+        (Status::Running, Some(t)) if t > 0 => format!("{}% · {}", item.downloaded * 100 / t, format::speed(item.speed_bps)),
+        (Status::Running, _) if item.downloaded == 0 => "Starting…".into(),
+        (Status::Running, _) => format!("{} · {}", format::size(item.downloaded), format::speed(item.speed_bps)),
+        (Status::Paused, Some(t)) => format!("Paused · {} of {}", format::size(item.downloaded), format::size(t)),
+        (Status::Paused, None) => "Paused".into(),
+        (Status::Queued, Some(t)) => format!("Queued · {}", format::size(t)),
+        (Status::Queued, None) => "Queued".into(),
+        (Status::Failed(e), _) if e.is_empty() => "Failed".into(),
+        (Status::Failed(e), _) => format!("Failed · {e}"),
+    }
 }
 
 /// Where a thumbnail is cached, without its extension: a stable hash of its URL (FNV-1a),
@@ -1016,6 +1068,55 @@ mod tests {
         assert_eq!(thumb_url(&file), None, "only videos and music get a picture");
         let m = Model { items: vec![video], ..Model::default() };
         assert_eq!(m.missing_thumbs(std::time::Instant::now()), vec!["https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg".to_string()], "and it's fetched");
+    }
+
+    #[test]
+    fn finished_pictures_are_their_own_thumbnail() {
+        let photo = Item { dest: Some("C:\\dl\\Images\\cat.JPG".into()), ..item(1, "cat.JPG", Category::Image, Status::Done) };
+        assert_eq!(thumb_url(&photo).as_deref(), Some("file:C:\\dl\\Images\\cat.JPG"));
+        assert_eq!(local_thumb_source("file:C:\\dl\\Images\\cat.JPG"), Some(std::path::Path::new("C:\\dl\\Images\\cat.JPG")));
+        assert_eq!(local_thumb_source("https://i/a.jpg"), None);
+        let unfinished = Item { status: Status::Running, ..photo.clone() };
+        assert_eq!(thumb_url(&unfinished), None, "half a file isn't a picture yet");
+        let svg = Item { dest: Some("C:\\dl\\logo.svg".into()), ..item(2, "logo.svg", Category::Image, Status::Done) };
+        assert_eq!(thumb_url(&svg), None, "only formats the decoder reads");
+        let gallery = Item { kind: Kind::Gallery, dest: Some("C:\\dl\\Images\\pinterest.com · 1".into()), ..item(3, "pinterest.com · 1", Category::Image, Status::Done) };
+        assert_eq!(thumb_url(&gallery), None, "a gallery is a folder");
+    }
+
+    #[test]
+    fn card_meta_is_short() {
+        const MB: u64 = 1024 * 1024;
+        let base = Item { total: Some(1229 * MB), ..item(1, "v.mp4", Category::Video, Status::Done) };
+        assert_eq!(card_meta(&base), "1.2 GB");
+        let running = Item { status: Status::Running, downloaded: 642 * MB, speed_bps: 8 * MB, ..base.clone() };
+        assert_eq!(card_meta(&running), "52% · 8.0 MB/s");
+        let paused = Item { status: Status::Paused, downloaded: 642 * MB, ..base.clone() };
+        assert_eq!(card_meta(&paused), "Paused · 642 MB of 1.2 GB");
+        assert_eq!(card_meta(&Item { status: Status::Queued, ..base.clone() }), "Queued · 1.2 GB");
+        assert_eq!(card_meta(&Item { status: Status::Failed("HTTP 403".into()), ..base.clone() }), "Failed · HTTP 403");
+        assert_eq!(card_meta(&Item { total: None, downloaded: 0, status: Status::Running, ..base }), "Starting…");
+    }
+
+    #[test]
+    fn grid_is_offered_for_videos_and_images_only() {
+        let mut m = Model::default();
+        assert_eq!(grid_library(m.library), None);
+        assert!(!m.grid_shown());
+        for cat in [Category::Video, Category::Image] {
+            m.library = Library::Category(cat);
+            assert_eq!(grid_library(m.library), Some(cat));
+            assert!(!m.grid_shown(), "a list until switched");
+            m.grid.insert(cat);
+            assert!(m.grid_shown());
+        }
+        // Each library remembers its own choice; others never show a grid.
+        m.grid.remove(&Category::Video);
+        m.library = Library::Category(Category::Video);
+        assert!(!m.grid_shown());
+        m.library = Library::Category(Category::Music);
+        m.grid.insert(Category::Music);
+        assert!(!m.grid_shown());
     }
 
     #[test]

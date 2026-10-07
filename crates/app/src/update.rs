@@ -112,6 +112,8 @@ pub enum Message {
     // List
     SetFilter(Filter),
     SetLibrary(Library),
+    /// Videos or Images: show the grid of thumbnails (true) or the list.
+    SetGrid(rdm_core::Category, bool),
     Search(String),
     /// The magnifier or Ctrl+K: open the search field and focus it.
     FocusSearch,
@@ -321,6 +323,13 @@ async fn fetch_thumb(url: String, base: PathBuf) -> Option<PathBuf> {
     if let Some(cached) = ["jpg", "png", "webp"].iter().map(|e| base.with_extension(e)).find(|f| f.exists()) {
         return Some(cached);
     }
+    if let Some(src) = crate::view::local_thumb_source(&url).map(PathBuf::from) {
+        // A downloaded picture: decoded on a worker, two at a time (a library of photos would
+        // otherwise decode them all at once).
+        static DECODING: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
+        let _turn = DECODING.acquire().await.ok()?;
+        return tokio::task::spawn_blocking(move || crate::local_thumb::make(&src, &base)).await.ok()?;
+    }
     let get = rdm_engine::default_client().get(&url).timeout(std::time::Duration::from_secs(20)).send();
     let bytes = get.await.ok()?.error_for_status().ok()?.bytes().await.ok()?;
     // A thumbnail is small; anything huge isn't one.
@@ -515,6 +524,13 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::WinResize(edge) => return window::latest().and_then(move |id| window::drag_resize(id, edge)),
         Message::SetFilter(f) => model.filter = f,
         Message::SetLibrary(l) => model.library = l,
+        Message::SetGrid(library, on) => {
+            if on {
+                model.grid.insert(library);
+            } else {
+                model.grid.remove(&library);
+            }
+        }
         Message::Search(s) => model.search = s,
         Message::FocusSearch => {
             model.open_search();

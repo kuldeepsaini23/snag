@@ -2,6 +2,7 @@ mod changelog;
 mod choices;
 mod format;
 mod hsv;
+mod local_thumb;
 mod motion;
 mod queues;
 mod report;

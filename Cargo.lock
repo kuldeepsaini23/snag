@@ -5195,6 +5195,7 @@ dependencies = [
  "chrono",
  "futures-util",
  "iced",
+ "image",
  "rdm-bridge",
  "rdm-core",
  "rdm-engine",
