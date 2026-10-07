@@ -20,13 +20,17 @@ pub fn unwrap(path: &Path) -> std::io::Result<Option<PathBuf>> {
     if input.read(&mut head)? < 8 || head != PNG {
         return Ok(None);
     }
-    let out_path = path.with_extension("ts");
+    // Already a .ts: repaired in place. Otherwise a .ts name that nothing else uses.
+    let in_place = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("ts"));
+    let out_path = if in_place { path.to_path_buf() } else { free_ts(path) };
     let temp = path.with_extension("ts.part");
     let result = strip(File::open(path)?, &temp);
     match result {
         Ok(true) => {
             std::fs::rename(&temp, &out_path)?;
-            std::fs::remove_file(path)?;
+            if !in_place {
+                std::fs::remove_file(path)?;
+            }
             Ok(Some(out_path))
         }
         Ok(false) => {
@@ -38,6 +42,13 @@ pub fn unwrap(path: &Path) -> std::io::Result<Option<PathBuf>> {
             Err(e)
         }
     }
+}
+
+/// `<stem>.ts` next to `path`, or `<stem> (2).ts`… when that name is taken.
+fn free_ts(path: &Path) -> PathBuf {
+    let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "video".into());
+    let dir = path.parent().unwrap_or(Path::new("."));
+    (1..).map(|n| if n == 1 { dir.join(format!("{stem}.ts")) } else { dir.join(format!("{stem} ({n}).ts")) }).find(|p| !p.exists()).expect("a free name")
 }
 
 /// Copies `input` to `out` without the fake headers. False: the layout isn't what we expect
@@ -148,6 +159,31 @@ mod tests {
         assert_eq!(std::fs::read(&fixed).unwrap(), real);
         assert!(!file.exists(), "the broken file is replaced");
         assert!(!dir.path().join("clip [x].ts.part").exists());
+    }
+
+    #[test]
+    fn a_ts_download_is_repaired_in_place_and_other_files_are_never_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut disguised, mut real) = (Vec::new(), Vec::new());
+        for n in 0..3u8 {
+            disguised.extend_from_slice(&fake_png());
+            disguised.extend_from_slice(&segment(n, 50));
+            real.extend_from_slice(&segment(n, 50));
+        }
+        // Already named .ts: the repaired file takes its place (it isn't deleted).
+        let ts = dir.path().join("stream.ts");
+        std::fs::write(&ts, &disguised).unwrap();
+        assert_eq!(unwrap(&ts).unwrap(), Some(ts.clone()));
+        assert_eq!(std::fs::read(&ts).unwrap(), real);
+        // An .mp4 next to an unrelated .ts of the same name: that .ts is kept.
+        let mp4 = dir.path().join("clip.mp4");
+        let other = dir.path().join("clip.ts");
+        std::fs::write(&mp4, &disguised).unwrap();
+        std::fs::write(&other, b"someone else's video").unwrap();
+        let fixed = unwrap(&mp4).unwrap().expect("repaired");
+        assert_eq!(fixed, dir.path().join("clip (2).ts"));
+        assert_eq!(std::fs::read(&fixed).unwrap(), real);
+        assert_eq!(std::fs::read(&other).unwrap(), b"someone else's video");
     }
 
     #[test]
