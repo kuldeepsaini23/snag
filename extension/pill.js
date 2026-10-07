@@ -40,4 +40,26 @@ function nearestCorner(x, y, width, height) {
   return `${y < height / 2 ? "top" : "bottom"}-${x < width / 2 ? "left" : "right"}`;
 }
 
-if (typeof module !== "undefined") module.exports = { CORNERS, siteKey, isHiddenOn, hideSite, showSite, cornerPosition, nearestCorner };
+/**
+ * The button's host element on the page. Inline `!important` beats any page rule, and
+ * `all: initial` drops whatever the page sets on divs (a transform or filter would pin the
+ * fixed button to the page instead of the window).
+ */
+const HOST_STYLE = [
+  "all: initial !important",
+  "position: fixed !important",
+  "top: 0 !important",
+  "left: 0 !important",
+  "width: 0 !important",
+  "height: 0 !important",
+  "z-index: 2147483647 !important",
+].join("; ");
+
+/** `fn` for events the user made; ones a page script made up (`isTrusted` false) are ignored. */
+function trusted(fn) {
+  return (e) => {
+    if (e.isTrusted) return fn(e);
+  };
+}
+
+if (typeof module !== "undefined") module.exports = { CORNERS, HOST_STYLE, siteKey, isHiddenOn, hideSite, showSite, cornerPosition, nearestCorner, trusted };

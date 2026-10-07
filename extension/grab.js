@@ -83,4 +83,32 @@ function preselect(items) {
   return new Set(items.length > PRESELECT_MAX ? [] : items.map((i) => i.url));
 }
 
-if (typeof module !== "undefined") module.exports = { typeOf, normalize, filterItems, preselect, PRESETS, PRESELECT_MAX };
+/** Snag takes at most this many links per request. */
+const BATCH_MAX = 1000;
+
+/**
+ * Sends `urls` with `sendChunk` in batches of at most `size`, one after another. Stops at the
+ * first failure: `{ added, skipped }` so far, plus `error`.
+ */
+async function sendInChunks(urls, sendChunk, size = BATCH_MAX) {
+  const total = { added: 0, skipped: 0 };
+  for (let i = 0; i < urls.length; i += size) {
+    try {
+      const r = await sendChunk(urls.slice(i, i + size));
+      total.added += r.added || 0;
+      total.skipped += r.skipped || 0;
+    } catch (e) {
+      return { ...total, error: e.message };
+    }
+  }
+  return total;
+}
+
+/** What "Download N" reports; `skipped` were downloaded before, so Snag left them out. */
+function batchMessage({ added, skipped = 0, error }) {
+  const done = skipped > 0 ? `${added} added, ${skipped} already downloaded` : `Sent ${added} to Snag`;
+  if (!error) return `${done} ✓`;
+  return added || skipped ? `${done}, then: ${error}` : error;
+}
+
+if (typeof module !== "undefined") module.exports = { typeOf, normalize, filterItems, preselect, sendInChunks, batchMessage, PRESETS, PRESELECT_MAX, BATCH_MAX };

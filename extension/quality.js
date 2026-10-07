@@ -172,4 +172,12 @@ function makeAsk(runtime, timeoutMs) {
     });
 }
 
-if (typeof module !== "undefined") module.exports = { sizeLabel, qualityRows, sniffedRows, ProbeCache, PrefetchPlan, pageKey, safeAccent, makeAsk, contextTarget, fullSizeImage, DEFAULT_ACCENT };
+/**
+ * The tab a message is about. A page's script always means its own tab (whatever `tabId` it
+ * sends); only the popup, which has no tab of its own, names one.
+ */
+function tabOf(msg, sender) {
+  return sender && sender.tab ? sender.tab.id : msg.tabId;
+}
+
+if (typeof module !== "undefined") module.exports = { sizeLabel, qualityRows, sniffedRows, ProbeCache, PrefetchPlan, pageKey, safeAccent, makeAsk, contextTarget, fullSizeImage, tabOf, DEFAULT_ACCENT };

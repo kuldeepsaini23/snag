@@ -130,8 +130,12 @@ async function init() {
     const urls = shown.filter((i) => picked.has(i.url)).map((i) => i.url);
     if (urls.length > 100 && !confirm(`Download ${urls.length} files?`)) return;
     $("message").textContent = "Sending…";
-    const result = await chrome.runtime.sendMessage({ type: "send-batch", urls, referrer: pageUrl });
-    $("message").textContent = result.ok ? `Sent ${result.added} to Snag ✓` : result.error;
+    const result = await sendInChunks(urls, async (chunk) => {
+      const r = await chrome.runtime.sendMessage({ type: "send-batch", urls: chunk, referrer: pageUrl });
+      if (!r.ok) throw new Error(r.error);
+      return r;
+    });
+    $("message").textContent = batchMessage(result);
   });
   setPreset(all.some((i) => i.type !== "image" && i.type !== "page") ? "everything" : "images");
 }

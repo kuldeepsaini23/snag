@@ -49,3 +49,35 @@ test("nothing is pre-selected when there are more than 200 items", () => {
   const many = normalize(Array.from({ length: 201 }, (_, i) => link(`https://x/${i}.zip`)));
   assert.strictEqual(preselect(many).size, 0);
 });
+
+test("more than 1000 links go to Snag in batches of at most 1000, totals added up", async () => {
+  const { sendInChunks, BATCH_MAX } = require("../grab.js");
+  assert.strictEqual(BATCH_MAX, 1000, "Snag takes at most 1000 links per request");
+  const urls = Array.from({ length: 2500 }, (_, i) => `https://x/${i}.zip`);
+  const sizes = [];
+  const result = await sendInChunks(urls, async (chunk) => {
+    sizes.push(chunk.length);
+    return { added: chunk.length - 1, skipped: 1 };
+  });
+  assert.deepStrictEqual(sizes, [1000, 1000, 500]);
+  assert.deepStrictEqual(result, { added: 2497, skipped: 3 });
+});
+
+test("a failed batch stops the rest and keeps what was already added", async () => {
+  const { sendInChunks } = require("../grab.js");
+  const urls = Array.from({ length: 1500 }, (_, i) => `https://x/${i}.zip`);
+  let calls = 0;
+  const result = await sendInChunks(urls, async (chunk) => {
+    if (++calls === 2) throw new Error("Snag isn't running");
+    return { added: chunk.length };
+  });
+  assert.deepStrictEqual(result, { added: 1000, skipped: 0, error: "Snag isn't running" });
+});
+
+test("the message says how many were already downloaded", () => {
+  const { batchMessage } = require("../grab.js");
+  assert.strictEqual(batchMessage({ added: 5, skipped: 0 }), "Sent 5 to Snag ✓");
+  assert.strictEqual(batchMessage({ added: 5, skipped: 2 }), "5 added, 2 already downloaded ✓");
+  assert.strictEqual(batchMessage({ added: 0, skipped: 0, error: "Snag isn't running" }), "Snag isn't running");
+  assert.strictEqual(batchMessage({ added: 1000, skipped: 0, error: "Snag isn't running" }), "Sent 1000 to Snag, then: Snag isn't running");
+});

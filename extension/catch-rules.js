@@ -22,6 +22,16 @@ function shouldCatch(item, settings, now) {
   return true;
 }
 
+/**
+ * What to download again when Snag couldn't take a caught download: the same link under the
+ * name the browser gave it (the file name only, never its folders).
+ */
+function handBackDownload(item) {
+  const url = item.finalUrl || item.url;
+  const name = (item.filename || "").split(/[\\/]/).pop();
+  return name && name !== "." && name !== ".." ? { url, filename: name } : { url };
+}
+
 /** Pages that show a single video/track, where the "Download with Snag" button makes sense. */
 function isVideoPage(hostname, pathname) {
   const on = (domain) => hostname === domain || hostname.endsWith("." + domain);
@@ -39,4 +49,4 @@ function isVideoPage(hostname, pathname) {
   return false;
 }
 
-if (typeof module !== "undefined") module.exports = { shouldCatch, isVideoPage };
+if (typeof module !== "undefined") module.exports = { shouldCatch, handBackDownload, isVideoPage };

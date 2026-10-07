@@ -107,7 +107,8 @@ async function sendToApp(url, kind, referrer, fallback, { mayPair = false } = {}
     body: JSON.stringify({ url, kind, referrer: referrer || undefined, fallback: fallback || undefined, cookies: await cookiesFor(url) }),
   });
   const body = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new Error(body.error || `Snag answered ${resp.status}`);
+  // `permanent`: Snag will never take this link, so a waiting one is dropped (see drainLater).
+  if (!resp.ok) throw Object.assign(new Error(body.error || `Snag answered ${resp.status}`), { permanent: isPermanent(resp.status) });
   return body;
 }
 
@@ -193,7 +194,8 @@ async function sendOrSave(url, kind, referrer, fallback) {
 
 let draining = null;
 /**
- * Hands the waiting links to Snag, in order; whatever fails keeps waiting. One run at a time.
+ * Hands the waiting links to Snag, in order; whatever fails keeps waiting, except links Snag
+ * refuses for good, which are dropped. One run at a time.
  * It runs on its own (every minute), so it never connects: until the user does, links wait.
  */
 function sendSaved() {
@@ -222,7 +224,9 @@ sendSaved();
 // Catch new Chrome downloads and move them to Snag.
 chrome.downloads.onCreated.addListener(async (item) => {
   const url = item.finalUrl || item.url;
-  if (handBack.has(url)) {
+  // One we gave back ourselves, by its first or its final address.
+  if (handBack.has(item.url) || handBack.has(url)) {
+    handBack.delete(item.url);
     handBack.delete(url);
     return;
   }
@@ -242,10 +246,11 @@ chrome.downloads.onCreated.addListener(async (item) => {
     await sendToApp(url, "file", item.referrer);
     flash(true);
   } catch (e) {
-    // Snag unavailable: let Chrome download it after all.
+    // Snag unavailable: let Chrome download it after all, under the name it had.
     console.warn("Snag:", e.message);
-    handBack.add(url);
-    chrome.downloads.download({ url });
+    const again = handBackDownload(item);
+    handBack.add(again.url);
+    chrome.downloads.download(again).catch(() => chrome.downloads.download({ url: again.url }));
     flash(false);
   }
 });
@@ -267,21 +272,21 @@ chrome.contextMenus.onClicked.addListener((info) => {
 });
 
 // Popup and in-page button.
-chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg.type === "send-batch") {
     sendBatch(msg.urls, msg.referrer)
-      .then((body) => reply({ ok: true, added: body.added }))
+      .then((body) => reply({ ok: true, added: body.added, skipped: body.skipped || 0 }))
       .catch((e) => reply({ ok: false, error: e.message }));
     return true;
   }
   if (msg.type === "media-list") {
-    const tabId = msg.tabId ?? _sender.tab?.id;
+    const tabId = tabOf(msg, sender);
     mediaOf(tabId).then((list) => reply({ items: list.items }));
     return true;
   }
   if (msg.type === "send") {
     // Sending a page: the stream it played is the fallback if Snag can't read the page itself.
-    const tabId = msg.tabId ?? _sender.tab?.id;
+    const tabId = tabOf(msg, sender);
     const best = msg.withFallback && tabId !== undefined ? mediaOf(tabId).then((l) => bestMedia(l.items)) : Promise.resolve(null);
     best
       .then((b) => sendOrSave(msg.url, msg.kind, msg.referrer, b && b.url !== msg.url ? b.url : undefined))
