@@ -10,6 +10,7 @@ mod list;
 mod picker;
 mod popover;
 mod settings;
+#[cfg(debug_assertions)] // only the debug snapshot tool scrolls it
 pub use settings::SCROLL as SETTINGS_SCROLL;
 mod sidebar;
 mod stats;

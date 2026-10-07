@@ -34,6 +34,8 @@ fn main() -> iced::Result {
     let data_dir = state_path.parent().map(PathBuf::from).unwrap_or_default();
     // `rdm --quit`: ask the running RDM to pause, save and quit (used by the uninstaller).
     let quit = std::env::args().any(|a| a == "--quit");
+    // `snag --background`: start in the tray, no window (Windows sign-in, if the user chose it).
+    let background = std::env::args().any(|a| a == "--background");
     let Some(_instance) = rdm_core::instance::lock(&data_dir) else {
         let token = rdm_core::store::load(&state_path).settings.extension_token;
         if quit {
@@ -67,6 +69,7 @@ fn main() -> iced::Result {
         decorations: false,
         transparent: translucent,
         icon: iced::window::icon::from_rgba(tray::ICON_64.to_vec(), 64, 64).ok(),
+        visible: !background,
         ..Default::default()
     };
     let result = iced::application(move || update::boot(boot_manager.clone(), bridge_status.clone(), boot_dir.clone(), boot_runtime.clone()), update::update, ui::view)
