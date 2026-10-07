@@ -47,7 +47,8 @@ pub fn args(url: &str, dir: &Path, opts: &MediaOptions) -> Vec<String> {
     if opts.limit_bps > 0 {
         args.extend(["--limit-rate".to_string(), opts.limit_bps.to_string()]);
     }
-    args.push(url.to_string());
+    // `--` ends the options: a link can never be read as one (`--exec`, `--config-locations`).
+    args.extend(["--".to_string(), url.to_string()]);
     args
 }
 
@@ -155,8 +156,8 @@ mod tests {
     fn args_carry_dir_cookies_and_limit() {
         let opts = MediaOptions { cookies: Some(PathBuf::from(r"C:\c.txt")), limit_bps: 2048, ..Default::default() };
         let a = args("https://imgur.com/a/x", Path::new(r"C:\dl\Images\x"), &opts);
-        assert_eq!(a, vec!["-D", r"C:\dl\Images\x", "--cookies", r"C:\c.txt", "--limit-rate", "2048", "https://imgur.com/a/x"]);
-        assert_eq!(args("u", Path::new("d"), &MediaOptions::default()), vec!["-D", "d", "u"]);
+        assert_eq!(a, vec!["-D", r"C:\dl\Images\x", "--cookies", r"C:\c.txt", "--limit-rate", "2048", "--", "https://imgur.com/a/x"]);
+        assert_eq!(args("u", Path::new("d"), &MediaOptions::default()), vec!["-D", "d", "--", "u"]);
     }
 
     #[test]

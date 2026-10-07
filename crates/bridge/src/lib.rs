@@ -164,6 +164,11 @@ async fn focus(State(manager): State<Manager>, headers: HeaderMap) -> (StatusCod
     (StatusCode::OK, Json(json!({ "ok": true })))
 }
 
+/// What the video tools may be given: a web link, never an option or a local path.
+fn is_web_link(url: &str) -> bool {
+    url.starts_with("https://") || url.starts_with("http://")
+}
+
 #[derive(Deserialize)]
 struct ProbeRequest {
     url: String,
@@ -178,6 +183,9 @@ struct ProbeRequest {
 async fn probe(State(manager): State<Manager>, headers: HeaderMap, Json(req): Json<ProbeRequest>) -> (StatusCode, Json<Value>) {
     if !authorized(&manager, &headers).await {
         return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "not paired" })));
+    }
+    if !is_web_link(&req.url) {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "only web links (http/https)" })));
     }
     let cookies: Vec<Cookie> = req.cookies.into_iter().filter_map(|c| serde_json::from_value(c).ok()).collect();
     if !cookies.is_empty() {
@@ -223,6 +231,9 @@ struct AddMediaRequest {
 async fn add_media_choice(State(manager): State<Manager>, headers: HeaderMap, Json(req): Json<AddMediaRequest>) -> (StatusCode, Json<Value>) {
     if !authorized(&manager, &headers).await {
         return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "not paired" })));
+    }
+    if !is_web_link(&req.url) {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "only web links (http/https)" })));
     }
     let cookies: Vec<Cookie> = req.cookies.into_iter().filter_map(|c| serde_json::from_value(c).ok()).collect();
     if !cookies.is_empty() {

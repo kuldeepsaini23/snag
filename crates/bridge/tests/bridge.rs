@@ -408,3 +408,17 @@ async fn the_extension_can_save_a_page() {
     assert_eq!(items[0].kind, rdm_core::Kind::Page);
     assert_eq!(items[0].url, "https://example.com/article");
 }
+
+#[tokio::test]
+async fn only_web_links_reach_the_video_tools() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path()).await;
+    let b = start(m.clone(), 48271..=48280).await.unwrap();
+    for bad in [r"--config-locations=\host\share\cfg", "file:///C:/Windows/win.ini", "-o x"] {
+        let (status, _) = post_to(b.port, "/probe", json!({ "url": bad }), TOKEN).await;
+        assert_eq!(status, 400, "probe {bad}");
+        let (status, _) = post_to(b.port, "/add-media", json!({ "url": bad, "title": "x", "format": "AudioMp3" }), TOKEN).await;
+        assert_eq!(status, 400, "add-media {bad}");
+    }
+    assert!(m.snapshot().await.items.is_empty());
+}

@@ -290,7 +290,8 @@ pub fn build_args(format: &MediaFormat, out_dir: &Path, url: &str, opts: &MediaO
     }
     // Title alone isn't unique: two videos (or one video twice) would share a file.
     args.extend(["-P".into(), out_dir.display().to_string(), "-o".into(), "%(title).150B [%(id)s].%(ext)s".into()]);
-    args.push(url.to_string());
+    // `--` ends the options: a link can never be read as one (`--exec`, `--config-locations`).
+    args.extend(["--".to_string(), url.to_string()]);
     args
 }
 
@@ -367,7 +368,8 @@ pub fn probe_args(url: &str, cookies: Option<&Path>, referer: Option<&str>) -> V
     if let Some(referer) = referer {
         args.extend(["--referer".into(), referer.to_string()]);
     }
-    args.push(url.to_string());
+    // `--` ends the options: a link can never be read as one (`--exec`, `--config-locations`).
+    args.extend(["--".to_string(), url.to_string()]);
     args
 }
 
@@ -792,5 +794,24 @@ mod meta_tests {
         assert_eq!(list.request_meta().len(), list.requests("u", 0).len());
         let single = MediaInfo { title: "S".into(), duration: Some(9.0), options: vec![video], entries: vec![], thumbnail: Some("https://i/s.jpg".into()), live: false };
         assert_eq!(single.request_meta(), vec![(Some("https://i/s.jpg".to_string()), Some(9.0))]);
+    }
+}
+
+#[cfg(test)]
+mod option_safety {
+    use super::*;
+
+    /// A "link" that is really an option (`--exec`, `--config-locations=…`) must reach the tools
+    /// as a link: `--` ends their options.
+    #[test]
+    fn links_never_become_options() {
+        let evil = r"--config-locations=\host\share\cfg";
+        let video = build_args(&MediaFormat::Video { max_height: 720 }, Path::new(r"C:\dl"), evil, &MediaOptions::default());
+        let probe = probe_args(evil, None, None);
+        let gallery = gallery::args(evil, Path::new(r"C:\dl"), &MediaOptions::default());
+        for args in [video, probe, gallery] {
+            let n = args.len();
+            assert_eq!(&args[n - 2..], ["--", evil], "{args:?}");
+        }
     }
 }
