@@ -120,7 +120,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
     match (m.screen, &m.picker) {
         (Screen::Picker, Some(p)) => layers = layers.push(modal(picker::view(m, p, sheet_c), sheet_c, Message::CancelPick)),
         (Screen::Settings, _) => {
-            let phone = app.phone.as_ref().map(|(_, link, qr)| (link.as_str(), qr));
+            let phone = app.phone.running.as_ref().map(|(_, link, qr)| (link.as_str(), qr));
             layers = layers.push(modal(settings::view(m, phone, sheet_c), sheet_c, Message::CloseSettings));
         }
         _ => {}
@@ -143,8 +143,8 @@ pub fn view(app: &App) -> Element<'_, Message> {
             _ => layers = layers.push(modal(tour::sheet(m, step, sheet_c), sheet_c, Message::Done)),
         }
     }
-    if m.pair_request.is_some() {
-        layers = layers.push(modal(confirm_pair(sheet_c), sheet_c, Message::AnswerPair(false)));
+    if let Some((_, origin)) = &m.pair_request {
+        layers = layers.push(modal(confirm_pair(origin, sheet_c), sheet_c, Message::AnswerPair(false)));
     }
     if m.drop_hover {
         layers = layers.push(drop_target(c));
@@ -213,15 +213,17 @@ fn drop_target<'a>(c: Colors) -> Element<'a, Message> {
     container(card).width(Fill).height(Fill).center(Fill).style(style::scrim(c.scrim, 0.7)).into()
 }
 
-/// A browser extension asks to connect (one-click pairing).
-fn confirm_pair<'a>(c: Colors) -> Element<'a, Message> {
+/// A browser extension asks to connect (one-click pairing). Its id isn't known in advance, so
+/// the question shows who asks and leaves the call to the user.
+fn confirm_pair(origin: &str, c: Colors) -> Element<'_, Message> {
     let badge = container(icon(Icon::Browser, 22).color(c.accent)).center(44).style(style::tag(c.accent_soft, c.accent));
     let content = column![
         row![
             badge,
             column![
-                text("Connect the browser extension?").size(16).font(style::SEMIBOLD),
-                text("Your browser's Snag extension wants to send downloads here. Allow it if you just clicked Connect in the extension.").size(12.5).color(c.text2),
+                text("Connect a browser extension?").size(16).font(style::SEMIBOLD),
+                text(format!("{} wants to send downloads here.", crate::view::ellipsize(origin, 72))).size(12.5).font(style::SEMIBOLD),
+                text("Allow it only if you just clicked Connect in Snag's extension. If you didn't, choose Don't allow.").size(12.5).color(c.text2),
             ]
             .spacing(4)
             .width(Fill),

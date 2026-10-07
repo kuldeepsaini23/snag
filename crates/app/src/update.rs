@@ -21,8 +21,8 @@ pub struct App {
     pub tray: Option<crate::tray::Tray>,
     /// The download manager's runtime (servers started from the UI run there).
     pub runtime: tokio::runtime::Handle,
-    /// Phone sharing while it's switched on: the server, its link and QR code.
-    pub phone: Option<(rdm_bridge::phone::Phone, String, iced::widget::qr_code::Data)>,
+    /// Phone sharing while it's switched on (the server, its link and QR code), and a start that failed.
+    pub phone: crate::sharing::PhoneSharing<Phone>,
     pub motion: Motion,
     /// The instant the view draws (animations are read at it).
     pub now: Instant,
@@ -255,7 +255,7 @@ pub fn boot(manager: Manager, bridge_status: String, data_dir: PathBuf, runtime:
         data_dir,
         tray,
         runtime,
-        phone: None,
+        phone: Default::default(),
         motion,
         now: Instant::now(),
         inspector_item: None,
@@ -350,35 +350,30 @@ fn log_event(data_dir: &std::path::Path, event: &Event) {
     }
 }
 
-/// Phone sharing follows its setting (and a regenerated pairing code).
+/// Phone sharing follows its setting (and a regenerated pairing code); see `crate::sharing`.
 fn sync_phone(app: &mut App) {
     let s = &app.model.settings;
-    if !s.phone_sharing {
-        app.phone = None;
-        return;
+    let (on, token) = (s.phone_sharing, s.extension_token.clone());
+    let (runtime, manager) = (&app.runtime, &app.manager);
+    let serves = |(_, link, _): &Phone, token: &str| link.ends_with(token);
+    if let Some(why) = app.phone.sync(on, &token, Instant::now(), serves, || start_phone(runtime, manager, &token)) {
+        app.model.notice = Some(why);
     }
-    let token = s.extension_token.clone();
-    if let Some((phone, link, _)) = &app.phone
-        && link.ends_with(&token)
-    {
-        let _ = phone.port;
-        return;
-    }
-    app.phone = None;
-    let Some(ip) = rdm_bridge::phone::lan_ip() else {
-        app.model.notice = Some("Phone sharing: no home network found".into());
-        return;
-    };
+}
+
+/// The phone page's server, its link and the link's QR code.
+pub type Phone = (rdm_bridge::phone::Phone, String, iced::widget::qr_code::Data);
+
+fn start_phone(runtime: &tokio::runtime::Handle, manager: &Manager, token: &str) -> Result<Phone, String> {
+    let ip = rdm_bridge::phone::lan_ip().ok_or("Phone sharing: no home network found")?;
     for port in rdm_bridge::phone::PORTS {
-        if let Ok(phone) = rdm_bridge::phone::start_on(&app.runtime, app.manager.clone(), (std::net::Ipv4Addr::UNSPECIFIED, port).into()) {
-            let link = rdm_bridge::phone::page_url(ip, phone.port, &token);
-            if let Ok(qr) = iced::widget::qr_code::Data::new(&link) {
-                app.phone = Some((phone, link, qr));
-            }
-            return;
+        if let Ok(phone) = rdm_bridge::phone::start_on(runtime, manager.clone(), (std::net::Ipv4Addr::UNSPECIFIED, port).into()) {
+            let link = rdm_bridge::phone::page_url(ip, phone.port, token);
+            let qr = iced::widget::qr_code::Data::new(&link).map_err(|e| format!("Phone sharing: {e}"))?;
+            return Ok((phone, link, qr));
         }
     }
-    app.model.notice = Some("Phone sharing: no free port (47330–47335)".into());
+    Err("Phone sharing: no free port (47330–47335)".into())
 }
 
 fn fetch_thumbs(app: &mut App) -> Task<Message> {
@@ -387,25 +382,30 @@ fn fetch_thumbs(app: &mut App) -> Task<Message> {
         return Task::none();
     }
     let dir = app.data_dir.join("thumbs");
-    Task::batch(wanted.into_iter().map(|url| {
-        app.model.thumb_pending.insert(url.clone());
-        let file = crate::view::thumb_file(&dir, &url);
-        Task::perform(fetch_thumb(url.clone(), file), move |path| Message::ThumbReady(url.clone(), path))
+    Task::batch(wanted.into_iter().map(|source| {
+        let key = source.key();
+        app.model.thumb_pending.insert(key.clone());
+        let file = crate::view::thumb_file(&dir, &key);
+        Task::perform(fetch_thumb(source, file), move |path| Message::ThumbReady(key.clone(), path))
     }))
 }
 
 /// Downloads a thumbnail once (it stays cached on disk across restarts).
-async fn fetch_thumb(url: String, base: PathBuf) -> Option<PathBuf> {
+async fn fetch_thumb(source: crate::view::ThumbSource, base: PathBuf) -> Option<PathBuf> {
     if let Some(cached) = ["jpg", "png", "webp"].iter().map(|e| base.with_extension(e)).find(|f| f.exists()) {
         return Some(cached);
     }
-    if let Some(src) = crate::view::local_thumb_source(&url).map(PathBuf::from) {
-        // A downloaded picture: decoded on a worker, two at a time (a library of photos would
-        // otherwise decode them all at once).
-        static DECODING: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
-        let _turn = DECODING.acquire().await.ok()?;
-        return tokio::task::spawn_blocking(move || crate::local_thumb::make(&src, &base)).await.ok()?;
-    }
+    let url = match source {
+        crate::view::ThumbSource::Local(src) => {
+            // A downloaded picture: decoded on a worker, two at a time (a library of photos
+            // would otherwise decode them all at once).
+            static DECODING: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
+            let _turn = DECODING.acquire().await.ok()?;
+            return tokio::task::spawn_blocking(move || crate::local_thumb::make(&src, &base)).await.ok()?;
+        }
+        crate::view::ThumbSource::Web(url) if rdm_core::model::is_web_link(&url) => url,
+        crate::view::ThumbSource::Web(_) => return None,
+    };
     let get = rdm_engine::default_client().get(&url).timeout(std::time::Duration::from_secs(20)).send();
     let bytes = get.await.ok()?.error_for_status().ok()?.bytes().await.ok()?;
     // A thumbnail is small; anything huge isn't one.
@@ -494,7 +494,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::Core(Event::Quit) => return iced::exit(),
         Message::Core(event) => {
             log_event(&app.data_dir, &event);
-            let pick = matches!(event, Event::PickMedia { .. } | Event::Focus | Event::PairRequest(_) | Event::Duplicate(_));
+            let pick = matches!(event, Event::PickMedia { .. } | Event::Focus | Event::PairRequest { .. } | Event::Duplicate(_));
             model.apply(event);
             model.speeds.sample(&model.items, Instant::now());
             if pick {
@@ -560,7 +560,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             };
         }
         Message::AnswerPair(allow) => {
-            if let Some(id) = model.pair_request.take() {
+            if let Some((id, _)) = model.pair_request.take() {
                 if allow {
                     model.notice = Some("Browser extension connected ✓".into());
                 }

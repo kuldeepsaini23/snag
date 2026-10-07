@@ -30,6 +30,20 @@ fn main() {
         eprintln!("ERROR: Unsupported URL: {url}");
         std::process::exit(1);
     }
+    if args.iter().any(|a| a == "-J") && what == "slowprobe" {
+        // A slow read that counts the reads running with it: `probing/` next to this exe holds
+        // one file per read in progress; each read notes how many it saw in `seen/<pid>`.
+        let exe = std::env::current_exe().unwrap_or_default();
+        let (probing, seen) = (exe.with_file_name("probing"), exe.with_file_name("seen"));
+        let _ = std::fs::create_dir_all(&probing);
+        let _ = std::fs::create_dir_all(&seen);
+        let me = probing.join(std::process::id().to_string());
+        let _ = std::fs::write(&me, b"");
+        let now = std::fs::read_dir(&probing).map(|d| d.count()).unwrap_or(0);
+        let _ = std::fs::write(seen.join(std::process::id().to_string()), now.to_string());
+        std::thread::sleep(Duration::from_secs(2));
+        let _ = std::fs::remove_file(&me);
+    }
     if args.iter().any(|a| a == "-J") {
         println!(
             r#"{{"_type":"video","title":"Fake clip","duration":3.0,"formats":[{{"vcodec":"avc1","acodec":"none","height":480,"filesize":300}},{{"vcodec":"none","acodec":"mp4a","filesize":100}}]}}"#

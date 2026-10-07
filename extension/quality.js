@@ -59,10 +59,11 @@ class ProbeCache {
     this.entries = new Map();
   }
 
-  get(url) {
+  /** `opts` go to `read` (a prefetch sends no cookies; a click does). */
+  get(url, opts) {
     const hit = this.entries.get(url);
     if (hit && this.clock() - hit.at < this.ttlMs) return hit.answer;
-    const answer = this.read(url).then(
+    const answer = this.read(url, opts).then(
       (info) => ({ ok: true, info }),
       (e) => {
         this.entries.delete(url);
@@ -73,6 +74,46 @@ class ProbeCache {
     // Keep the map small: the oldest pages go first.
     if (this.entries.size > 30) this.entries.delete(this.entries.keys().next().value);
     return answer;
+  }
+}
+
+/** The page a read is for: its address without the #fragment (same page, same read). */
+function pageKey(href) {
+  const hash = href.indexOf("#");
+  return hash < 0 ? href : href.slice(0, hash);
+}
+
+/**
+ * When the in-page button may start Snag reading the page before any click: only on known
+ * video pages (`isVideo(hostname, pathname)`), once per page, and only after its address has
+ * held still for `settleMs` (single-page sites change it several times while loading).
+ */
+class PrefetchPlan {
+  constructor(settleMs, isVideo) {
+    this.settleMs = settleMs;
+    this.isVideo = isVideo;
+    this.page = "";
+    this.since = 0;
+    this.done = "";
+  }
+
+  /** The page to read now (`href` is the current address, "" for none), or null. */
+  next(href, now) {
+    let video = false;
+    try {
+      const u = new URL(href);
+      video = /^https?:$/.test(u.protocol) && this.isVideo(u.hostname, u.pathname);
+    } catch (_) {
+      // Not an address: nothing to read.
+    }
+    const key = video ? pageKey(href) : "";
+    if (key !== this.page) {
+      this.page = key;
+      this.since = now;
+    }
+    if (!key || key === this.done || now - this.since < this.settleMs) return null;
+    this.done = key;
+    return key;
   }
 }
 
@@ -131,4 +172,4 @@ function makeAsk(runtime, timeoutMs) {
     });
 }
 
-if (typeof module !== "undefined") module.exports = { sizeLabel, qualityRows, sniffedRows, ProbeCache, safeAccent, makeAsk, contextTarget, fullSizeImage, DEFAULT_ACCENT };
+if (typeof module !== "undefined") module.exports = { sizeLabel, qualityRows, sniffedRows, ProbeCache, PrefetchPlan, pageKey, safeAccent, makeAsk, contextTarget, fullSizeImage, DEFAULT_ACCENT };

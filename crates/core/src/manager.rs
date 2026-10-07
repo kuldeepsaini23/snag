@@ -43,8 +43,9 @@ pub enum Event {
     Quit,
     /// The watched channels/playlists changed.
     Watches(Vec<crate::watch::Watch>),
-    /// A browser extension asks to connect: the UI asks the user, then `answer_pair`.
-    PairRequest(u64),
+    /// A browser extension asks to connect: the UI asks the user, then `answer_pair`. `origin`
+    /// is the asking extension's (`chrome-extension://<id>`), shown in the question.
+    PairRequest { id: u64, origin: String },
     /// That link was downloaded before (and the file is still there): nothing was added. The UI
     /// offers Show / Download again (`redownload` of this item) / Skip.
     Duplicate(Item),
@@ -52,6 +53,16 @@ pub enum Event {
     Safety(ItemId, crate::safety::Safety),
     /// A segmented download's connections changed: each one's range and bytes written.
     Segments(ItemId, Vec<rdm_engine::segments::Segment>),
+}
+
+/// What became of a browser extension's request to connect (`Manager::request_pair`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PairAnswer {
+    Allowed,
+    /// Not allowed, or no answer within two minutes.
+    Refused,
+    /// Another request still waits for the user's answer.
+    Busy,
 }
 
 /// Handle to the download manager. Cheap to clone; all clones talk to one actor.
@@ -68,7 +79,12 @@ pub struct Manager {
     torrents: Arc<Torrents>,
     /// Extensions waiting for the user's answer to "connect?".
     pairs: Arc<Mutex<HashMap<u64, oneshot::Sender<bool>>>>,
+    /// Page reads (`probe_media`) running at once; the rest wait their turn.
+    probes: Arc<tokio::sync::Semaphore>,
 }
+
+/// How many `probe_media` reads (one yt-dlp each) may run at once.
+const PROBES_AT_ONCE: usize = 2;
 
 type Referrers = Arc<Mutex<HashMap<String, String>>>;
 
@@ -225,13 +241,15 @@ impl Manager {
         actor.referrers = referrers.clone();
         actor.torrents = torrents.clone();
         tokio::spawn(actor.run(rx));
-        Manager { tx, events, tools, jar, cookie_dir, referrers, torrents, pairs: Arc::default() }
+        let probes = Arc::new(tokio::sync::Semaphore::new(PROBES_AT_ONCE));
+        Manager { tx, events, tools, jar, cookie_dir, referrers, torrents, pairs: Arc::default(), probes }
     }
 
     /// Reads a video/audio page (title, qualities, playlist entries). Fetches yt-dlp
-    /// on first use.
+    /// on first use. At most two reads run at once (each is a yt-dlp process); others queue.
     pub async fn probe_media(&self, url: String) -> Result<MediaInfo, String> {
         let ytdlp = self.tools.ytdlp().await?;
+        let _turn = self.probes.acquire().await.map_err(|e| e.to_string())?;
         static PROBES: AtomicU64 = AtomicU64::new(0);
         let key = format!("probe-{}", PROBES.fetch_add(1, Ordering::Relaxed));
         let cookies = cookie_file(&self.jar, &self.cookie_dir, &key, &url);
@@ -350,24 +368,38 @@ impl Manager {
         let _ = self.tx.send(Cmd::CheckWatches);
     }
 
-    /// A browser extension asks to connect. The UI shows the question; this waits (up to two
-    /// minutes) for the user's answer. True = allowed.
-    pub async fn request_pair(&self) -> bool {
+    /// A browser extension (`origin`) asks to connect. The UI shows the question; this waits (up
+    /// to two minutes) for the user's answer. One question at a time: while one waits, others
+    /// are turned away rather than put in its place.
+    pub async fn request_pair(&self, origin: String) -> PairAnswer {
         static NEXT: AtomicU64 = AtomicU64::new(1);
         let id = NEXT.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
-        if let Ok(mut pairs) = self.pairs.lock() {
+        {
+            let Ok(mut pairs) = self.pairs.lock() else { return PairAnswer::Refused };
+            if !pairs.is_empty() {
+                return PairAnswer::Busy;
+            }
             pairs.insert(id, tx);
         }
-        let _ = self.events.send(Event::PairRequest(id));
-        let answer = tokio::time::timeout(Duration::from_secs(120), rx).await;
-        if let Ok(mut pairs) = self.pairs.lock() {
-            pairs.remove(&id);
+        // Forgets the question however this ends (answered, timed out, or the caller hung up).
+        struct Asked<'a>(&'a Mutex<HashMap<u64, oneshot::Sender<bool>>>, u64);
+        impl Drop for Asked<'_> {
+            fn drop(&mut self) {
+                if let Ok(mut pairs) = self.0.lock() {
+                    pairs.remove(&self.1);
+                }
+            }
         }
-        matches!(answer, Ok(Ok(true)))
+        let _asked = Asked(&self.pairs, id);
+        let _ = self.events.send(Event::PairRequest { id, origin });
+        match tokio::time::timeout(Duration::from_secs(120), rx).await {
+            Ok(Ok(true)) => PairAnswer::Allowed,
+            _ => PairAnswer::Refused,
+        }
     }
 
-    /// The user's answer to `Event::PairRequest(id)`.
+    /// The user's answer to `Event::PairRequest { id, .. }`.
     pub async fn answer_pair(&self, id: u64, allow: bool) {
         let waiting = self.pairs.lock().ok().and_then(|mut p| p.remove(&id));
         if let Some(tx) = waiting {
@@ -843,7 +875,10 @@ impl Actor {
         self.push_item(url, title, category, Kind::Media(format), referrer, queue)
     }
 
+    /// Records a video's preview and length. Every recorded thumbnail comes through here, so only
+    /// web ones are kept (see `is_web_link`).
     fn set_meta(&mut self, id: ItemId, thumbnail: Option<String>, duration: Option<f64>) {
+        let thumbnail = thumbnail.filter(|t| crate::model::is_web_link(t));
         if thumbnail.is_none() && duration.is_none() {
             return;
         }

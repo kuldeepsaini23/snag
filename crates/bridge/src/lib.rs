@@ -7,7 +7,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use rdm_core::route::Route;
-use rdm_core::{Cookie, Manager};
+use rdm_core::{Cookie, Manager, PairAnswer};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::ops::RangeInclusive;
@@ -242,24 +242,29 @@ async fn add_media_choice(State(manager): State<Manager>, headers: HeaderMap, Js
     if let Some(page) = req.referrer.filter(|r| r.starts_with("http")) {
         manager.remember_referrer(req.url.clone(), page);
     }
-    let id = manager.add_media_meta(req.url, req.title, req.format, 0, req.thumbnail, req.duration).await;
+    // Only a web picture: never a local or network-share path.
+    let thumbnail = req.thumbnail.filter(|t| rdm_core::model::is_web_link(t));
+    let id = manager.add_media_meta(req.url, req.title, req.format, 0, thumbnail, req.duration).await;
     (StatusCode::OK, Json(json!({ "id": id.0 })))
 }
 
 /// One-click pairing: a browser extension asks, the user allows it in Snag, the extension gets
 /// the code. Only extensions can ask (websites send their own origin), and without CORS
-/// headers no website could read the answer anyway.
+/// headers no website could read the answer anyway. The question names the asking extension,
+/// and while it is up no other request can replace it.
 async fn pair(State(manager): State<Manager>, headers: HeaderMap) -> (StatusCode, Json<Value>) {
     let origin = headers.get("origin").and_then(|v| v.to_str().ok()).unwrap_or("");
     let extension = ["chrome-extension://", "moz-extension://", "safari-web-extension://"].iter().any(|p| origin.starts_with(p));
     if !extension {
         return (StatusCode::FORBIDDEN, Json(json!({ "error": "only the Snag browser extension can connect" })));
     }
-    if manager.request_pair().await {
-        let token = manager.snapshot().await.settings.extension_token;
-        (StatusCode::OK, Json(json!({ "token": token })))
-    } else {
-        (StatusCode::FORBIDDEN, Json(json!({ "error": "not allowed in Snag" })))
+    match manager.request_pair(origin.to_string()).await {
+        PairAnswer::Allowed => {
+            let token = manager.snapshot().await.settings.extension_token;
+            (StatusCode::OK, Json(json!({ "token": token })))
+        }
+        PairAnswer::Refused => (StatusCode::FORBIDDEN, Json(json!({ "error": "not allowed in Snag" }))),
+        PairAnswer::Busy => (StatusCode::CONFLICT, Json(json!({ "error": "another connection request is waiting in Snag" }))),
     }
 }
 

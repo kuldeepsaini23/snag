@@ -1,9 +1,8 @@
 // Snag extension background: finds the desktop app on 127.0.0.1 and hands it links.
 // Chrome runs it as a service worker; Firefox loads catch-rules.js before it (see build.js).
 
-if (typeof importScripts === "function") importScripts("catch-rules.js", "sniffer.js", "quality.js", "later.js");
+if (typeof importScripts === "function") importScripts("catch-rules.js", "sniffer.js", "quality.js", "later.js", "connect.js");
 
-const PORTS = [47321, 47322, 47323, 47324, 47325, 47326];
 const DEFAULTS = { token: "", catchDownloads: true, minSizeMB: 1 };
 // Downloads we gave back to Chrome because Snag couldn't take them: don't catch them again.
 const handBack = new Set();
@@ -12,27 +11,11 @@ async function settings() {
   return { ...DEFAULTS, ...(await chrome.storage.local.get(Object.keys(DEFAULTS))) };
 }
 
-/** First port that answers as Snag: { port, paired } or null. */
-async function findApp(token) {
-  for (const port of PORTS) {
-    try {
-      const resp = await fetch(`http://127.0.0.1:${port}/ping`, {
-        headers: token ? { "X-RDM-Token": token } : {},
-        signal: AbortSignal.timeout(800),
-      });
-      if (!resp.ok) continue;
-      const body = await resp.json();
-      if (body.app === "rdm") {
-        // Remember Snag's colour for the in-page button and the popup.
-        if (body.accent) chrome.storage.local.set({ accent: body.accent }).catch(() => {});
-        return { port, paired: Boolean(body.paired) };
-      }
-    } catch (_) {
-      // Nothing on this port: try the next one.
-    }
-  }
-  return null;
-}
+const { findApp, pair, pairedApp } = makeConnection((url, opts) => fetch(url, opts), {
+  token: async () => (await settings()).token,
+  saveToken: (token) => chrome.storage.local.set({ token }),
+  saveAccent: (accent) => chrome.storage.local.set({ accent }).catch(() => {}),
+});
 
 /** The browser's cookies for `url`, so logged-in and age-restricted downloads work in Snag. */
 async function cookiesFor(url) {
@@ -115,33 +98,9 @@ chrome.tabs.onUpdated.addListener((tabId, change) => {
 });
 chrome.tabs.onRemoved.addListener((tabId) => forgetMedia(tabId));
 
-/** One-click pairing: Snag asks the user "Allow?", then hands over the code. */
-async function pair() {
-  const app = await findApp("");
-  if (!app) throw new Error("Snag isn't running");
-  const resp = await fetch(`http://127.0.0.1:${app.port}/pair`, { method: "POST" });
-  const body = await resp.json().catch(() => ({}));
-  if (!resp.ok || !body.token) throw new Error(body.error || "Not allowed in Snag");
-  await chrome.storage.local.set({ token: body.token });
-  return body.token;
-}
-
-/** The pairing code, connecting first if there is none (Snag asks the user once). */
-async function pairedApp() {
-  const { token } = await settings();
-  let app = await findApp(token);
-  if (!app) throw new Error("Snag isn't running");
-  if (!app.paired) {
-    const fresh = await pair();
-    app = await findApp(fresh);
-    if (!app || !app.paired) throw new Error("Couldn't connect to Snag");
-    return { app, token: fresh };
-  }
-  return { app, token };
-}
-
-async function sendToApp(url, kind, referrer, fallback) {
-  const { app, token } = await pairedApp();
+/** `mayPair`: the user just clicked, so Snag may ask "Allow?" first (see `pairedApp`). */
+async function sendToApp(url, kind, referrer, fallback, { mayPair = false } = {}) {
+  const { app, token } = await pairedApp({ mayPair });
   const resp = await fetch(`http://127.0.0.1:${app.port}/add`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-RDM-Token": token },
@@ -154,7 +113,7 @@ async function sendToApp(url, kind, referrer, fallback) {
 
 /** "Grab all": many links from one page in one request. */
 async function sendBatch(urls, referrer) {
-  const { app, token } = await pairedApp();
+  const { app, token } = await pairedApp({ mayPair: true });
   const resp = await fetch(`http://127.0.0.1:${app.port}/add-batch`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-RDM-Token": token },
@@ -165,13 +124,16 @@ async function sendBatch(urls, referrer) {
   return body;
 }
 
-/** Snag reads a video page and lists its qualities (for the menu in the page / popup). */
-async function probeInApp(url, referrer) {
-  const { app, token } = await pairedApp();
+/**
+ * Snag reads a video page and lists its qualities (for the menu in the page / popup). A click
+ * sends the page's cookies and may connect first; a prefetch does neither.
+ */
+async function probeInApp(url, { click = false } = {}) {
+  const { app, token } = await pairedApp({ mayPair: click });
   const resp = await fetch(`http://127.0.0.1:${app.port}/probe`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-RDM-Token": token },
-    body: JSON.stringify({ url, referrer: referrer || undefined, cookies: await cookiesFor(url) }),
+    body: JSON.stringify({ url, cookies: click ? await cookiesFor(url) : [] }),
   });
   const body = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error(body.error || `Snag answered ${resp.status}`);
@@ -180,11 +142,11 @@ async function probeInApp(url, referrer) {
 
 // Pages Snag has read (or is reading): the menu opens with them ready. Ten minutes, then the
 // links inside go stale.
-const probes = new ProbeCache((url) => probeInApp(url), () => Date.now(), 10 * 60 * 1000);
+const probes = new ProbeCache((url, opts) => probeInApp(url, opts), () => Date.now(), 10 * 60 * 1000);
 
 /** The quality picked in the menu: Snag adds it straight away. */
 async function addMediaInApp(choice) {
-  const { app, token } = await pairedApp();
+  const { app, token } = await pairedApp({ mayPair: true });
   const resp = await fetch(`http://127.0.0.1:${app.port}/add-media`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-RDM-Token": token },
@@ -215,10 +177,10 @@ async function showLater() {
   chrome.action.setBadgeText({ text: laterBadge(list) });
 }
 
-/** Sends a link now, or keeps it for when Snag runs again. Returns true if it was kept. */
+/** A link the user sent: now, or kept for when Snag runs again. Returns true if it was kept. */
 async function sendOrSave(url, kind, referrer, fallback) {
   try {
-    await sendToApp(url, kind, referrer, fallback);
+    await sendToApp(url, kind, referrer, fallback, { mayPair: true });
     return false;
   } catch (e) {
     if (e.message !== "Snag isn't running") throw e;
@@ -230,12 +192,15 @@ async function sendOrSave(url, kind, referrer, fallback) {
 }
 
 let draining = null;
-/** Hands the waiting links to Snag, in order; whatever fails keeps waiting. One run at a time. */
+/**
+ * Hands the waiting links to Snag, in order; whatever fails keeps waiting. One run at a time.
+ * It runs on its own (every minute), so it never connects: until the user does, links wait.
+ */
 function sendSaved() {
   draining ??= (async () => {
     const list = await savedLinks();
     if (!list.length) return;
-    const left = await drainLater(list, (e) => sendToApp(e.url, e.kind, e.referrer, e.fallback));
+    const left = await drainLater(list, (e) => sendToApp(e.url, e.kind, e.referrer, e.fallback, { mayPair: false }));
     // Links saved while this ran are kept too.
     const now = await savedLinks();
     const sent = new Set(list.slice(0, list.length - left.length).map((e) => e.url));
@@ -331,16 +296,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     return true;
   }
   if (msg.type === "probe") {
-    probes.get(msg.url).then(reply);
+    probes.get(pageKey(msg.url), { click: true }).then(reply);
     return true;
   }
   if (msg.type === "prefetch") {
-    // Only when already connected: a prefetch must never pop up "Allow?" in Snag.
-    settings()
-      .then((s) => findApp(s.token))
-      .then((app) => {
-        if (app && app.paired) probes.get(msg.url);
-      });
+    // Only when already connected (a prefetch never pops up "Allow?" in Snag), and without the
+    // page's cookies: nobody has clicked anything yet.
+    probes.get(pageKey(msg.url), { click: false });
     reply({ ok: true });
     return false;
   }

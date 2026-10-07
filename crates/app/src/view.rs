@@ -124,13 +124,15 @@ impl Model {
 impl Model {
     /// Thumbnails to fetch at `now`: shown by an item or the picker, not cached, not on their way,
     /// and not waiting to be tried again after a failure.
-    pub fn missing_thumbs(&self, now: std::time::Instant) -> Vec<String> {
-        let picker = self.picker.iter().flat_map(|p| p.info.thumbnail.iter().cloned().chain(p.info.entries.iter().filter_map(|e| e.thumbnail.clone())));
-        let waiting = |url: &String| self.thumb_failures.get(url).is_some_and(|(n, at)| thumb_backoff(*n).is_none() || now < *at);
-        let mut out: Vec<String> = Vec::new();
-        for url in self.items.iter().filter_map(thumb_url).chain(picker) {
-            if !self.thumbs.contains_key(&url) && !self.thumb_pending.contains(&url) && !waiting(&url) && !out.contains(&url) {
-                out.push(url);
+    pub fn missing_thumbs(&self, now: std::time::Instant) -> Vec<ThumbSource> {
+        let picker = self.picker.iter().flat_map(|p| p.info.thumbnail.iter().chain(p.info.entries.iter().filter_map(|e| e.thumbnail.as_ref())));
+        let picker = picker.filter_map(|url| ThumbSource::web(url));
+        let waiting = |key: &String| self.thumb_failures.get(key).is_some_and(|(n, at)| thumb_backoff(*n).is_none() || now < *at);
+        let mut out: Vec<ThumbSource> = Vec::new();
+        for source in self.items.iter().filter_map(thumb_source).chain(picker) {
+            let key = source.key();
+            if !self.thumbs.contains_key(&key) && !self.thumb_pending.contains(&key) && !waiting(&key) && !out.iter().any(|s| s.key() == key) {
+                out.push(source);
             }
         }
         out
@@ -186,21 +188,49 @@ pub fn youtube_id(url: &str) -> Option<&str> {
     id.filter(|id| id.len() == 11 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'))
 }
 
-/// The picture a row shows: the one recorded with the item, else YouTube's own for its video
-/// (items added before thumbnails were recorded, and paths that don't record one).
-pub fn thumb_url(item: &Item) -> Option<String> {
-    if let Some(path) = local_picture(item) {
-        return Some(format!("{LOCAL}{}", path.display()));
-    }
-    if item.thumbnail.is_some() {
-        return item.thumbnail.clone();
-    }
-    let id = youtube_id(&item.url).filter(|_| matches!(item.kind, Kind::Media(_)))?;
-    Some(format!("https://i.ytimg.com/vi/{id}/mqdefault.jpg"))
+/// Where a picture comes from. Only Snag itself makes `Local` (a finished picture is its own
+/// thumbnail, read from the item's file); a picture recorded with an item or read from a page is
+/// `Web`, and only ever http(s): a `file:` or `\\host\share` "thumbnail" would have Snag read
+/// local files, or hand the Windows login to a network share.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ThumbSource {
+    Web(String),
+    Local(std::path::PathBuf),
 }
 
-/// A thumbnail "URL" that is a downloaded picture on disk (made smaller locally, not fetched).
-const LOCAL: &str = "file:";
+impl ThumbSource {
+    /// `url` if it is an http(s) address.
+    pub fn web(url: &str) -> Option<ThumbSource> {
+        rdm_core::model::is_web_link(url).then(|| ThumbSource::Web(url.to_string()))
+    }
+
+    /// Its key in the thumbnail cache (`Model::thumbs`, and the cached file's name). A local
+    /// picture's never looks like a web address.
+    pub fn key(&self) -> String {
+        match self {
+            ThumbSource::Web(url) => url.clone(),
+            ThumbSource::Local(path) => format!("file:{}", path.display()),
+        }
+    }
+}
+
+/// The picture a row shows: the one recorded with the item, else YouTube's own for its video
+/// (items added before thumbnails were recorded, and paths that don't record one).
+pub fn thumb_source(item: &Item) -> Option<ThumbSource> {
+    if let Some(path) = local_picture(item) {
+        return Some(ThumbSource::Local(path.to_path_buf()));
+    }
+    if let Some(web) = item.thumbnail.as_deref().and_then(ThumbSource::web) {
+        return Some(web);
+    }
+    let id = youtube_id(&item.url).filter(|_| matches!(item.kind, Kind::Media(_)))?;
+    Some(ThumbSource::Web(format!("https://i.ytimg.com/vi/{id}/mqdefault.jpg")))
+}
+
+/// `thumb_source`'s key in the thumbnail cache.
+pub fn thumb_url(item: &Item) -> Option<String> {
+    thumb_source(item).map(|s| s.key())
+}
 
 /// Picture formats the thumbnail decoder reads.
 const PICTURES: [&str; 6] = ["jpg", "jpeg", "png", "gif", "webp", "bmp"];
@@ -210,11 +240,6 @@ fn local_picture(item: &Item) -> Option<&std::path::Path> {
     let path = item.dest.as_deref().filter(|_| item.status == Status::Done && item.category == Category::Image && item.kind != Kind::Gallery)?;
     let ext = path.extension()?.to_str()?.to_ascii_lowercase();
     PICTURES.contains(&ext.as_str()).then_some(path)
-}
-
-/// The picture behind a local thumbnail "URL" (None: a web address).
-pub fn local_thumb_source(url: &str) -> Option<&std::path::Path> {
-    url.strip_prefix(LOCAL).map(std::path::Path::new)
 }
 
 /// The library whose list can switch to a grid of thumbnails (Videos and Images).
@@ -1053,18 +1078,22 @@ mod tests {
         assert_eq!(picked[1].1, (Some("https://i/2.jpg".to_string()), Some(2.0)), "meta stays with its video");
     }
 
+    fn keys(sources: Vec<ThumbSource>) -> Vec<String> {
+        sources.iter().map(ThumbSource::key).collect()
+    }
+
     #[test]
     fn missing_thumbs_lists_each_url_once() {
         let mut m = model();
         let with = |id: u64, url: &str| Item { thumbnail: Some(url.into()), ..item(id, "v.mp4", Category::Video, Status::Done) };
         m.items = vec![with(1, "https://i/a.jpg"), with(2, "https://i/a.jpg"), with(3, "https://i/b.jpg"), item(4, "f.zip", Category::Archive, Status::Done)];
         let now = std::time::Instant::now();
-        assert_eq!(m.missing_thumbs(now), vec!["https://i/a.jpg".to_string(), "https://i/b.jpg".to_string()]);
+        assert_eq!(keys(m.missing_thumbs(now)), vec!["https://i/a.jpg".to_string(), "https://i/b.jpg".to_string()]);
         m.thumb_pending.insert("https://i/a.jpg".into());
         m.thumbs.insert("https://i/b.jpg".into(), std::path::PathBuf::from("b"));
         assert!(m.missing_thumbs(now).is_empty(), "being fetched or already here");
         m.picker = Some(Picker::new("u".into(), MediaInfo { thumbnail: Some("https://i/p.jpg".into()), ..playlist(0) }, 0, 0));
-        assert_eq!(m.missing_thumbs(now), vec!["https://i/p.jpg".to_string()], "the picker's preview too");
+        assert_eq!(keys(m.missing_thumbs(now)), vec!["https://i/p.jpg".to_string()], "the picker's preview too");
     }
 
     #[test]
@@ -1098,21 +1127,40 @@ mod tests {
         let file = Item { url: "https://youtu.be/dQw4w9WgXcQ".into(), ..item(2, "a.zip", Category::Archive, Status::Done) };
         assert_eq!(thumb_url(&file), None, "only videos and music get a picture");
         let m = Model { items: vec![video], ..Model::default() };
-        assert_eq!(m.missing_thumbs(std::time::Instant::now()), vec!["https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg".to_string()], "and it's fetched");
+        assert_eq!(keys(m.missing_thumbs(std::time::Instant::now())), vec!["https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg".to_string()], "and it's fetched");
     }
 
     #[test]
     fn finished_pictures_are_their_own_thumbnail() {
         let photo = Item { dest: Some("C:\\dl\\Images\\cat.JPG".into()), ..item(1, "cat.JPG", Category::Image, Status::Done) };
         assert_eq!(thumb_url(&photo).as_deref(), Some("file:C:\\dl\\Images\\cat.JPG"));
-        assert_eq!(local_thumb_source("file:C:\\dl\\Images\\cat.JPG"), Some(std::path::Path::new("C:\\dl\\Images\\cat.JPG")));
-        assert_eq!(local_thumb_source("https://i/a.jpg"), None);
+        assert_eq!(thumb_source(&photo), Some(ThumbSource::Local("C:\\dl\\Images\\cat.JPG".into())));
         let unfinished = Item { status: Status::Running, ..photo.clone() };
         assert_eq!(thumb_url(&unfinished), None, "half a file isn't a picture yet");
         let svg = Item { dest: Some("C:\\dl\\logo.svg".into()), ..item(2, "logo.svg", Category::Image, Status::Done) };
         assert_eq!(thumb_url(&svg), None, "only formats the decoder reads");
         let gallery = Item { kind: Kind::Gallery, dest: Some("C:\\dl\\Images\\pinterest.com · 1".into()), ..item(3, "pinterest.com · 1", Category::Image, Status::Done) };
         assert_eq!(thumb_url(&gallery), None, "a gallery is a folder");
+    }
+
+    #[test]
+    fn a_recorded_thumbnail_is_never_read_from_disk() {
+        // Recorded by an older Snag, or a page that named a file (a network share would get
+        // the Windows login): ignored, nothing is read.
+        for bad in [r"file:\\host\share\a.png", "file:///C:/x.png", r"\\host\share\b.png", r"C:\x.png", "ftp://h/a.png"] {
+            let video = Item { thumbnail: Some(bad.into()), ..item(1, "v.mp4", Category::Video, Status::Done) };
+            assert_eq!(thumb_source(&video), None, "{bad}");
+            let m = Model { items: vec![video], ..Model::default() };
+            assert!(m.missing_thumbs(std::time::Instant::now()).is_empty(), "{bad}");
+        }
+        // Not even from the quality picker's preview.
+        let picker = Model { picker: Some(Picker::new("u".into(), MediaInfo { thumbnail: Some(r"file:\\host\share\p.png".into()), ..playlist(0) }, 0, 0)), ..Model::default() };
+        assert!(picker.missing_thumbs(std::time::Instant::now()).is_empty());
+        // A downloaded picture is still shown from its own file, whatever was recorded with it.
+        let photo = Item { dest: Some("C:\\dl\\Images\\x.png".into()), thumbnail: Some(r"file:\\host\share\a.png".into()), ..item(2, "x.png", Category::Image, Status::Done) };
+        assert_eq!(thumb_source(&photo), Some(ThumbSource::Local("C:\\dl\\Images\\x.png".into())));
+        let web = Item { thumbnail: Some("HTTPS://i/a.jpg".into()), ..item(3, "v.mp4", Category::Video, Status::Done) };
+        assert_eq!(thumb_source(&web), Some(ThumbSource::Web("HTTPS://i/a.jpg".into())));
     }
 
     #[test]
@@ -1172,7 +1220,7 @@ mod tests {
         let t0 = std::time::Instant::now();
         let url = "https://i/a.jpg".to_string();
         let mut m = Model { items: vec![Item { thumbnail: Some(url.clone()), ..item(1, "v.mp4", Category::Video, Status::Done) }], ..Model::default() };
-        assert_eq!(m.missing_thumbs(t0), vec![url.clone()]);
+        assert_eq!(keys(m.missing_thumbs(t0)), vec![url.clone()]);
         m.thumb_pending.insert(url.clone());
         assert!(m.missing_thumbs(t0).is_empty(), "on its way");
         // It failed: not pending any more, but not asked for again straight away either.
@@ -1181,7 +1229,7 @@ mod tests {
         assert!(m.missing_thumbs(t0).is_empty());
         let first = thumb_backoff(1).expect("a first retry");
         assert_eq!(m.next_thumb_retry(), Some(t0 + first));
-        assert_eq!(m.missing_thumbs(t0 + first), vec![url.clone()], "tried again after the wait");
+        assert_eq!(keys(m.missing_thumbs(t0 + first)), vec![url.clone()], "tried again after the wait");
         // Each failure waits longer, and after a few it gives up (until the next launch).
         let waits: Vec<Duration> = (1..).map_while(thumb_backoff).collect();
         assert!(waits.windows(2).all(|w| w[1] > w[0]), "{waits:?}");

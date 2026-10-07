@@ -117,3 +117,47 @@ test("right-click 'Save page' sends the page to be saved as one file", () => {
   const { contextTarget } = require("../quality.js");
   assert.deepStrictEqual(contextTarget({ menuItemId: "rdm-save-page", pageUrl: "https://blog.x/post" }), { url: "https://blog.x/post", kind: "page", referrer: undefined });
 });
+
+test("prefetch: only known video pages, once per page (hash ignored), after the address settles", () => {
+  const { PrefetchPlan } = require("../quality.js");
+  const { isVideoPage } = require("../catch-rules.js");
+  const plan = new PrefetchPlan(1500, isVideoPage);
+  // An ordinary page is never read in the background, even while it plays something.
+  assert.strictEqual(plan.next("https://blog.example/post", 0), null);
+  assert.strictEqual(plan.next("https://blog.example/post", 5000), null);
+  // A video page: only once its address has held still for 1.5 s.
+  const yt = "https://www.youtube.com/watch?v=abc";
+  assert.strictEqual(plan.next(yt, 10_000), null);
+  assert.strictEqual(plan.next(yt, 11_000), null);
+  assert.strictEqual(plan.next(yt, 11_500), yt);
+  assert.strictEqual(plan.next(yt, 13_000), null, "once");
+  assert.strictEqual(plan.next(`${yt}#t=30`, 14_000), null, "the same page with a #fragment");
+  // Clicking quickly through videos reads none of the pages skipped past.
+  const a = "https://www.youtube.com/watch?v=a";
+  const b = "https://www.youtube.com/watch?v=b#comments";
+  assert.strictEqual(plan.next(a, 20_000), null);
+  assert.strictEqual(plan.next(b, 21_000), null);
+  assert.strictEqual(plan.next(b, 22_000), null);
+  assert.strictEqual(plan.next(b, 22_500), "https://www.youtube.com/watch?v=b", "keyed without the hash");
+  // Hidden on this site (the content script passes no page): nothing.
+  assert.strictEqual(plan.next("", 30_000), null);
+  assert.strictEqual(plan.next("not a url", 40_000), null);
+});
+
+test("a page read is shared whatever its #fragment", () => {
+  const { pageKey } = require("../quality.js");
+  assert.strictEqual(pageKey("https://v.x/watch?v=1#t=30"), "https://v.x/watch?v=1");
+  assert.strictEqual(pageKey("https://v.x/watch?v=1"), "https://v.x/watch?v=1");
+});
+
+test("prefetch reads pass their options through (no cookies), clicks theirs", async () => {
+  const { ProbeCache } = require("../quality.js");
+  const seen = [];
+  const cache = new ProbeCache(async (url, opts) => {
+    seen.push([url, opts]);
+    return {};
+  }, () => 0, 60_000);
+  await cache.get("https://v.x/1", { cookies: false });
+  await cache.get("https://v.x/2", { cookies: true });
+  assert.deepStrictEqual(seen, [["https://v.x/1", { cookies: false }], ["https://v.x/2", { cookies: true }]]);
+});
