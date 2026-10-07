@@ -103,22 +103,22 @@ pub fn view(app: &App) -> Element<'_, Message> {
     }
     let sheet_c = c.faded(a.sheet);
     match (m.screen, &m.picker) {
-        (Screen::Picker, Some(p)) => layers = layers.push(modal(picker::view(m, p, sheet_c), a.sheet, Message::CancelPick)),
+        (Screen::Picker, Some(p)) => layers = layers.push(modal(picker::view(m, p, sheet_c), sheet_c, Message::CancelPick)),
         (Screen::Settings, _) => {
             let phone = app.phone.as_ref().map(|(_, link, qr)| (link.as_str(), qr));
-            layers = layers.push(modal(settings::view(m, phone, sheet_c), a.sheet, Message::CloseSettings));
+            layers = layers.push(modal(settings::view(m, phone, sheet_c), sheet_c, Message::CloseSettings));
         }
         _ => {}
     }
     if m.confirm_quit {
-        layers = layers.push(modal(confirm_quit(m, sheet_c), a.sheet, Message::KeepDownloading));
+        layers = layers.push(modal(confirm_quit(m, sheet_c), sheet_c, Message::KeepDownloading));
     }
     if let Some(info) = &m.info {
         // Help, What's new and the bug report go over anything else that is open.
-        layers = layers.push(modal(help::sheet(m, info, &app.bug_text, sheet_c), a.sheet, Message::CloseInfo));
+        layers = layers.push(modal(help::sheet(m, info, &app.bug_text, sheet_c), sheet_c, Message::CloseInfo));
     }
     if m.pair_request.is_some() {
-        layers = layers.push(modal(confirm_pair(sheet_c), a.sheet, Message::AnswerPair(false)));
+        layers = layers.push(modal(confirm_pair(sheet_c), sheet_c, Message::AnswerPair(false)));
     }
     if m.screen == Screen::Downloads
         && let Some(t) = toast(m, c.faded(a.toast))
@@ -222,9 +222,10 @@ fn confirm_quit(m: &Model, c: Colors) -> Element<'_, Message> {
 
 /// A sheet over a dimmed window; clicking the dim area sends `on_blur`. While `t` goes 0 → 1
 /// the dim fades in and the sheet scales up from 97% and rises a few pixels.
-fn modal<'a>(content: Element<'a, Message>, t: f32, on_blur: Message) -> Element<'a, Message> {
+fn modal<'a>(content: Element<'a, Message>, c: Colors, on_blur: Message) -> Element<'a, Message> {
+    let t = c.alpha;
     let sheet = float(opaque(content)).scale(0.97 + 0.03 * t).translate(move |_, _| Vector::new(0.0, 10.0 * (1.0 - t)));
-    opaque(mouse_area(container(sheet).width(Fill).height(Fill).center(Fill).style(style::scrim(t))).on_press(on_blur))
+    opaque(mouse_area(container(sheet).width(Fill).height(Fill).center(Fill).style(style::scrim(c.scrim, 1.0))).on_press(on_blur))
 }
 
 fn footer(m: &Model, c: Colors) -> Element<'_, Message> {

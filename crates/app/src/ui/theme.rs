@@ -41,6 +41,21 @@ pub struct Colors {
     pub on_accent: Color,
     /// A switch's knob when it's on: white, unless the accent itself is near-white.
     pub knob: Color,
+    /// A switch's knob and track when it's off.
+    pub knob_off: Color,
+    pub track: Color,
+    /// The colour of hover washes and the primary button: white on dark, near-black on light.
+    pub ink: Color,
+    /// Text on `ink`.
+    pub on_ink: Color,
+    /// The glyph on a video, song or picture tile.
+    pub tile_ink: Color,
+    /// Under sheets and popovers.
+    pub shadow: Color,
+    /// The dim behind a sheet, fully faded in.
+    pub scrim: Color,
+    /// The light set (Settings → Appearance → Theme).
+    pub light: bool,
     /// How opaque everything drawn with these colours is (below 1 while a sheet fades in).
     pub alpha: f32,
 }
@@ -67,6 +82,14 @@ impl Colors {
             accent_soft: f(self.accent_soft),
             on_accent: f(self.on_accent),
             knob: f(self.knob),
+            knob_off: f(self.knob_off),
+            track: f(self.track),
+            ink: f(self.ink),
+            on_ink: f(self.on_ink),
+            tile_ink: f(self.tile_ink),
+            shadow: f(self.shadow),
+            scrim: f(self.scrim),
+            light: self.light,
             alpha: self.alpha * a,
         }
     }
@@ -99,9 +122,85 @@ pub fn on_accent(accent: Color) -> Color {
     if brightness > 0.56 { Color::from_rgb8(0x1a, 0x18, 0x16) } else { Color::WHITE }
 }
 
-/// The full token set for an accent; an invalid accent falls back to the default orange.
+/// The dark token set for an accent; an invalid accent falls back to the default orange.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn colors(accent_hex: &str) -> Colors {
+    colors_for(accent_hex, false)
+}
+
+/// The dark (Figma) or light token set for an accent.
+pub fn colors_for(accent_hex: &str, light: bool) -> Colors {
     let accent = parse_hex(accent_hex).or_else(|| parse_hex(DEFAULT_ACCENT)).unwrap_or(Color::WHITE);
+    if light { light_colors(accent) } else { dark_colors(accent) }
+}
+
+/// Relative luminance (WCAG), 0 … 1.
+fn lum(c: Color) -> f32 {
+    let lin = |v: f32| if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) };
+    0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b)
+}
+
+/// WCAG contrast ratio (1 … 21) of `fg`, with its alpha, drawn over an opaque `bg`.
+pub fn contrast(fg: Color, bg: Color) -> f32 {
+    let a = fg.a;
+    let fg = Color::from_rgb(bg.r + (fg.r - bg.r) * a, bg.g + (fg.g - bg.g) * a, bg.b + (fg.b - bg.b) * a);
+    let (hi, lo) = if lum(fg) > lum(bg) { (lum(fg), lum(bg)) } else { (lum(bg), lum(fg)) };
+    (hi + 0.05) / (lo + 0.05)
+}
+
+/// The near-black the light set writes with (the dark canvas, so both sets share one ink).
+const GRAPHITE: Color = Color { r: 0x1a as f32 / 255.0, g: 0x18 as f32 / 255.0, b: 0x16 as f32 / 255.0, a: 1.0 };
+
+/// The accent on a light panel: a near-white accent becomes graphite, a bright one is deepened
+/// (same hue) until it reads as text and outlines (3:1).
+fn light_accent(accent: Color, panel: Color) -> Color {
+    if accent.r.min(accent.g).min(accent.b) > 0.85 {
+        return GRAPHITE;
+    }
+    let mut c = accent;
+    while contrast(c, panel) < 3.0 && c.r.max(c.g).max(c.b) > 0.05 {
+        c = Color::from_rgb(c.r * 0.97, c.g * 0.97, c.b * 0.97);
+    }
+    c
+}
+
+/// The Figma colours mapped to a light set: warm off-whites in the same order (canvas behind,
+/// panels on it, cards and raised controls a step darker), text as graphite at falling opacity.
+fn light_colors(accent: Color) -> Colors {
+    let ink = |a: f32| Color { a, ..GRAPHITE };
+    let panel = Color::from_rgb8(0xfb, 0xfa, 0xf8);
+    let accent = light_accent(accent, panel);
+    Colors {
+        canvas: Color::from_rgb8(0xec, 0xea, 0xe6),
+        panel,
+        sidebar: Color::from_rgb8(0xf3, 0xf1, 0xee),
+        surface: Color::from_rgb8(0xf3, 0xf1, 0xed),
+        raised: Color::from_rgb8(0xe8, 0xe5, 0xe1),
+        hover: Color::from_rgb8(0xdf, 0xdb, 0xd6),
+        line: ink(0.09),
+        line_strong: ink(0.16),
+        text: ink(0.94),
+        text2: ink(0.74),
+        text3: ink(0.6),
+        success: Color::from_rgb8(0x1f, 0x8a, 0x3c),
+        danger: Color::from_rgb8(0xd4, 0x2a, 0x1f),
+        accent,
+        accent_soft: Color { a: 0.16, ..accent },
+        on_accent: on_accent(accent),
+        knob: Color::WHITE,
+        knob_off: Color::WHITE,
+        track: Color::from_rgb8(0xc9, 0xc4, 0xbe),
+        ink: GRAPHITE,
+        on_ink: Color::WHITE,
+        tile_ink: accent,
+        shadow: ink(0.16),
+        scrim: ink(0.28),
+        light: true,
+        alpha: 1.0,
+    }
+}
+
+fn dark_colors(accent: Color) -> Colors {
     let white = |a: f32| Color { a, ..Color::WHITE };
     Colors {
         canvas: Color::from_rgb8(0x1a, 0x18, 0x16),
@@ -121,19 +220,27 @@ pub fn colors(accent_hex: &str) -> Colors {
         accent,
         accent_soft: Color { a: 0.2, ..accent },
         on_accent: on_accent(accent),
-        knob: if accent.r.min(accent.g).min(accent.b) > 0.85 { Color::from_rgb8(0x1a, 0x18, 0x16) } else { Color::WHITE },
+        knob: if accent.r.min(accent.g).min(accent.b) > 0.85 { GRAPHITE } else { Color::WHITE },
+        knob_off: Color::from_rgb8(0xb8, 0xb4, 0xaf),
+        track: Color::from_rgb8(0x43, 0x3e, 0x39),
+        ink: Color::WHITE,
+        on_ink: GRAPHITE,
+        tile_ink: Color::WHITE,
+        shadow: Color::from_rgba(0.0, 0.0, 0.0, 0.55),
+        scrim: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+        light: false,
         alpha: 1.0,
     }
 }
 
 /// The placeholder tile behind a video, song or picture without a thumbnail: the accent, softened,
-/// fading into the panel.
+/// fading into the panel (light: a pale tint, so the accent glyph on it reads).
 pub fn tile_gradient(c: &Colors) -> (Color, Color) {
     let mix = |a: f32| {
         let (p, t) = (c.panel, c.accent);
         Color::from_rgba(p.r + (t.r - p.r) * a, p.g + (t.g - p.g) * a, p.b + (t.b - p.b) * a, c.alpha)
     };
-    (mix(0.5), mix(0.06))
+    if c.light { (mix(0.22), mix(0.05)) } else { (mix(0.5), mix(0.06)) }
 }
 
 pub fn theme(c: &Colors) -> iced::Theme {
@@ -205,6 +312,49 @@ mod tests {
         // It fades into the panel, so a tile never shouts.
         assert!((bottom.r - blue.panel.r).abs() < 0.08 && (bottom.b - blue.panel.b).abs() < 0.12, "{bottom:?}");
         assert!(top.r + top.g + top.b < blue.accent.r + blue.accent.g + blue.accent.b, "softer than the accent itself");
+    }
+
+    #[test]
+    fn dark_is_the_figma_set() {
+        assert_eq!(colors_for(DEFAULT_ACCENT, false), colors(DEFAULT_ACCENT));
+        let c = colors(DEFAULT_ACCENT);
+        assert!(!c.light);
+        assert_eq!(c.ink, Color::WHITE, "dark: white washes and a white primary button");
+    }
+
+    #[test]
+    fn light_text_reads_well() {
+        let c = colors_for(DEFAULT_ACCENT, true);
+        assert!(c.light);
+        for (name, bg) in [("panel", c.panel), ("surface", c.surface), ("sidebar", c.sidebar)] {
+            assert!(contrast(c.text, bg) >= 10.0, "text on {name}: {}", contrast(c.text, bg));
+            assert!(contrast(c.text2, bg) >= 6.0, "text2 on {name}: {}", contrast(c.text2, bg));
+            assert!(contrast(c.text3, bg) >= 4.0, "text3 on {name}: {}", contrast(c.text3, bg));
+            assert!(contrast(c.success, bg) >= 3.0 && contrast(c.danger, bg) >= 3.0, "status colours on {name}");
+        }
+        assert!(contrast(c.text3, c.canvas) >= 4.0, "the footer sits on the canvas");
+        assert!(contrast(c.on_ink, c.ink) >= 10.0, "primary button label");
+        // Hierarchy: each step is lighter than the one before.
+        assert!(contrast(c.text, c.panel) > contrast(c.text2, c.panel) && contrast(c.text2, c.panel) > contrast(c.text3, c.panel));
+        // Panels stand out from the canvas, and the lines between rows are visible.
+        assert!(lum(c.panel) > lum(c.canvas) && contrast(c.line_strong, c.panel) > 1.2);
+    }
+
+    #[test]
+    fn light_accent_stays_readable() {
+        for (name, hex) in SWATCHES {
+            let c = colors_for(hex, true);
+            assert!(contrast(c.accent, c.panel) >= 3.0, "{name}: {}", contrast(c.accent, c.panel));
+            assert!(contrast(c.on_accent, c.accent) >= 2.5, "{name}: label on the accent");
+            assert!(contrast(c.tile_ink, tile_gradient(&c).0) >= 2.0, "{name}: tile glyph");
+        }
+        // A colour already dark enough is left alone; white turns into graphite.
+        assert_eq!(colors_for("#0a84ff", true).accent, Color::from_rgb8(0x0a, 0x84, 0xff));
+        let white = colors_for("#f5f5f7", true).accent;
+        assert!(lum(white) < 0.05, "{white:?}");
+        // Orange keeps its hue, only deeper.
+        let orange = colors_for(DEFAULT_ACCENT, true).accent;
+        assert!(orange.r > orange.g && orange.g > orange.b && orange.r > 0.7, "{orange:?}");
     }
 
     #[test]

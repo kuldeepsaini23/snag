@@ -178,7 +178,7 @@ fn appearance(m: &Model, c: Colors) -> Element<'_, Message> {
         let color = theme::parse_hex(hex).unwrap_or(Color::WHITE);
         let chosen = current == Some(color);
         let _ = name;
-        r.push(button(Space::new()).width(20).height(20).padding(0).style(style::swatch(color, chosen, Color::WHITE)).on_press(Message::DraftAccent((*hex).to_string())))
+        r.push(button(Space::new()).width(20).height(20).padding(0).style(style::swatch(color, chosen, c.ink)).on_press(Message::DraftAccent((*hex).to_string())))
     });
     let invalid = theme::parse_hex(&m.draft.accent).is_none();
     let desc = if invalid { "Type a hex value like #ff9f0a" } else { "Drag in the square, or type any hex value. Text on the accent switches between dark and light by itself" };

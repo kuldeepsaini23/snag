@@ -105,15 +105,15 @@ fn plain_tile<'a>(item: &Item, width: f32, height: f32, glyph_size: u16, c: Colo
     // Videos, songs and pictures get the accent; files stay neutral.
     let (accent_top, accent_bottom) = super::theme::tile_gradient(&c);
     let (top, bottom, glyph, fg) = match (&item.kind, item.category) {
-        (Kind::Media(MediaFormat::AudioMp3), _) | (_, Category::Music) => (accent_top, accent_bottom, Icon::MusicNote, Color::WHITE),
-        (Kind::Media(_), _) | (_, Category::Video) => (accent_top, accent_bottom, Icon::PlayFill, Color::WHITE),
+        (Kind::Media(MediaFormat::AudioMp3), _) | (_, Category::Music) => (accent_top, accent_bottom, Icon::MusicNote, c.tile_ink),
+        (Kind::Media(_), _) | (_, Category::Video) => (accent_top, accent_bottom, Icon::PlayFill, c.tile_ink),
         (_, Category::Archive) => (c.raised, c.surface, Icon::FileZip, c.text2),
-        (_, Category::Image) => (accent_top, accent_bottom, Icon::Image, Color::WHITE),
+        (_, Category::Image) => (accent_top, accent_bottom, Icon::Image, c.tile_ink),
         (_, Category::Document) => (c.raised, c.surface, if item.name.to_lowercase().ends_with(".pdf") { Icon::FilePdf } else { Icon::FileText }, c.text2),
         (_, Category::Program) => (c.raised, c.surface, Icon::AppWindow, c.text2),
         _ => (c.raised, c.surface, Icon::File, c.text2),
     };
-    container(icon(glyph, glyph_size).color(c.fixed(fg)))
+    container(icon(glyph, glyph_size).color(fg))
         .width(Length::Fixed(width))
         .height(Length::Fixed(height))
         .align_x(Alignment::Center)
