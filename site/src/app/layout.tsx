@@ -1,26 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Archivo, Instrument_Serif, Inter, JetBrains_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 
-import { RevealObserver } from "@/components/reveal-observer";
+import { DownloadBar } from "@/components/download-bar";
 import { SiteFooter } from "@/components/site-footer";
-import { SiteHeader } from "@/components/site-header";
 import { PITCH, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"], display: "swap" });
-const archivo = Archivo({
-  variable: "--font-archivo",
-  subsets: ["latin"],
-  axes: ["wdth"],
-  display: "swap",
-});
-const instrument = Instrument_Serif({
-  variable: "--font-instrument",
-  subsets: ["latin"],
-  weight: "400",
-  style: "italic",
-  display: "swap",
-});
 const jetbrains = JetBrains_Mono({
   variable: "--font-jetbrains",
   subsets: ["latin"],
@@ -67,37 +53,23 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#111216",
+  themeColor: "#1a1816",
   colorScheme: "dark",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      suppressHydrationWarning
-      lang="en"
-      className={`${inter.variable} ${archivo.variable} ${instrument.variable} ${jetbrains.variable} antialiased`}
-    >
-      <head>
-        {/* Scroll reveals hide content only when scripts run, so the page is whole without them. */}
-        <script dangerouslySetInnerHTML={{ __html: "document.documentElement.classList.add('js')" }} />
-      </head>
+    <html lang="en" className={`${inter.variable} ${jetbrains.variable} antialiased`}>
       <body className="min-h-dvh">
         <a
           href="#main"
-          className="label sr-only z-50 bg-accent px-4 py-3 text-on-accent focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
+          className="sr-only z-50 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-on-accent focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
         >
           Skip to content
         </a>
-        <SiteHeader />
-        {/* The column: hairlines down both sides, centred in the space left of the desktop rail. */}
-        <div className="lg:pr-(--rail-w)">
-          <div className="mx-auto max-w-[66rem] border-line sm:border-x">
-            <main id="main">{children}</main>
-            <SiteFooter />
-          </div>
-        </div>
-        <RevealObserver />
+        <DownloadBar />
+        <main id="main">{children}</main>
+        <SiteFooter />
       </body>
     </html>
   );

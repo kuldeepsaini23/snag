@@ -2,19 +2,25 @@ import { cn } from "@/lib/utils";
 
 const variants = {
   primary: "bg-accent text-on-accent hover:brightness-110",
-  light: "bg-text text-bg hover:bg-white",
-  outline: "border border-line-strong text-text hover:border-text hover:bg-white/5",
+  secondary: "bg-raised text-text hover:bg-selected",
 };
 
-// Square, mono, uppercase: the site's one button shape.
+const sizes = {
+  sm: "h-9 px-4 text-sm",
+  lg: "h-12 px-6 text-[0.95rem]",
+};
+
+// The app's "+ Add" button: a rounded pill, orange for the main action, warm grey otherwise.
 export function ButtonLink({
   href,
   variant = "primary",
+  size = "lg",
   className,
   children,
 }: {
   href: string;
   variant?: keyof typeof variants;
+  size?: keyof typeof sizes;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -22,8 +28,9 @@ export function ButtonLink({
     <a
       href={href}
       className={cn(
-        "inline-flex h-12 items-center justify-center gap-2.5 px-5 font-mono text-xs font-medium tracking-[0.12em] whitespace-nowrap uppercase transition-[background-color,border-color,filter] active:translate-y-px",
+        "inline-flex items-center justify-center gap-2 rounded-full font-semibold whitespace-nowrap transition-[background-color,filter,transform] active:scale-[0.97]",
         variants[variant],
+        sizes[size],
         className,
       )}
     >

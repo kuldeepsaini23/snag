@@ -1,28 +1,29 @@
 @import "tailwindcss";
 
-/* A dark drafting table: near-black canvas, hairline rules, one orange accent used sparingly. */
+/* The Snag app's own palette: warm dark greys, one orange accent. */
 :root {
-  --bg: #111216;
-  --sunk: #0b0c0f;
-  --raised: #1a1b21;
-  --line: rgba(255, 255, 255, 0.09);
-  --line-strong: rgba(255, 255, 255, 0.18);
-  --text: #f1f0ed;
-  --muted: #a6a6ae;
-  --faint: #8d8d96;
+  --bg: #1a1816;
+  --panel: #211f1c;
+  --raised: #2a2724;
+  --selected: #36322e;
+  --line: #34302c;
+  --line-strong: #4a4540;
+  --text: #f0ece6;
+  --muted: #aaa49b;
+  --faint: #979087;
   --accent: #ff9f0a;
-  --on-accent: #111216;
+  --on-accent: #1a1816;
 
-  --header-h: 2.75rem;
-  --rail-w: 15rem;
+  --bar-h: 3.5rem;
 
   color-scheme: dark;
 }
 
 @theme inline {
   --color-bg: var(--bg);
-  --color-sunk: var(--sunk);
+  --color-panel: var(--panel);
   --color-raised: var(--raised);
+  --color-selected: var(--selected);
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
   --color-text: var(--text);
@@ -32,32 +33,10 @@
   --color-on-accent: var(--on-accent);
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
-  --font-serif: var(--font-instrument), ui-serif, Georgia, serif;
   --font-mono: var(--font-jetbrains), ui-monospace, "Cascadia Mono", monospace;
 
-  --animate-marquee: marquee var(--duration) infinite linear;
-  --animate-fill: fill var(--fill-duration, 1.6s) var(--fill-delay, 0s) cubic-bezier(0.45, 0.05, 0.25, 1) both;
   --animate-fill-loop: fill-loop var(--fill-duration, 4s) var(--fill-delay, 0s) cubic-bezier(0.45, 0.05, 0.25, 1) infinite;
-  --animate-intro: intro 0.9s var(--intro-delay, 0s) cubic-bezier(0.2, 0.7, 0.2, 1) both;
-
-  @keyframes marquee {
-    from {
-      transform: translateX(0);
-    }
-    to {
-      transform: translateX(calc(-100% - var(--gap)));
-    }
-  }
-
-  @keyframes fill {
-    from {
-      transform: scaleX(0);
-    }
-    to {
-      transform: scaleX(1);
-    }
-  }
+  --animate-speed: speed-scroll var(--speed-duration, 18s) linear infinite;
 
   /* A part fills, holds while the others catch up, then the next file starts. */
   @keyframes fill-loop {
@@ -73,14 +52,13 @@
     }
   }
 
-  @keyframes intro {
+  /* The speed graph is drawn twice side by side, so sliding it by half loops seamlessly. */
+  @keyframes speed-scroll {
     from {
-      opacity: 0;
-      filter: blur(12px);
+      transform: translateX(0);
     }
     to {
-      opacity: 1;
-      filter: blur(0);
+      transform: translateX(-50%);
     }
   }
 }
@@ -88,7 +66,7 @@
 html {
   background: var(--bg);
   scroll-behavior: smooth;
-  scroll-padding-top: calc(var(--header-h) + 1rem);
+  scroll-padding-top: calc(var(--bar-h) + 1rem);
 }
 
 body {
@@ -106,45 +84,112 @@ body {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+  border-radius: 6px;
 }
 
-/* Wide, heavy grotesk for headlines; the one italic serif word sits on the same baseline. */
-.display {
-  font-family: var(--font-display);
-  font-stretch: 125%;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1;
-  text-wrap: balance;
+/* ---- The hero word, downloaded: eight slices fill left to right at their own speeds. ---- */
+.seg-word {
+  position: relative;
+  display: inline-block;
+  white-space: nowrap;
 }
-.display em {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-weight: 400;
-  font-stretch: normal;
-  letter-spacing: -0.01em;
+/* Once every part is in, the plain word takes over, so no seams remain between slices. */
+.seg-word__base {
+  color: var(--raised);
+  animation: seg-settle 0.01s 2.9s both;
+}
+@keyframes seg-settle {
+  to {
+    color: var(--text);
+  }
+}
+.seg-word__slice {
+  position: absolute;
+  inset: 0;
+  color: var(--text);
+  clip-path: inset(-25% var(--r) -35% var(--l));
+  animation:
+    seg-fill var(--d) var(--delay, 0.2s) cubic-bezier(0.45, 0.05, 0.25, 1) both,
+    seg-gap 0.01s 2.9s both;
+}
+@keyframes seg-fill {
+  from {
+    clip-path: inset(-25% calc(100% - var(--l)) -35% var(--l));
+  }
+  to {
+    clip-path: inset(-25% var(--r) -35% var(--l));
+  }
+}
+/* Thin gaps between the slices while they download; they close once every part is in. */
+.seg-word__gap {
+  position: absolute;
+  top: -25%;
+  bottom: -35%;
+  width: 0.06em;
+  background: var(--bg);
+  transform: translateX(-50%);
+  animation: seg-gap 0.5s 2.9s ease-out both;
+}
+@keyframes seg-gap {
+  to {
+    opacity: 0;
+  }
 }
 
-/* Mono micro-labels for section and card headers. */
-.label {
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  line-height: 1;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+/* ---- Download rows: queued until seen, then the bar runs and the row opens. Without scripts
+   every row is simply done and open. ---- */
+.dl-row .dl-fill {
+  transform-origin: left;
 }
-
-/* Scroll reveal: blurred and faded until it enters the viewport. Only when scripts run,
-   so the page is complete without them. */
-html.js [data-reveal] {
+.dl-row[data-state="queued"] .dl-fill {
+  transform: scaleX(0);
+}
+.dl-row[data-state="downloading"] .dl-fill {
+  animation: dl-run var(--run, 1.4s) cubic-bezier(0.35, 0.1, 0.25, 1) both;
+}
+@keyframes dl-run {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.dl-row .dl-status-run {
+  display: none;
+}
+.dl-row:is([data-state="queued"], [data-state="downloading"]) .dl-status-run {
+  display: inline;
+}
+.dl-row:is([data-state="queued"], [data-state="downloading"]) .dl-status-done {
+  display: none;
+}
+.dl-body {
+  display: grid;
+  grid-template-rows: 1fr;
   transition:
-    opacity 0.9s cubic-bezier(0.2, 0.7, 0.2, 1),
-    filter 0.9s cubic-bezier(0.2, 0.7, 0.2, 1);
-  transition-delay: var(--reveal-delay, 0s);
+    grid-template-rows 0.45s cubic-bezier(0.2, 0.7, 0.2, 1),
+    opacity 0.45s ease-out;
 }
-html.js [data-reveal]:not([data-shown]) {
+.dl-row:is([data-state="queued"], [data-state="downloading"]) .dl-body {
+  grid-template-rows: 0fr;
   opacity: 0;
-  filter: blur(12px);
+}
+.dl-body > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Data moving along a wire in the privacy diagram. */
+.wire {
+  background: repeating-linear-gradient(to bottom, var(--accent) 0 5px, transparent 5px 10px);
+  background-size: 100% 10px;
+  animation: wire 0.9s linear infinite;
+}
+@keyframes wire {
+  to {
+    background-position: 0 10px;
+  }
 }
 
 details > summary {
@@ -166,12 +211,9 @@ details > summary::-webkit-details-marker {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
-  .animate-marquee,
-  .animate-fill-loop {
+  .animate-fill-loop,
+  .animate-speed,
+  .wire {
     animation: none !important;
-  }
-  html.js [data-reveal]:not([data-shown]) {
-    opacity: 1;
-    filter: none;
   }
 }
