@@ -349,7 +349,7 @@ fn sync_icons(app: &mut App) -> Task<Message> {
     }
     app.icons_accent = Some(key);
     if let Some(tray) = &app.tray {
-        tray.set_icon(crate::ui::icon::tray_icon(accent));
+        tray.set_icon(accent);
     }
     let Ok(icon) = iced::window::icon::from_rgba(crate::ui::icon::taskbar_icon(accent), 64, 64) else { return Task::none() };
     window::latest().and_then(move |id| window::set_icon(id, icon.clone()))

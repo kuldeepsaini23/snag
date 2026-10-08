@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Builds the Linux release into target/linux/: Snag-x86_64.AppImage and snag_<version>_amd64.deb.
 # Build on Ubuntu 22.04 (its glibc is the oldest the binaries run on) with:
-#   apt install build-essential pkg-config curl file libgtk-3-dev libayatana-appindicator3-dev \
-#     libxdo-dev libxkbcommon-dev libwayland-dev
+#   apt install build-essential pkg-config curl file libxkbcommon-x11-0
 #   cargo install cargo-deb --locked
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -17,14 +16,13 @@ cargo build --release -p rdm-app
 # .deb: [package.metadata.deb] in crates/app/Cargo.toml (binary, .desktop file, icons).
 cargo deb -p rdm-app --no-build --no-strip --output "$out/snag_${version}_amd64.deb"
 
-# AppImage: linuxdeploy copies in the libraries Snag needs, its GTK plugin adds GTK's loaders,
-# schemas and settings so the tray menu and dialogs look right on any desktop.
+# AppImage: linuxdeploy copies in the libraries Snag needs. (No GTK: the tray icon talks D-Bus
+# itself, the folder picker asks the desktop portal.)
 fetch() {
   [ -s "$tools/$2" ] || curl -fsSL --retry 3 -o "$tools/$2" "$1"
   chmod +x "$tools/$2"
 }
 fetch https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage linuxdeploy-x86_64.AppImage
-fetch https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh linuxdeploy-plugin-gtk.sh
 
 appdir="$out/AppDir"
 rm -rf "$appdir"
@@ -38,22 +36,25 @@ done
 
 # No FUSE in containers and CI runners: the tools unpack themselves instead.
 export APPIMAGE_EXTRACT_AND_RUN=1
-export DEPLOY_GTK_VERSION=3
 # The name the updater looks for (crates/core/src/selfupdate.rs: APPIMAGE).
 export LDAI_OUTPUT="$out/Snag-x86_64.AppImage" OUTPUT="$out/Snag-x86_64.AppImage"
 export ARCH=x86_64 VERSION="$version"
 rm -f "$LDAI_OUTPUT"
-# The tray icon's AppIndicator library is loaded at run time (dlopen), so linuxdeploy can't see
-# it: named here, it travels in the AppImage for desktops that don't install it.
-appindicator=$(ldconfig -p | awk '/libayatana-appindicator3\.so\.1 /{print $NF; exit}')
-[ -n "$appindicator" ] || { echo "libayatana-appindicator3 not found (apt install libayatana-appindicator3-dev)" >&2; exit 1; }
+# The window's keyboard libraries are loaded at run time (dlopen), so linuxdeploy can't see them:
+# named here, they travel in the AppImage for systems without them (libxkbcommon-x11 is often
+# missing). X11 and Wayland themselves come from the system.
+libs=()
+for lib in libxkbcommon.so.0 libxkbcommon-x11.so.0; do
+  path=$(ldconfig -p | awk -v l="$lib" '$1 == l && /x86-64/ {print $NF; exit}')
+  [ -n "$path" ] || { echo "$lib not found (apt install libxkbcommon-x11-0)" >&2; exit 1; }
+  libs+=(--library "$path")
+done
 PATH="$PWD/$tools:$PATH" "$tools/linuxdeploy-x86_64.AppImage" \
   --appdir "$appdir" \
   --executable target/release/snag \
-  --library "$appindicator" \
+  "${libs[@]}" \
   --desktop-file packaging/linux/snag.desktop \
   --icon-file "$appdir/usr/share/icons/hicolor/256x256/apps/snag.png" \
-  --plugin gtk \
   --output appimage
 
 (cd "$out" && sha256sum "Snag-x86_64.AppImage" "snag_${version}_amd64.deb" | tee "SHA256SUMS-linux-$version.txt")

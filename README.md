@@ -36,7 +36,7 @@ Snag looks for a newer version on GitHub at start and every few hours, and offer
 
 1. Install [Rust](https://rustup.rs) (stable), [Node.js](https://nodejs.org) and, for the installer, [Inno Setup 6](https://jrsoftware.org/isdl.php).
 2. `cargo build --release` builds `target\release\snag.exe`; `bash installer/build.sh` builds the installer and the extension packages.
-3. Linux: install the packages listed at the top of `packaging/linux/build.sh` (GTK 3, AppIndicator, xdo), then `cargo build --release` builds `target/release/snag`; `bash packaging/linux/build.sh` builds the AppImage and the .deb.
+3. Linux: install the packages listed at the top of `packaging/linux/build.sh` (a C compiler and libxkbcommon-x11), then `cargo build --release` builds `target/release/snag`; `bash packaging/linux/build.sh` builds the AppImage and the .deb.
 4. macOS: with Xcode's command line tools and `rustup target add aarch64-apple-darwin x86_64-apple-darwin`, `bash packaging/macos/build.sh` builds a universal `Snag.app`, `Snag-macOS.zip` and `Snag-macOS.dmg` in `target/macos` (signed ad hoc, not notarized).
 
 ### Browser extension
