@@ -1,6 +1,6 @@
 # snag.kuldeepsaini.dev
 
-The website for Snag: the landing page (`/`) and the privacy policy for the app and the browser extension (`/privacy/`). Next.js App Router with a static export and Tailwind CSS. The idea: the page is a download. The top bar fills its eight segments as you scroll, the hero word downloads in parallel parts, and each feature is a row in a download list. All motion is CSS plus two small IntersectionObserver/scroll scripts, and it all stops for reduced motion.
+The website for Snag: the landing page (`/`) and the privacy policy for the app and the browser extension (`/privacy/`). Next.js App Router with a static export and Tailwind CSS. The idea: an engraved catalogue for a modern download manager, in the colours of Snag's logo (ink, warm paper, one orange). The page is in eight parts and the sticky top bar is both its download and its index: one segment per part fills as you read it, the label names the part you are in and opens the contents. Features are numbered catalogue entries, screenshots are plates with captions, and the line-work (guilloche and hatching) is drawn by SVG masks and CSS gradients. All motion is CSS plus two small IntersectionObserver/scroll scripts, and it all stops for reduced motion.
 
 ## Run it
 
@@ -21,7 +21,7 @@ bun run build      # writes the whole site to out/
 
 ### Images
 
-The screenshots in `public/images/`, the Open Graph card `public/og.png` and the icons in `src/app/` (`icon.png`, `apple-icon.png`) are made from `../docs/images/*.png`, `../docs/store/screenshots/` and `../crates/app/assets/logo/` by:
+The screenshots in `public/images/`, the Open Graph card `public/og.png` and the icons in `src/app/` (`icon.png`, `apple-icon.png`) are made from `../docs/store/screenshots/`, `../docs/images/*.png` (cropped clear of the old logo), the engraving `../docs/logo/engraving/c-gpt.png` (cut out of its orange) and `../crates/app/assets/logo/` by the script below. It also draws the guilloche masks `public/images/rosette.svg` and `band.svg`:
 
 ```bash
 bun run images
@@ -31,9 +31,11 @@ Run it again whenever a screenshot or the logo changes, and commit the results. 
 
 ### Where things are
 
-- `src/app/page.tsx`: the landing page, one component per section in `src/components/`
-- `src/components/download-bar.tsx`: the sticky bar that fills with scroll
-- `src/components/features.tsx`: the download-list feature rows (edit the `groups` list)
+- `src/app/page.tsx`: the landing page, one component per part in `src/components/`
+- `src/lib/parts.ts`: the eight parts in order, with the names the top bar shows
+- `src/components/download-bar.tsx`: the sticky bar that fills part by part and lists the contents
+- `src/components/catalogue.tsx`: the shared pieces (part headings, numbered entries, plates)
+- `src/components/features.tsx`: the catalogue entries No. 01–12 (edit the entry lists)
 - `src/app/privacy/page.tsx`: the privacy policy (update the effective date when it changes)
 - `src/lib/site.ts`: the site address, GitHub links, the installer link (the stable `Snag-Setup.exe` asset of the latest release) and the version, read at build time from `../Cargo.toml`. Nothing to change for a new release; just rebuild.
 - `src/app/sitemap.ts`, `src/app/robots.ts`: `sitemap.xml` and `robots.txt`

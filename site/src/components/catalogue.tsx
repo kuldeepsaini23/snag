@@ -113,11 +113,14 @@ export function CatalogueLine({ entry }: { entry: Entry }) {
       <div className="min-w-0">
         <div className="flex items-baseline gap-3">
           <h3 className="text-lg font-semibold tracking-tight md:text-xl">{entry.name}</h3>
-          <span aria-hidden="true" className="leader" />
-          <span className="shrink-0 font-mono text-sm text-accent-text">{entry.spec}</span>
+          <span aria-hidden="true" className="leader hidden sm:block" />
+          <span className="hidden shrink-0 font-mono text-sm text-accent-text sm:block">{entry.spec}</span>
         </div>
         <p className="mt-2 max-w-[60ch] leading-relaxed text-muted">{entry.description}</p>
-        <p className="mt-1.5 font-mono text-xs text-faint">{entry.meta}</p>
+        <p className="mt-1.5 font-mono text-xs text-faint">
+          <span className="text-accent-text sm:hidden">{entry.spec} · </span>
+          {entry.meta}
+        </p>
       </div>
     </article>
   );

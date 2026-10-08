@@ -267,10 +267,17 @@ body {
   }
 }
 
-/* ---- The hook hangs from the bar and sways a little. ---- */
+/* ---- The hook drops on its line from the bar, then sways a little. ---- */
 .hook {
   transform-origin: 50% 0;
-  animation: sway 6s ease-in-out infinite alternate;
+  animation:
+    hook-drop 1.1s 0.15s cubic-bezier(0.3, 1.35, 0.45, 1) both,
+    sway 6s 1.25s ease-in-out infinite alternate both;
+}
+@keyframes hook-drop {
+  from {
+    translate: 0 -45%;
+  }
 }
 @keyframes sway {
   from {

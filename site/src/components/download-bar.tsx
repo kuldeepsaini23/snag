@@ -111,7 +111,7 @@ export function DownloadBar({ downloadUrl }: { downloadUrl: string }) {
   return (
     <header
       data-done={done || undefined}
-      className="dl-bar sticky top-0 z-40 border-b border-line bg-bg/85 backdrop-blur-md"
+      className="dl-bar sticky top-0 z-40 border-b border-line bg-bg/92 backdrop-blur-md"
     >
       <div className="mx-auto flex h-(--bar-h) max-w-6xl items-center gap-3 px-4 sm:gap-5 sm:px-6">
         <Link href="/" aria-label="Snag home" className="flex shrink-0 items-center gap-2.5">

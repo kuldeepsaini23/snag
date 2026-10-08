@@ -75,10 +75,10 @@ export function HowItWorks() {
           <h3 className="font-display text-3xl italic md:text-4xl">The browser extension</h3>
           <ul className="mt-6 border-t border-text">
             {stores.map((s) => (
-              <li key={s.browser} className="flex items-baseline gap-3 border-b border-line py-3.5">
+              <li key={s.browser} className="flex flex-col gap-0.5 border-b border-line py-3.5 sm:flex-row sm:items-baseline sm:gap-3">
                 <span className="font-medium">{s.browser}</span>
-                <span aria-hidden="true" className="leader" />
-                <span className="text-right font-mono text-xs text-faint">Queued · coming to {s.store}</span>
+                <span aria-hidden="true" className="leader hidden sm:block" />
+                <span className="font-mono text-xs text-faint sm:text-right">Queued · coming to {s.store}</span>
               </li>
             ))}
           </ul>

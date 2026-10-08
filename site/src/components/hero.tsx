@@ -13,7 +13,7 @@ export function Hero() {
         {/* The engraving, on its guilloche. It hangs from the very top, so its line meets the bar. */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute top-0 right-3 h-[13.5rem] w-[7rem] sm:right-8 sm:h-[17rem] sm:w-[9rem] lg:right-12 lg:h-[37rem] lg:w-[22rem]"
+          className="pointer-events-none absolute top-0 right-3 h-[12.5rem] w-[6.5rem] sm:right-8 sm:h-[17rem] sm:w-[9rem] lg:right-12 lg:h-[37rem] lg:w-[22rem]"
         >
           <div className="rosette absolute top-[38%] left-1/2 size-[17rem] -translate-x-1/2 -translate-y-1/2 sm:size-[22rem] lg:size-[38rem]" />
           <div className="rosette absolute top-[38%] left-1/2 size-[11rem] -translate-x-1/2 -translate-y-1/2 opacity-60 [background:var(--accent)] sm:size-[14rem] lg:size-[24rem]" />
