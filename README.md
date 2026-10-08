@@ -2,6 +2,8 @@
 
 **A fast, free download manager for Windows**, with a browser extension that catches videos the way IDM does. Written in Rust.
 
+**Website:** [snag.kuldeepsaini.dev](https://snag.kuldeepsaini.dev) · **Download:** [Snag-Setup.exe](https://github.com/kuldeepsaini23/snag/releases/latest/download/Snag-Setup.exe) · [Privacy](https://snag.kuldeepsaini.dev/privacy)
+
 ![Snag downloading, with the segment map and speed graph](docs/images/main.png)
 
 ## What it does
