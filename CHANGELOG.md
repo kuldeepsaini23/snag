@@ -2,6 +2,17 @@
 
 Newest first. Snag shows the newest entry once after an update; the Help menu (?) has the full list.
 
+## 1.1.0 — 2026-10-08
+
+### New
+- Snag now runs on Linux (AppImage and .deb) and macOS (Apple silicon and Intel), as well as Windows.
+- On Linux: the tray icon, desktop notifications, start at login, and in-app updates for the AppImage.
+- On macOS: a menu bar icon, Notification Center, start at login, the native window buttons, ⌘ shortcuts, and in-app updates.
+- Settings → Appearance → Animations now says Follow system on Linux and macOS.
+
+### Improved
+- Smaller images in the app and on the website.
+
 ## 1.0.3 — 2026-10-08
 
 ### Improved
