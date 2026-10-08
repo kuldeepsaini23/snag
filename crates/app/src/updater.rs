@@ -19,6 +19,13 @@ pub fn announce(offered: Option<&str>, latest: &str) -> Option<crate::state::Not
     })
 }
 
+/// The end of a check: a "Check for updates" click hears back even when nothing is newer (the
+/// card says it otherwise); the automatic checks stay quiet.
+pub fn checked(m: &mut crate::state::Model, offered: Option<&rdm_core::selfupdate::Release>) -> Option<String> {
+    let asked = std::mem::take(&mut m.update_checking);
+    (asked && offered.is_none()).then(|| format!("No update found: Snag {} is the newest version", crate::changelog::VERSION))
+}
+
 /// Inno Setup, quietly: a progress window only, no questions, then Snag opens again
 /// (`/RELAUNCH=1`, see installer/snag.iss).
 pub const INSTALLER_ARGS: [&str; 5] = ["/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/RELAUNCH=1"];

@@ -461,7 +461,8 @@ pub fn motion_targets(m: &Model) -> crate::motion::Targets {
         inspector: m.inspected().is_some(),
         sheet: matches!(m.screen, crate::state::Screen::Picker | crate::state::Screen::Settings) || m.confirm_quit || m.pair_request.is_some() || m.info.is_some() || m.tour_sheet(),
         popover: m.speed_open || m.help_open || m.coach().is_some(),
-        toast: m.screen == crate::state::Screen::Downloads && (m.toast.is_some() || m.notice.is_some() || m.duplicate.is_some() || m.update.is_some()),
+        // An update offer shows on every screen; the rest only over the downloads list.
+        toast: m.update.is_some() || (m.screen == crate::state::Screen::Downloads && (m.toast.is_some() || m.notice.is_some() || m.duplicate.is_some())),
         search: m.search_open,
         stats: m.stats_open,
         library: sidebar_key(m),
@@ -876,6 +877,17 @@ mod tests {
         let release = rdm_core::selfupdate::Release { version: "9.9.9".into(), installer: String::new(), installer_name: String::new(), sums: String::new(), page: String::new() };
         m.update = Some(crate::state::UpdateOffer { release, busy: false });
         assert!(motion_targets(&m).toast, "the corner card fades in for it");
+        m.screen = crate::state::Screen::Settings;
+        assert!(motion_targets(&m).toast, "on every screen, not only the downloads list");
+    }
+
+    #[test]
+    fn a_manual_check_says_when_snag_is_up_to_date() {
+        let mut m = Model { update_checking: true, ..Model::default() };
+        let note = crate::updater::checked(&mut m, None);
+        assert!(note.is_some_and(|n| n.contains(crate::changelog::VERSION)), "the user who asked hears back");
+        assert!(!m.update_checking);
+        assert_eq!(crate::updater::checked(&mut m, None), None, "the automatic checks stay quiet");
     }
 
     #[test]

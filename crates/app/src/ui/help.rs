@@ -21,6 +21,11 @@ pub fn menu(c: Colors) -> Element<'static, Message> {
         entry(Icon::Lifebuoy, "Help", "F1", Info::Help),
         entry(Icon::Sparkle, "What's new", "", Info::WhatsNew { since: None }),
         entry(Icon::Bug, "Report a bug", "", Info::BugReport),
+        button(row![bold(Icon::ArrowClockwise, 15).color(c.text2), text("Check for updates").size(13).width(Fill)].spacing(10).align_y(Alignment::Center))
+            .width(Fill)
+            .padding([8, 10])
+            .style(style::choice(c, false, 7.0))
+            .on_press(Message::CheckUpdateNow),
     ]
     .spacing(2);
     container(items).width(236).padding(6).style(style::sheet(c)).into()

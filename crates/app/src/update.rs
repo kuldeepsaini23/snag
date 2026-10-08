@@ -105,6 +105,8 @@ pub enum Message {
     DraftCheckUpdates(bool),
     /// Look for a newer Snag (at start, then every few hours).
     CheckUpdate,
+    /// "Check for updates" in the ? menu: like `CheckUpdate`, but always answers.
+    CheckUpdateNow,
     UpdateFound(Option<rdm_core::selfupdate::Release>),
     UpdateNow,
     UpdateFetched(Result<PathBuf, String>),
@@ -624,8 +626,22 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             let m = app.manager.clone();
             return Task::perform(async move { m.latest_release().await }, Message::UpdateFound);
         }
+        Message::CheckUpdateNow => {
+            model.help_open = false;
+            model.update_later = None;
+            model.update_checking = true;
+            if model.update.as_ref().is_some_and(|u| u.busy) {
+                return Task::none();
+            }
+            let m = app.manager.clone();
+            return Task::perform(async move { m.latest_release().await }, Message::UpdateFound);
+        }
         Message::UpdateFound(release) => {
-            if let Some(r) = release.filter(|r| crate::updater::offers(&r.version, crate::changelog::VERSION, model.update_later.as_deref())) {
+            let release = release.filter(|r| crate::updater::offers(&r.version, crate::changelog::VERSION, model.update_later.as_deref()));
+            if let Some(text) = crate::updater::checked(model, release.as_ref()) {
+                model.notice = Some(text);
+            }
+            if let Some(r) = release {
                 let note = crate::updater::announce(model.update.as_ref().map(|u| u.release.version.as_str()), &r.version).filter(|_| model.settings.notify);
                 model.update = Some(crate::state::UpdateOffer { release: r, busy: false });
                 if let Some(note) = note {

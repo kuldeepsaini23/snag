@@ -167,7 +167,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
     if m.drop_hover {
         layers = layers.push(drop_target(c));
     }
-    if m.screen == Screen::Downloads
+    if (m.screen == Screen::Downloads || m.update.is_some())
         && let Some(t) = toast(m, c.faded(a.toast))
     {
         // Rises into place from the bottom edge.
@@ -318,6 +318,9 @@ fn footer(m: &Model, now: Instant, c: Colors) -> Element<'_, Message> {
 fn toast(m: &Model, c: Colors) -> Option<Element<'_, Message>> {
     let close = |msg: Message| button(icon(Icon::X, 13)).style(style::ghost(c)).padding(6).on_press(msg);
     let card = |content: Element<'static, Message>| container(content).style(style::sheet(c)).padding([10, 12]).max_width(460);
+    if m.screen != Screen::Downloads {
+        return m.update.as_ref().map(|u| card(update_offer(u, c)).into());
+    }
     if let Some(link) = &m.toast {
         let what = view::link_tag(link).map(|t| t.label()).unwrap_or("Link");
         let badge = container(icon(Icon::ClipboardText, 16).color(c.accent)).center(32).style(style::tag(c.accent_soft, c.accent));
@@ -362,9 +365,11 @@ fn toast(m: &Model, c: Colors) -> Option<Element<'_, Message>> {
         .align_y(Alignment::Center);
         return Some(card(body.into()).into());
     }
-    let Some(notice) = m.notice.clone() else {
-        return m.update.as_ref().map(|u| card(update_offer(u, c)).into());
-    };
+    // A new version comes before notices, so it isn't buried under them.
+    if let Some(u) = &m.update {
+        return Some(card(update_offer(u, c)).into());
+    }
+    let notice = m.notice.clone()?;
     // Text in the window can't be selected: errors get a Copy button (and go to snag.log).
     let copy = button(row![icon(Icon::Copy, 12), text("Copy").size(11.5)].spacing(5).align_y(Alignment::Center))
         .style(style::ghost(c))

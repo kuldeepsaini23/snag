@@ -9,6 +9,7 @@ Newest first. Snag shows the newest entry once after an update; the Help menu (?
 - Snag's colour is now copper (it was a yellow-orange). If you picked your own accent colour, it stays.
 - The taskbar and tray icons follow your accent colour, like the logo in the window.
 - A Windows notification tells you when an update is ready, even while Snag runs hidden in the tray.
+- The update card shows on every screen and before other messages, and the ? menu has Check for updates.
 
 ## 1.0.2 — 2026-10-07
 
