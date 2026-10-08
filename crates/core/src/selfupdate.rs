@@ -1,25 +1,36 @@
 //! Snag's own updates: the newest GitHub release, its installer and the checksum it must match.
 //! Windows installs with `Snag-Setup-<version>.exe`; Linux replaces its AppImage with the
-//! release's `Snag-x86_64.AppImage`.
+//! release's `Snag-x86_64.AppImage`; macOS replaces Snag.app with the one in `Snag-macOS.zip`.
 
 /// Which release file updates this copy of Snag.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Platform {
     Windows,
     Linux,
+    MacOS,
 }
 
 impl Platform {
-    pub const CURRENT: Platform = if cfg!(windows) { Platform::Windows } else { Platform::Linux };
+    pub const CURRENT: Platform = if cfg!(windows) {
+        Platform::Windows
+    } else if cfg!(target_os = "macos") {
+        Platform::MacOS
+    } else {
+        Platform::Linux
+    };
 
     /// The release asset this platform installs, as named in the checksums file.
     pub fn installer_name(self, version: &str) -> String {
         match self {
             Platform::Windows => format!("Snag-Setup-{version}.exe"),
             Platform::Linux => APPIMAGE.into(),
+            Platform::MacOS => MAC_ZIP.into(),
         }
     }
 }
+
+/// The macOS release: Snag.app zipped (universal; the same name in every release).
+pub const MAC_ZIP: &str = "Snag-macOS.zip";
 
 /// The Linux release's AppImage (the same name in every release; SHA256SUMS-<version>.txt lists it).
 pub const APPIMAGE: &str = "Snag-x86_64.AppImage";
@@ -109,6 +120,48 @@ pub fn replace_appimage(new: &std::path::Path, target: &std::path::Path) -> std:
     placed
 }
 
+/// Puts the Snag.app inside the checked `zip` in place of the running one (`app`, the `.app`
+/// folder): unpacked next to it first (same file system), then the two swapped by renames, so
+/// `app` is the old or the new Snag at any moment and a failure leaves the old one. The running
+/// copy keeps its open files until it exits.
+pub fn replace_app_bundle(zip: &std::path::Path, app: &std::path::Path) -> std::io::Result<()> {
+    let dir = app.parent().ok_or_else(|| std::io::Error::other("Snag.app has no folder"))?;
+    let name = app.file_name().ok_or_else(|| std::io::Error::other("Snag.app has no name"))?;
+    let hidden = |suffix: &str| {
+        let mut n = std::ffi::OsString::from(".");
+        n.push(name);
+        n.push(suffix);
+        dir.join(n)
+    };
+    let (staging, old) = (hidden(".update"), hidden(".old"));
+    for leftover in [&staging, &old] {
+        let _ = std::fs::remove_dir_all(leftover);
+    }
+    let swapped = (|| {
+        let file = std::fs::File::open(zip)?;
+        zip::ZipArchive::new(std::io::BufReader::new(file)).and_then(|mut z| z.extract(&staging)).map_err(std::io::Error::other)?;
+        let new = bundle_in(&staging)?;
+        std::fs::rename(app, &old)?;
+        if let Err(e) = std::fs::rename(&new, app) {
+            let _ = std::fs::rename(&old, app);
+            return Err(e);
+        }
+        Ok(())
+    })();
+    let _ = std::fs::remove_dir_all(&staging);
+    let _ = std::fs::remove_dir_all(&old);
+    swapped
+}
+
+/// The one `*.app` folder at the top of an unpacked release zip.
+fn bundle_in(dir: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
+    let mut apps = std::fs::read_dir(dir)?.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_dir() && p.extension().is_some_and(|x| x == "app"));
+    match (apps.next(), apps.next()) {
+        (Some(app), None) if app.join("Contents").join("Info.plist").is_file() => Ok(app),
+        _ => Err(std::io::Error::other("the update doesn't hold one Snag.app")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,6 +216,86 @@ mod tests {
         assert_eq!(linux.sums, "https://x.test/SHA256SUMS-1.1.0.txt", "the same checksums file");
         assert_eq!(parse_latest_for(LATEST, Platform::Linux), None, "a Windows-only release offers Linux nothing");
         assert_eq!(parse_latest_for(&LATEST_BOTH.replace("SHA256SUMS-1.1.0.txt", "x.txt"), Platform::Linux), None, "never unchecked");
+    }
+
+    const LATEST_ALL: &str = r#"{
+        "tag_name": "v1.2.0", "draft": false, "prerelease": false,
+        "html_url": "https://github.com/kuldeepsaini23/snag/releases/tag/v1.2.0",
+        "assets": [
+            {"name": "Snag-Setup-1.2.0.exe", "browser_download_url": "https://x.test/Snag-Setup-1.2.0.exe"},
+            {"name": "Snag-x86_64.AppImage", "browser_download_url": "https://x.test/Snag-x86_64.AppImage"},
+            {"name": "Snag-macOS.dmg", "browser_download_url": "https://x.test/Snag-macOS.dmg"},
+            {"name": "Snag-macOS.zip", "browser_download_url": "https://x.test/Snag-macOS.zip"},
+            {"name": "SHA256SUMS-1.2.0.txt", "browser_download_url": "https://x.test/SHA256SUMS-1.2.0.txt"}
+        ]
+    }"#;
+
+    #[test]
+    fn a_mac_takes_the_zip_not_the_disk_image() {
+        let mac = parse_latest_for(LATEST_ALL, Platform::MacOS).expect("macos");
+        assert_eq!((mac.installer.as_str(), mac.installer_name.as_str()), ("https://x.test/Snag-macOS.zip", MAC_ZIP));
+        assert_eq!(mac.sums, "https://x.test/SHA256SUMS-1.2.0.txt", "the same checksums file");
+        assert_eq!(parse_latest_for(LATEST_ALL, Platform::Windows).unwrap().installer_name, "Snag-Setup-1.2.0.exe");
+        assert_eq!(parse_latest_for(LATEST_ALL, Platform::Linux).unwrap().installer_name, APPIMAGE);
+        assert_eq!(parse_latest_for(LATEST_BOTH, Platform::MacOS), None, "a release without a Mac build offers a Mac nothing");
+        assert_eq!(parse_latest_for(&LATEST_ALL.replace("SHA256SUMS-1.2.0.txt", "x.txt"), Platform::MacOS), None, "never unchecked");
+        let (a, b) = ("a".repeat(64), "b".repeat(64));
+        // As the release job appends it: shasum over the macOS files.
+        let sums = format!("{a} *installer/Snag-Setup-1.2.0.exe\n{b}  macos/Snag-macOS.zip\n");
+        assert_eq!(checksum_for(&sums, MAC_ZIP), Some(b));
+    }
+
+    /// A release zip as `ditto -c -k --keepParent Snag.app` makes it: `Snag.app/…` at the top.
+    fn mac_zip(at: &std::path::Path, version: &[u8]) {
+        use std::io::Write;
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(at).unwrap());
+        let exe = zip::write::SimpleFileOptions::default().unix_permissions(0o755);
+        zip.add_directory("Snag.app/", exe).unwrap();
+        zip.start_file("Snag.app/Contents/Info.plist", zip::write::SimpleFileOptions::default()).unwrap();
+        zip.write_all(b"<plist/>").unwrap();
+        zip.start_file("Snag.app/Contents/MacOS/snag", exe).unwrap();
+        zip.write_all(version).unwrap();
+        zip.finish().unwrap();
+    }
+
+    #[test]
+    fn the_app_bundle_is_swapped_whole() {
+        let dir = tempfile::tempdir().unwrap();
+        let apps = dir.path().join("Applications");
+        let app = apps.join("Snag.app");
+        std::fs::create_dir_all(app.join("Contents").join("MacOS")).unwrap();
+        std::fs::write(app.join("Contents").join("MacOS").join("snag"), b"old").unwrap();
+        std::fs::write(app.join("Contents").join("stale.txt"), b"only in the old one").unwrap();
+        let zip = dir.path().join("Snag-macOS.zip");
+        mac_zip(&zip, b"new");
+        replace_app_bundle(&zip, &app).unwrap();
+        assert_eq!(std::fs::read(app.join("Contents").join("MacOS").join("snag")).unwrap(), b"new");
+        assert!(!app.join("Contents").join("stale.txt").exists(), "the whole bundle is the new one");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(app.join("Contents").join("MacOS").join("snag")).unwrap().permissions().mode();
+            assert_eq!(mode & 0o111, 0o111, "runnable");
+        }
+        let left: Vec<_> = std::fs::read_dir(&apps).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(left, ["Snag.app"], "no staging or old copy left behind");
+    }
+
+    #[test]
+    fn a_bad_update_leaves_the_old_app() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = dir.path().join("Snag.app");
+        std::fs::create_dir_all(app.join("Contents")).unwrap();
+        std::fs::write(app.join("Contents").join("Info.plist"), b"old").unwrap();
+        let not_zip = dir.path().join("Snag-macOS.zip");
+        std::fs::write(&not_zip, b"<html>not found</html>").unwrap();
+        assert!(replace_app_bundle(&not_zip, &app).is_err());
+        let empty = dir.path().join("empty.zip");
+        zip::ZipWriter::new(std::fs::File::create(&empty).unwrap()).finish().unwrap();
+        assert!(replace_app_bundle(&empty, &app).is_err(), "no Snag.app inside");
+        assert_eq!(std::fs::read(app.join("Contents").join("Info.plist")).unwrap(), b"old");
+        let left: Vec<_> = std::fs::read_dir(dir.path()).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).filter(|n| n.starts_with('.')).collect();
+        assert!(left.is_empty(), "{left:?}");
     }
 
     #[test]

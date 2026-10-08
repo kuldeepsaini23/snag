@@ -1,5 +1,5 @@
 //! Snag updating itself: when to offer a newer release, and handing its installer over
-//! (Windows), or putting the new AppImage in place of the running one (Linux).
+//! (Windows), or putting the new AppImage (Linux) or Snag.app (macOS) in place of the running one.
 
 use std::path::Path;
 
@@ -37,9 +37,27 @@ pub fn checked(m: &mut crate::state::Model, offered: Option<&rdm_core::selfupdat
 pub const INSTALLER_ARGS: [&str; 5] = ["/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/RELAUNCH=1"];
 
 /// Whether "Update now" can update this copy: always on Windows (the installer); on Linux only
-/// the AppImage (`$APPIMAGE`), which Snag can replace. A .deb install gets a Download button.
+/// the AppImage (`$APPIMAGE`), which Snag can replace. A .deb install gets a Download button, as
+/// does a Snag.app in a folder this user can't write to (or one macOS runs from a read-only copy).
 pub fn can_install() -> bool {
-    cfg!(windows) || appimage().is_some()
+    cfg!(windows) || appimage().is_some() || app_bundle().is_some()
+}
+
+/// macOS: the Snag.app this Snag runs from (`…/Snag.app/Contents/MacOS/snag`), when its folder
+/// can be written to.
+fn app_bundle() -> Option<std::path::PathBuf> {
+    if !cfg!(target_os = "macos") {
+        return None;
+    }
+    let exe = std::env::current_exe().ok()?.canonicalize().ok()?;
+    let app = exe.parent()?.parent()?.parent()?.to_path_buf();
+    if app.extension().is_none_or(|x| x != "app") {
+        return None;
+    }
+    let probe = app.parent()?.join(".snag-update-check");
+    std::fs::write(&probe, b"").ok()?;
+    let _ = std::fs::remove_file(&probe);
+    Some(app)
 }
 
 /// Linux: the AppImage file this Snag runs from (set by the AppImage runtime).
@@ -56,9 +74,21 @@ pub fn run(installer: &Path) -> std::io::Result<()> {
     std::process::Command::new(installer).args(INSTALLER_ARGS).spawn().map(|_| ())
 }
 
+/// macOS: the checked zip's Snag.app replaces this one, loses the quarantine flag (so Gatekeeper
+/// doesn't stop it), and is opened as a new instance; it waits for this Snag to exit (`--updated`),
+/// which the caller does next.
+#[cfg(target_os = "macos")]
+pub fn run(new: &Path) -> std::io::Result<()> {
+    let app = app_bundle().ok_or_else(|| std::io::Error::other("this copy of Snag isn't a Snag.app it can replace"))?;
+    rdm_core::selfupdate::replace_app_bundle(new, &app)?;
+    let _ = std::fs::remove_file(new);
+    let _ = std::process::Command::new("/usr/bin/xattr").args(["-dr", "com.apple.quarantine"]).arg(&app).status();
+    std::process::Command::new("/usr/bin/open").arg("-n").arg(&app).args(["--args", "--updated"]).spawn().map(|_| ())
+}
+
 /// Linux: the checked AppImage replaces `$APPIMAGE`, and the new one is started; it waits for
 /// this Snag to exit (`--updated`), which the caller does next.
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 pub fn run(new: &Path) -> std::io::Result<()> {
     let target = appimage().ok_or_else(|| std::io::Error::other("this copy of Snag isn't an AppImage"))?;
     rdm_core::selfupdate::replace_appimage(new, &target)?;

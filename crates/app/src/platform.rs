@@ -77,8 +77,7 @@ pub fn open(target: impl AsRef<OsStr>) {
 /// Linux: a program of the desktop's (xdg-open, the file manager, gsettings), started without
 /// what the AppImage's launcher set up for Snag itself: its bundled GTK modules, schemas and data
 /// folders (`$APPDIR/…`) would break the programs it starts, and vanish when Snag exits.
-/// (macOS has no `$APPDIR`: a plain command.)
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 pub fn host_command(program: impl AsRef<OsStr>) -> std::process::Command {
     let mut cmd = std::process::Command::new(program);
     if let Some(appdir) = std::env::var("APPDIR").ok().filter(|d| d.len() > 1) {
@@ -94,7 +93,7 @@ pub fn host_command(program: impl AsRef<OsStr>) -> std::process::Command {
 
 /// The variables to change for `host_command`: each one naming something inside `appdir` loses
 /// those entries (`a:b` lists keep the rest), or goes when nothing is left.
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub fn host_env(vars: impl Iterator<Item = (std::ffi::OsString, std::ffi::OsString)>, appdir: &str) -> Vec<(std::ffi::OsString, Option<String>)> {
     let appdir = appdir.trim_end_matches('/');
     let inside = |entry: &str| entry == appdir || entry.starts_with(&format!("{appdir}/"));

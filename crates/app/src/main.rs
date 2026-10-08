@@ -54,7 +54,7 @@ fn main() -> iced::Result {
     let quit = std::env::args().any(|a| a == "--quit");
     // `snag --background`: start in the tray, no window (sign-in, if the user chose it).
     let background = std::env::args().any(|a| a == "--background");
-    // `snag --updated`: started by the Snag it replaced (Linux AppImage update), which may still
+    // `snag --updated`: started by the Snag it replaced (Linux AppImage or macOS app update), which may still
     // be closing; wait for it to let go of the lock instead of focusing it.
     let updated = std::env::args().any(|a| a == "--updated");
     let mut instance = rdm_core::instance::lock(&data_dir);
