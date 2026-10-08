@@ -1,7 +1,7 @@
 import { GithubLogo, WindowsLogo } from "@phosphor-icons/react/dist/ssr";
 
 import { ButtonLink } from "@/components/button";
-import { Plate, Section, Shot } from "@/components/catalogue";
+import { Plate, Section } from "@/components/catalogue";
 import { DOWNLOAD_URL, REPO_URL, VERSION } from "@/lib/site";
 
 // The frontispiece: the engraved hook hangs from the download bar beside the headline, and the
@@ -58,20 +58,25 @@ export function Hero() {
       </div>
 
       <div className="mx-auto mt-16 max-w-6xl px-4 sm:px-6 md:mt-24">
-        <Plate
-          fig={1}
-          caption="Snag’s main window: three downloads under way, one at 8.4 MB/s."
-          frameClassName="aspect-[4/3] sm:aspect-auto"
-        >
-          {/* On phones the plate shows the left of the window at a readable size. */}
-          <Shot
-            name="app"
-            widths={[720, 1280]}
-            height={800}
-            sizes="(min-width: 1152px) 1090px, (min-width: 640px) calc(100vw - 60px), 175vw"
-            alt="Snag’s main window: a library of downloads by type, three downloads in progress with one at 8.4 MB/s, and the details of the selected video"
-            className="absolute top-0 left-0 w-[175%] max-w-none sm:static sm:w-full"
-          />
+        <Plate fig={1} caption="Snag’s main window: three downloads under way, one at 8.4 MB/s.">
+          {/* On phones the plate shows the left of the window at its own size. */}
+          <picture>
+            <source media="(max-width: 639px)" type="image/webp" srcSet="/images/app-phone-732.webp" />
+            <source
+              type="image/webp"
+              srcSet="/images/app-720.webp 720w, /images/app-1280.webp 1280w"
+              sizes="(min-width: 1152px) 1090px, calc(100vw - 60px)"
+            />
+            <img
+              src="/images/app-1280.webp"
+              alt="Snag’s main window: a library of downloads by type, three downloads in progress with one at 8.4 MB/s, and the details of the selected video"
+              width={1280}
+              height={800}
+              loading="lazy"
+              decoding="async"
+              className="block aspect-[4/3] h-auto w-full sm:aspect-[8/5]"
+            />
+          </picture>
         </Plate>
       </div>
     </Section>

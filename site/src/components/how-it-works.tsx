@@ -59,7 +59,7 @@ export function HowItWorks() {
               style={{ "--reveal-delay": `${i * 0.12}s` } as React.CSSProperties}
             >
               <div className="flex items-start justify-between">
-                <span className="font-display text-6xl leading-none font-light">{step.numeral}.</span>
+                <span className="font-display text-6xl leading-none font-light italic">{step.numeral}.</span>
                 <Icon className="size-6 text-accent-text" aria-hidden />
               </div>
               <h3 className="mt-6 text-xl font-semibold tracking-tight">{step.title}</h3>

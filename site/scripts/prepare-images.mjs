@@ -27,6 +27,12 @@ async function webp(input, name, widths) {
 
 // Screenshots with the new logo, from the store listing (1280x800).
 await webp(path.join(store, "3-snag-app.png"), "app", [1280, 720]);
+// Phones get the left of the window (library and downloads) at its own size, in 4:3.
+await webp(
+  await sharp(path.join(store, "3-snag-app.png")).extract({ left: 0, top: 0, width: 732, height: 549 }).toBuffer(),
+  "app-phone",
+  [732],
+);
 await webp(path.join(store, "1-download-menu.png"), "ext-download-menu", [1280, 720]);
 await webp(path.join(store, "2-popup.png"), "ext-popup", [1280, 720]);
 
@@ -96,7 +102,7 @@ await sharp(logo).resize(180).png().toFile(path.join(app, "apple-icon.png"));
 // little, so they cross and form a rope. Written as SVG files the page uses as CSS masks, so
 // the lines take whatever colour the page gives them (and follow the accent picker).
 function polyline(points) {
-  return `M${points.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join("L")}Z`;
+  return `M${points.map(([x, y]) => `${Math.round(x)} ${Math.round(y)}`).join("L")}Z`;
 }
 // A ring of `strands` closed curves around (cx, cy), each a circle of radius r waved `lobes` times.
 function rosetteRing(cx, cy, r, amp, lobes, strands, steps) {

@@ -50,8 +50,8 @@ export function SectionHead({
 // "No. 04", set the way a catalogue numbers its items.
 export function No({ n, className }: { n: number; className?: string }) {
   return (
-    <span className={cn("flex items-baseline gap-1.5 font-display", className)}>
-      <span className="text-base text-faint italic">No.</span>
+    <span className={cn("flex items-baseline gap-1.5 font-display italic", className)}>
+      <span className="text-base text-faint">No.</span>
       <span className="text-[2.75rem] leading-none font-light tracking-tight tabular-nums md:text-[4.25rem]">{pad(n)}</span>
     </span>
   );
@@ -106,8 +106,8 @@ export function CatalogueLine({ entry }: { entry: Entry }) {
       className="grid grid-cols-[4.25rem_minmax(0,1fr)] items-baseline gap-x-3 border-t border-line py-7 md:grid-cols-[10rem_minmax(0,1fr)] md:gap-x-10"
       data-reveal
     >
-      <span className="flex items-baseline gap-1 font-display">
-        <span className="text-xs text-faint italic md:text-sm">No.</span>
+      <span className="flex items-baseline gap-1 font-display italic">
+        <span className="text-xs text-faint md:text-sm">No.</span>
         <span className="text-2xl leading-none font-light tabular-nums md:text-4xl">{pad(entry.n)}</span>
       </span>
       <div className="min-w-0">

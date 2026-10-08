@@ -50,7 +50,7 @@ const speed: Entry[] = [
     description: "Snag stays light while big downloads run in the background.",
     demo: (
       <div className="flex items-end gap-4 border-y border-line py-6" aria-hidden="true">
-        <span className="font-display text-[clamp(5rem,20vw,8.5rem)] leading-[0.8] font-light tracking-tight">35</span>
+        <span className="font-display text-[clamp(5rem,20vw,8.5rem)] leading-[0.8] font-light tracking-tight italic">35</span>
         <span className="pb-1">
           <span className="block font-display text-2xl italic">megabytes</span>
           <span className="label">of memory, in Rust</span>
@@ -93,18 +93,18 @@ const video: Entry[] = [
       "Pick 1080p, 720p or MP3, take a whole playlist with its subtitles, or record a live stream as it airs. Works on more than 1,800 sites, YouTube included.",
     demo: (
       <ul
-        className="flex flex-wrap items-baseline gap-x-3 gap-y-1 font-display text-[1.65rem] leading-snug md:text-3xl"
+        className="flex flex-wrap items-baseline gap-x-3 gap-y-1 font-display text-[1.65rem] leading-snug italic md:text-3xl"
         aria-label="Some of the supported sites"
       >
         {sites.map((site, i) => (
           <li key={site} className="flex items-baseline gap-3">
-            <span className={i % 2 ? "font-light italic" : "font-light"}>{site}</span>
+            <span className={i % 2 ? "font-normal" : "font-light"}>{site}</span>
             <span aria-hidden="true" className="text-base text-accent-text">
               ✦
             </span>
           </li>
         ))}
-        <li className="text-xl text-faint italic">and many more</li>
+        <li className="text-xl text-faint">and many more</li>
       </ul>
     ),
   },

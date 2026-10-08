@@ -8,12 +8,13 @@ import { DOWNLOAD_URL, PITCH, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"], display: "swap" });
-// The catalogue serif: the italic words in headlines, the numerals, and the captions.
+// The catalogue serif, italic only: the one word in each headline, the numerals and the captions.
+// At its default optical size it has the sturdier cut of an old type specimen, and one file
+// keeps the headline from waiting on fonts.
 const fraunces = Fraunces({
   variable: "--font-fraunces",
   subsets: ["latin"],
-  style: ["normal", "italic"],
-  axes: ["opsz"],
+  style: ["italic"],
   display: "swap",
 });
 const jetbrains = JetBrains_Mono({
@@ -21,6 +22,8 @@ const jetbrains = JetBrains_Mono({
   subsets: ["latin"],
   weight: ["400", "500"],
   display: "swap",
+  // Labels only; the headline must not wait on it.
+  preload: false,
 });
 
 const description =

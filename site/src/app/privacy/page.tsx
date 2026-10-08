@@ -28,8 +28,8 @@ function Section({ id, title, children }: { id: string; title: string; children:
       className="grid gap-x-10 gap-y-4 border-t border-line py-12 md:grid-cols-[6rem_minmax(0,1fr)] md:py-16"
       data-reveal
     >
-      <p className="font-display text-4xl leading-none font-light text-faint md:text-5xl">
-        <span className="text-xl italic">§</span> {order.indexOf(id) + 1}
+      <p className="font-display text-4xl leading-none font-light text-faint italic md:text-5xl">
+        <span className="text-xl">§</span> {order.indexOf(id) + 1}
       </p>
       <div>
         <h2 className="headline text-3xl md:text-4xl">{title}</h2>
@@ -73,7 +73,7 @@ export default function PrivacyPage() {
             className="hatch absolute inset-y-0 right-0 w-1/2 [mask-image:linear-gradient(to_left,black,transparent_85%)]"
           />
           <p className="label relative">In short</p>
-          <p className="relative mt-4 font-display text-[clamp(1.35rem,4vw,1.85rem)] leading-snug">
+          <p className="relative mt-4 text-xl leading-snug font-medium tracking-tight md:text-2xl">
             Snag has no account, no analytics, no ads and no server of its own. The extension sends what it reads only to
             the Snag app on the same computer. Nothing is sent to the developer or to any third party, and nothing is sold.
           </p>
