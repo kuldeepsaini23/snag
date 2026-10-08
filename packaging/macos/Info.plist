@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Snag</string>
+	<key>CFBundleDisplayName</key>
+	<string>Snag</string>
+	<!-- Also the LaunchAgent's label and the notifications' sender (crates/app/src/platform.rs: BUNDLE_ID). -->
+	<key>CFBundleIdentifier</key>
+	<string>dev.kuldeepsaini.snag</string>
+	<key>CFBundleExecutable</key>
+	<string>snag</string>
+	<key>CFBundleIconFile</key>
+	<string>Snag</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<!-- build.sh puts the workspace version here. -->
+	<key>CFBundleShortVersionString</key>
+	<string>@VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@VERSION@</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>11.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<!-- Draw on the integrated GPU of a Mac with two, rather than waking the discrete one. -->
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 Kuldeep Saini. MIT License.</string>
+</dict>
+</plist>

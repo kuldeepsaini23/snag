@@ -20,13 +20,15 @@
 
 ## Install
 
-**Windows 10 and 11.** Download [`Snag-Setup.exe`](https://github.com/kuldeepsaini23/snag/releases/latest/download/Snag-Setup.exe) from the [latest release](https://github.com/kuldeepsaini23/snag/releases/latest) (about 12 MB) and run it. It installs for your user only, so no admin rights are needed. Mac is coming.
+**Windows 10 and 11.** Download [`Snag-Setup.exe`](https://github.com/kuldeepsaini23/snag/releases/latest/download/Snag-Setup.exe) from the [latest release](https://github.com/kuldeepsaini23/snag/releases/latest) (about 12 MB) and run it. It installs for your user only, so no admin rights are needed.
+
+**macOS 11 and later (Apple silicon and Intel).** Download [`Snag-macOS.dmg`](https://github.com/kuldeepsaini23/snag/releases/latest/download/Snag-macOS.dmg), open it and drag Snag to Applications. Snag isn't notarized by Apple yet, so the first time **right-click Snag → Open**, then **Open** again (on macOS 15 and later: open it once, then **System Settings → Privacy & Security → Open Anyway**). After that it starts normally, waits in the menu bar when its window is closed, and updates itself (`Snag-macOS.zip`) while it sits in a folder you can write to, like Applications. Settings are kept in `~/Library/Application Support/Snag`.
 
 **Linux (x86_64).** Download [`Snag-x86_64.AppImage`](https://github.com/kuldeepsaini23/snag/releases/latest/download/Snag-x86_64.AppImage), make it executable (`chmod +x Snag-x86_64.AppImage`) and run it; it updates itself like the Windows version. On Debian and Ubuntu you can install `snag_<version>_amd64.deb` from the release instead (`sudo apt install ./snag_*_amd64.deb`); its update card links to the release page. Both need glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 and later). The tray icon needs an AppIndicator host: KDE, Cinnamon, Xfce and Ubuntu's GNOME have one; on plain GNOME add the *AppIndicator and KStatusNotifierItem Support* extension. Settings are kept in `~/.local/share/snag`.
 
 Windows may say "Windows protected your PC" because the installer isn't code-signed yet: click **More info → Run anyway**. Each release lists its SHA-256 checksums, so you can check the file is the one published here.
 
-Snag fetches its helpers the first time they're needed: yt-dlp for video sites, gallery-dl for image galleries, and ffmpeg (35 MB, checked against its published checksum) for HD video, MP3 and conversions. On Linux an ffmpeg already installed (e.g. `apt install ffmpeg`) is used; otherwise a static build (about 150 MB) is fetched and checked the same way.
+Snag fetches its helpers the first time they're needed: yt-dlp for video sites, gallery-dl for image galleries, and ffmpeg (35 MB, checked against its published checksum) for HD video, MP3 and conversions. On Linux an ffmpeg already installed (e.g. `apt install ffmpeg`) is used; otherwise a static build (about 150 MB) is fetched and checked the same way. On a Mac an ffmpeg from Homebrew is used, otherwise [Martin Riedl's](https://ffmpeg.martin-riedl.de) signed static build for your processor (checked the same way); gallery-dl has no Intel Mac build, so an Intel Mac needs `brew install gallery-dl` for image galleries.
 
 Snag looks for a newer version on GitHub at start and every few hours, and offers it in a small card; **Update now** downloads it, checks it against the checksum published with the release, installs it and reopens Snag. You can switch this off in Settings → General.
 
@@ -35,6 +37,7 @@ Snag looks for a newer version on GitHub at start and every few hours, and offer
 1. Install [Rust](https://rustup.rs) (stable), [Node.js](https://nodejs.org) and, for the installer, [Inno Setup 6](https://jrsoftware.org/isdl.php).
 2. `cargo build --release` builds `target\release\snag.exe`; `bash installer/build.sh` builds the installer and the extension packages.
 3. Linux: install the packages listed at the top of `packaging/linux/build.sh` (GTK 3, AppIndicator, xdo), then `cargo build --release` builds `target/release/snag`; `bash packaging/linux/build.sh` builds the AppImage and the .deb.
+4. macOS: with Xcode's command line tools and `rustup target add aarch64-apple-darwin x86_64-apple-darwin`, `bash packaging/macos/build.sh` builds a universal `Snag.app`, `Snag-macOS.zip` and `Snag-macOS.dmg` in `target/macos` (signed ad hoc, not notarized).
 
 ### Browser extension
 
