@@ -1,6 +1,8 @@
 //! The notification-area (tray) icon: Snag keeps running there when its window is closed.
 //! Windows: it lives on the UI thread. Linux: on its own GTK thread (an AppIndicator; GNOME
 //! shows it with the AppIndicator extension), which the `Tray` handle sends new icons to.
+//! macOS: a menu bar item, made on the main thread once the app is running (`Message::MakeTray`),
+//! drawn as a template image in the menu bar's own colour.
 
 use crate::update::Message;
 use iced::futures::SinkExt;
@@ -8,6 +10,7 @@ use iced::Subscription;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 pub const ICON_32: &[u8] = include_bytes!("../assets/icon-32.rgba");
 pub const ICON_64: &[u8] = include_bytes!("../assets/icon-64.rgba");
 
@@ -22,15 +25,19 @@ pub struct Tray(TrayIcon);
 
 #[cfg(not(target_os = "linux"))]
 impl Tray {
-    /// Redraws the tray icon (32×32 RGBA), e.g. in a new accent.
+    /// Redraws the tray icon (32×32 RGBA), e.g. in a new accent. (macOS keeps its template.)
     pub fn set_icon(&self, rgba: Vec<u8>) {
+        if cfg!(target_os = "macos") {
+            return;
+        }
         if let Ok(icon) = Icon::from_rgba(rgba, 32, 32) {
             let _ = self.0.set_icon(Some(icon));
         }
     }
 }
 
-/// Must run on the UI thread (it owns the Windows message loop the icon talks to).
+/// Must run on the UI thread (it owns the Windows message loop the icon talks to). macOS: on the
+/// main thread after the app has started (NSStatusItem), i.e. from `update`, not at boot.
 #[cfg(not(target_os = "linux"))]
 pub fn create() -> Option<Tray> {
     build().map(Tray)
@@ -98,14 +105,25 @@ fn build() -> Option<TrayIcon> {
         &MenuItem::with_id(QUIT, "Quit Snag", true, None),
     ])
     .ok()?;
-    let icon = Icon::from_rgba(ICON_32.to_vec(), 32, 32).ok()?; // replaced by the accent's at once
-    TrayIconBuilder::new()
-        .with_menu(Box::new(menu))
-        .with_menu_on_left_click(false)
-        .with_tooltip("Snag")
-        .with_icon(icon)
-        .build()
-        .ok()
+    let tray = TrayIconBuilder::new().with_menu(Box::new(menu)).with_tooltip("Snag");
+    // macOS: the mark's ink as a template (the menu bar tints it); its menu opens on a click, as
+    // menu bar items do there.
+    #[cfg(target_os = "macos")]
+    let tray = tray.with_menu_on_left_click(true).with_icon_templated(Icon::from_rgba(crate::ui::icon::tray_template(), 32, 32).ok()?);
+    #[cfg(not(target_os = "macos"))]
+    let tray = tray.with_menu_on_left_click(false).with_icon(Icon::from_rgba(ICON_32.to_vec(), 32, 32).ok()?); // replaced by the accent's at once
+    tray.build().ok()
+}
+
+/// Where tray clicks go (the running `events` stream).
+static SHOW: std::sync::Mutex<Option<tokio::sync::mpsc::UnboundedSender<Message>>> = std::sync::Mutex::new(None);
+
+/// Shows the window, as the tray's Open Snag does (macOS: a click on the Dock icon).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn open_window() {
+    if let Some(tx) = SHOW.lock().ok().and_then(|o| o.clone()) {
+        let _ = tx.send(Message::TrayOpen);
+    }
 }
 
 pub fn subscription() -> Subscription<Message> {
@@ -116,6 +134,9 @@ fn events() -> impl iced::futures::Stream<Item = Message> {
     iced::stream::channel(32, async |mut out: iced::futures::channel::mpsc::Sender<Message>| {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let clicks = tx.clone();
+        if let Ok(mut open) = SHOW.lock() {
+            *open = Some(tx.clone());
+        }
         MenuEvent::set_event_handler(Some(move |e: MenuEvent| {
             let message = match e.id.0.as_str() {
                 OPEN => Some(Message::TrayOpen),

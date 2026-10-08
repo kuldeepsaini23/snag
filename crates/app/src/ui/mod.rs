@@ -174,7 +174,8 @@ pub fn view(app: &App) -> Element<'_, Message> {
         let t = float(t).translate(move |_, _| Vector::new(0.0, 14.0 * (1.0 - a.toast)));
         layers = layers.push(container(opaque(t)).width(Fill).height(Fill).align_x(Alignment::End).align_y(Alignment::End).padding([40, 20]));
     }
-    if m.maximized { layers.into() } else { layers.push(resize_grips()).into() }
+    // macOS has its own frame, which resizes the window.
+    if m.maximized || cfg!(target_os = "macos") { layers.into() } else { layers.push(resize_grips()).into() }
 }
 
 /// Shows `width` of a panel laid out at its full size: from its right edge (`from_left`: the

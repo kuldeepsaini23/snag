@@ -128,20 +128,28 @@ struct Tools {
 }
 
 impl Tools {
-    /// ffmpeg for conversions: Snag's own copy in `bin`, else (Linux) one shipped next to Snag,
-    /// else one on the PATH.
+    /// ffmpeg for conversions: Snag's own copy in `bin`, else one shipped with Snag (Linux: next
+    /// to it; macOS: in Snag.app), else one on the PATH.
     fn ffmpeg(&self) -> Option<PathBuf> {
         let name = tool_file("ffmpeg");
         let own = self.bin_dir.join(&name);
         if own.exists() {
             return Some(own);
         }
-        #[cfg(not(windows))]
-        if let Some(bundled) = std::env::current_exe().ok().and_then(|exe| Some(exe.parent()?.join(&name))).filter(|p| p.is_file()) {
-            return Some(bundled);
+        bundled(&name).or_else(|| on_path(&name))
+    }
+
+    /// macOS: a tool that came inside Snag.app is copied into `bin` the first time (there it can
+    /// update itself without touching the signed app), instead of being downloaded.
+    #[cfg(target_os = "macos")]
+    fn seed_from_bundle(&self, path: &Path) -> bool {
+        let Some(bundled) = path.file_name().and_then(|n| bundled(&n.to_string_lossy())) else { return false };
+        let _ = std::fs::create_dir_all(&self.bin_dir);
+        if std::fs::copy(&bundled, path).is_err() {
+            return false;
         }
-        let path = std::env::var_os("PATH")?;
-        std::env::split_paths(&path).map(|d| d.join(&name)).find(|p| p.exists())
+        make_runnable(path);
+        true
     }
 
     /// Runs detached: a caller that gives up (pause) never interrupts a download or update of the exe.
@@ -166,31 +174,49 @@ impl Tools {
             return Ok(found);
         }
         notify();
-        let archive = this.bin_dir.join(crate::ffmpeg::ARCHIVE);
-        let fetched = async {
-            let expected = this.client.get(crate::ffmpeg::SHA256_URL).send().await.map_err(|e| e.to_string())?.text().await.map_err(|e| e.to_string())?;
-            let expected = crate::ffmpeg::expected_sha256(&expected).ok_or("no checksum published for the ffmpeg download")?;
-            let (progress, _) = watch::channel(Progress::default());
-            match download(&this.client, crate::ffmpeg::URL, &archive, &DownloadOptions::default(), CancellationToken::new(), &progress).await {
-                Ok(Outcome::Completed(_)) => {}
-                Ok(Outcome::Paused) => return Err("the ffmpeg download was interrupted".to_string()),
-                Err(e) => return Err(e.to_string()),
-            }
-            let (file, bin) = (archive.clone(), this.bin_dir.clone());
-            tokio::task::spawn_blocking(move || {
-                // Only a file with the published fingerprint is unpacked and run.
-                if crate::safety::sha256_file(&file).map_err(|e| e.to_string())? != expected {
-                    return Err("the ffmpeg download didn't match its published checksum".to_string());
-                }
-                crate::ffmpeg::unpack(&file, &bin)
-            })
-            .await
-            .map_err(|e| e.to_string())?
+        for source in crate::ffmpeg::SOURCES {
+            let archive = this.bin_dir.join(source.archive);
+            let fetched = this.fetch_ffmpeg(source, &archive).await;
+            let _ = std::fs::remove_file(&archive);
+            fetched.map_err(|e| format!("couldn't get ffmpeg: {e}"))?;
         }
-        .await;
-        let _ = std::fs::remove_file(&archive);
-        fetched.map_err(|e| format!("couldn't get ffmpeg: {e}"))?;
         this.ffmpeg().ok_or_else(|| "ffmpeg wasn't unpacked".into())
+    }
+
+    /// One of ffmpeg's archives: downloaded to `archive`, checked against its published SHA-256,
+    /// unpacked into `bin`.
+    async fn fetch_ffmpeg(&self, source: &crate::ffmpeg::Source, archive: &Path) -> Result<(), String> {
+        let (url, sha256_url) = match source.sha256_url {
+            Some(sums) => (source.url.to_string(), sums.to_string()),
+            // The checksum sits next to the file the link leads to: follow the link first.
+            None => {
+                let landed = self.client.head(source.url).send().await.map_err(|e| e.to_string())?.error_for_status().map_err(|e| e.to_string())?;
+                let url = landed.url().to_string();
+                (url.clone(), format!("{url}.sha256"))
+            }
+        };
+        let expected = self.client.get(&sha256_url).send().await.map_err(|e| e.to_string())?.text().await.map_err(|e| e.to_string())?;
+        let expected = crate::ffmpeg::expected_sha256(&expected).ok_or("no checksum published for the ffmpeg download")?;
+        let (progress, _) = watch::channel(Progress::default());
+        match download(&self.client, &url, archive, &DownloadOptions::default(), CancellationToken::new(), &progress).await {
+            Ok(Outcome::Completed(_)) => {}
+            Ok(Outcome::Paused) => return Err("the ffmpeg download was interrupted".to_string()),
+            Err(e) => return Err(e.to_string()),
+        }
+        let (file, bin) = (archive.to_path_buf(), self.bin_dir.clone());
+        tokio::task::spawn_blocking(move || {
+            // Only a file with the published fingerprint is unpacked and run.
+            if crate::safety::sha256_file(&file).map_err(|e| e.to_string())? != expected {
+                return Err("the ffmpeg download didn't match its published checksum".to_string());
+            }
+            crate::ffmpeg::unpack(&file, &bin)?;
+            for name in ["ffmpeg", "ffprobe"] {
+                make_runnable(&bin.join(tool_file(name)));
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|e| e.to_string())?
     }
 
     /// gallery-dl, downloaded into `bin/` the first time (detached, like `ytdlp`).
@@ -202,14 +228,24 @@ impl Tools {
             if path.exists() {
                 return Ok(path);
             }
-            let (progress, _) = watch::channel(Progress::default());
-            match download(&this.client, rdm_media::gallery::GALLERY_DL_URL, &path, &DownloadOptions::default(), CancellationToken::new(), &progress).await {
-                Ok(Outcome::Completed(_)) => {
-                    make_runnable(&path);
-                    Ok(path)
+            #[cfg(target_os = "macos")]
+            if this.seed_from_bundle(&path) {
+                return Ok(path);
+            }
+            // An Intel Mac: no standalone build to download; one installed on the PATH, if any.
+            #[cfg(all(target_os = "macos", not(target_arch = "aarch64")))]
+            return on_path(&tool_file("gallery-dl")).ok_or_else(|| "gallery-dl isn't installed (on an Intel Mac: brew install gallery-dl)".into());
+            #[cfg(not(all(target_os = "macos", not(target_arch = "aarch64"))))]
+            {
+                let (progress, _) = watch::channel(Progress::default());
+                match download(&this.client, rdm_media::gallery::GALLERY_DL_URL, &path, &DownloadOptions::default(), CancellationToken::new(), &progress).await {
+                    Ok(Outcome::Completed(_)) => {
+                        make_runnable(&path);
+                        Ok(path)
+                    }
+                    Ok(Outcome::Paused) => Err("gallery-dl download was interrupted".into()),
+                    Err(e) => Err(format!("couldn't download gallery-dl: {e}")),
                 }
-                Ok(Outcome::Paused) => Err("gallery-dl download was interrupted".into()),
-                Err(e) => Err(format!("couldn't download gallery-dl: {e}")),
             }
         })
         .await
@@ -226,6 +262,11 @@ impl Tools {
                 let _ = std::fs::write(self.marker(), b"");
                 let _ = tokio::time::timeout(Duration::from_secs(60), rdm_media::self_update(&path)).await;
             }
+            return Ok(path);
+        }
+        #[cfg(target_os = "macos")]
+        if self.seed_from_bundle(&path) {
+            let _ = std::fs::write(self.marker(), b"");
             return Ok(path);
         }
         let (progress, _) = watch::channel(Progress::default());
@@ -246,15 +287,47 @@ pub fn tool_file(name: &str) -> String {
     format!("{name}{}", std::env::consts::EXE_SUFFIX)
 }
 
-/// A downloaded program can be run (Linux: the executable bit; nothing to do on Windows).
+/// A downloaded program can be run (Linux: the executable bit; macOS: that, and no quarantine
+/// flag for Gatekeeper to stop it on; nothing to do on Windows).
 fn make_runnable(path: &Path) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
     }
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("/usr/bin/xattr")
+        .args(["-d", "com.apple.quarantine"])
+        .arg(path)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
     #[cfg(not(unix))]
     let _ = path;
+}
+
+/// A tool shipped with Snag: Linux, next to its program; macOS, in `Snag.app/Contents/Resources/bin`
+/// (the program is `Contents/MacOS/snag`). Windows ships none.
+fn bundled(name: &str) -> Option<PathBuf> {
+    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let path = if cfg!(target_os = "macos") {
+        exe_dir.parent()?.join("Resources").join("bin").join(name)
+    } else if cfg!(unix) {
+        exe_dir.join(name)
+    } else {
+        return None;
+    };
+    path.is_file().then_some(path)
+}
+
+/// A tool on the PATH. macOS: also Homebrew's folders, which an app started from the Finder or
+/// the Dock doesn't have on its PATH.
+fn on_path(name: &str) -> Option<PathBuf> {
+    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
+    if cfg!(target_os = "macos") {
+        dirs.extend(["/opt/homebrew/bin", "/usr/local/bin"].map(PathBuf::from));
+    }
+    dirs.into_iter().map(|d| d.join(name)).find(|p| p.is_file())
 }
 
 enum Cmd {

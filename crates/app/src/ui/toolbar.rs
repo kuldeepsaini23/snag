@@ -18,6 +18,8 @@ const TAB_GAP: f32 = 2.0;
 const TAB_INSET: f32 = 10.0;
 /// The search field's width once it is open.
 const SEARCH_WIDTH: f32 = 190.0;
+/// macOS: room for the close, minimise and zoom buttons left of the logo.
+const TRAFFIC_LIGHTS: f32 = 76.0;
 /// Windows 11's own caption glyphs (thin, sized for 46×32 buttons).
 const CAPTION_FONT: Font = Font::with_name("Segoe Fluent Icons");
 
@@ -49,8 +51,11 @@ pub fn view(m: &Model, a: Anim, c: Colors) -> Element<'_, Message> {
     .spacing(8)
     .align_y(Alignment::Center);
 
-    let content = container(bar).height(52).width(Fill).padding(iced::Padding { left: 12.0, right: 12.0, ..Default::default() }).align_y(Alignment::Center);
-    mouse_area(row![content, captions(m, c)])
+    // macOS: the system's traffic lights sit at the left end, and its own buttons are the captions.
+    let left = if cfg!(target_os = "macos") { TRAFFIC_LIGHTS } else { 12.0 };
+    let content = container(bar).height(52).width(Fill).padding(iced::Padding { left, right: 12.0, ..Default::default() }).align_y(Alignment::Center);
+    let bar = if cfg!(target_os = "macos") { row![content] } else { row![content, captions(m, c)] };
+    mouse_area(bar)
         .on_press(Message::WinDrag)
         .on_double_click(Message::WinMaximize)
         .into()

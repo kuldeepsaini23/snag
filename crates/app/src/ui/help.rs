@@ -75,14 +75,26 @@ fn point<'a>(s: &str, c: Colors) -> Element<'a, Message> {
     row![dot, text(s.to_string()).size(12.5).color(c.text2).width(Fill)].spacing(10).align_y(Alignment::Start).into()
 }
 
-const SHORTCUTS: [(&str, &str); 6] = [
-    ("Ctrl + K", "Search downloads"),
-    ("Enter", "Add the link typed or pasted in the link bar"),
-    ("Esc", "Close the open sheet or menu, else deselect"),
-    ("F1", "Help"),
-    ("Double-click", "On the title bar: maximise or restore the window"),
-    ("Alt + F4", "Hide Snag to the tray (it keeps downloading)"),
-];
+const SHORTCUTS: &[(&str, &str)] = if cfg!(target_os = "macos") {
+    &[
+        ("Cmd + K", "Search downloads"),
+        ("Return", "Add the link typed or pasted in the link bar"),
+        ("Esc", "Close the open sheet or menu, else deselect"),
+        ("Cmd + ,", "Settings"),
+        ("Double-click", "On the title bar: zoom or restore the window"),
+        ("Cmd + W", "Hide Snag to the menu bar (it keeps downloading)"),
+        ("Cmd + Q", "Quit Snag (downloads pause and resume next time)"),
+    ]
+} else {
+    &[
+        ("Ctrl + K", "Search downloads"),
+        ("Enter", "Add the link typed or pasted in the link bar"),
+        ("Esc", "Close the open sheet or menu, else deselect"),
+        ("F1", "Help"),
+        ("Double-click", "On the title bar: maximise or restore the window"),
+        ("Alt + F4", "Hide Snag to the tray (it keeps downloading)"),
+    ]
+};
 
 fn shortcuts<'a>(c: Colors) -> Element<'a, Message> {
     let rows = SHORTCUTS.iter().fold(column![].spacing(0), |col, (keys, what)| {
@@ -100,7 +112,7 @@ const HELP: [(Icon, &str, &[&str]); 5] = [
             "Copy a link anywhere and Snag offers it in the corner. Or paste it into the link bar and press Enter.",
             "Video and music links ask for a quality (or MP3); files start at once. Playlists let you tick the videos you want.",
             "Point at a download for Pause, Resume and Cancel. Click it for details, its folder, and Refresh link when an old link has expired.",
-            "Closing the window keeps Snag downloading in the tray. Quit from the tray icon.",
+            crate::platform::CLOSE_HINT,
         ],
     ),
     (

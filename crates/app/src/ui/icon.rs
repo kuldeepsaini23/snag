@@ -38,9 +38,30 @@ pub fn taskbar_icon(accent: Color) -> Vec<u8> {
     tint(MARK, Color { a: 1.0, ..accent })
 }
 
-/// The tray icon, 32×32 RGBA: the taskbar icon at half size (each pixel a 2×2 average).
+/// The tray icon, 32×32 RGBA: the taskbar icon at half size.
 pub fn tray_icon(accent: Color) -> Vec<u8> {
-    let big = taskbar_icon(accent);
+    half(&taskbar_icon(accent))
+}
+
+/// macOS's menu bar icon, 32×32 RGBA: the mark's ink alone, black on transparent (a template
+/// image, which macOS draws in the menu bar's own colour, light or dark).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn tray_template() -> Vec<u8> {
+    let ink: Vec<u8> = MARK
+        .1
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .flat_map(|px| {
+            let dark = 1.0 - (px[0] as f32 + px[1] as f32 + px[2] as f32) / (3.0 * 255.0);
+            [0, 0, 0, (px[3] as f32 * dark).round() as u8]
+        })
+        .collect();
+    half(&ink)
+}
+
+/// A 64×64 RGBA picture at 32×32 (each pixel a 2×2 average).
+fn half(big: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(32 * 32 * 4);
     for y in 0..32 {
         for x in 0..32 {

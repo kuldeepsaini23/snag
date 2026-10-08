@@ -207,8 +207,26 @@ fn system_version() -> String {
     format!("{name} {display} (build {build})").replace("  ", " ")
 }
 
+/// macOS: "macOS 15.1 (24B83)", from `sw_vers`.
+#[cfg(target_os = "macos")]
+fn system_version() -> String {
+    let ask = |flag: &str| {
+        std::process::Command::new("/usr/bin/sw_vers").arg(flag).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default()
+    };
+    mac_version(&ask("-productVersion"), &ask("-buildVersion"))
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn mac_version(version: &str, build: &str) -> String {
+    match (version.is_empty(), build.is_empty()) {
+        (true, _) => "macOS (version unknown)".into(),
+        (false, true) => format!("macOS {version}"),
+        (false, false) => format!("macOS {version} ({build})"),
+    }
+}
+
 /// Linux: "Ubuntu 24.04.1 LTS (Linux 6.8.0-45-generic)", from os-release and the kernel.
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 fn system_version() -> String {
     let release = std::fs::read_to_string("/etc/os-release").or_else(|_| std::fs::read_to_string("/usr/lib/os-release")).unwrap_or_default();
     let kernel = std::fs::read_to_string("/proc/sys/kernel/osrelease").unwrap_or_default();
@@ -216,13 +234,13 @@ fn system_version() -> String {
 }
 
 /// The distribution's `PRETTY_NAME` and the kernel release.
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn linux_version(os_release: &str, kernel: &str) -> String {
     let name = os_release.lines().find_map(|l| l.strip_prefix("PRETTY_NAME=")).map(|v| v.trim().trim_matches(['"', '\''])).filter(|v| !v.is_empty()).unwrap_or("Linux");
     if kernel.is_empty() { name.to_string() } else { format!("{name} (Linux {kernel})") }
 }
 
-/// Linux: the Desktop (XDG), else the home folder.
+/// Linux: the Desktop (XDG), else the home folder; macOS: `~/Desktop`, else the home folder.
 #[cfg(not(windows))]
 pub fn desktop() -> Option<PathBuf> {
     rdm_core::dirs::desktop().or_else(|| Some(rdm_core::dirs::home()).filter(|h| h.is_dir()))
@@ -349,6 +367,13 @@ line 2");
         assert_eq!(linux_version(release, "6.8.0-45-generic"), "Ubuntu 24.04.1 LTS (Linux 6.8.0-45-generic)");
         assert_eq!(linux_version("ID=arch\nPRETTY_NAME='Arch Linux'\n", ""), "Arch Linux");
         assert_eq!(linux_version("", "6.1"), "Linux (Linux 6.1)");
+    }
+
+    #[test]
+    fn mac_version_names_the_release_and_build() {
+        assert_eq!(mac_version("15.1", "24B83"), "macOS 15.1 (24B83)");
+        assert_eq!(mac_version("14.6.1", ""), "macOS 14.6.1");
+        assert_eq!(mac_version("", "24B83"), "macOS (version unknown)");
     }
 
     #[test]

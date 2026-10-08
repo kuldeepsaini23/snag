@@ -11,8 +11,11 @@ pub mod gallery;
 #[cfg(windows)]
 pub const YTDLP_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
 /// Linux: the standalone x86_64 build (no Python needed); `yt-dlp -U` updates it in place.
-#[cfg(not(windows))]
+#[cfg(all(unix, not(target_os = "macos")))]
 pub const YTDLP_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux";
+/// macOS: the standalone universal build (Apple silicon and Intel).
+#[cfg(target_os = "macos")]
+pub const YTDLP_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MediaFormat {

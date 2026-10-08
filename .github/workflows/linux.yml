@@ -1,7 +1,7 @@
 name: Linux
 
 # Builds and tests Snag on Linux, and packages the AppImage and the .deb as workflow artifacts
-# (to try a branch on a Linux machine before it's released). Releases: release-linux.yml.
+# (to try a branch on a Linux machine before it's released). Releases: release.yml.
 on:
   push:
     branches: [master, feat/linux]

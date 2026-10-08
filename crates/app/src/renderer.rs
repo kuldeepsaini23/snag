@@ -1,6 +1,8 @@
 //! How the window is drawn. Snag's window is mostly still, so the CPU (iced's tiny-skia
 //! renderer) draws it with ~35 MB; the GPU path loads every graphics driver on the PC (~200 MB,
 //! and it wakes a laptop's discrete GPU). The GPU stays one switch away (Settings → Appearance).
+//! macOS draws with the GPU (Metal) always: those costs are a PC's, while drawing a Retina window
+//! (four times the pixels) on the CPU, all of it each frame (vendor/iced_tiny_skia), is not cheap.
 
 /// The `ICED_BACKEND` to set before the window opens, or `None` to leave it as it is: a value the
 /// user already set wins; otherwise CPU drawing unless the GPU was chosen.

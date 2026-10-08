@@ -40,6 +40,14 @@ gtk = "0.18"
 notify-rust = "4"
 rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
 
+# macOS: notifications through the Notification Center; the application delegate (Dock clicks,
+# Quit) with the same objc2 crates tray-icon uses.
+[target.'cfg(target_os = "macos")'.dependencies]
+notify-rust = "4"
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSObject"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSResponder"] }
+
 [dev-dependencies]
 tempfile.workspace = true
 

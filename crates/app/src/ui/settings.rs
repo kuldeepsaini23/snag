@@ -142,9 +142,11 @@ fn behaviour(m: &Model, c: Colors) -> Vec<Element<'_, Message>> {
             c,
         ),
     ];
-    // Windows: the installer's "Start Snag when I sign in" task. Linux has no installer to ask.
-    if cfg!(target_os = "linux") {
-        lines.insert(3, line("Start when you sign in", "Snag waits quietly in the tray, ready for links", switch(m.autostart, Message::Autostart, c), c));
+    // Windows: the installer's "Start Snag when I sign in" task. Linux and macOS have no installer
+    // to ask.
+    if cfg!(any(target_os = "linux", target_os = "macos")) {
+        let hint = if cfg!(target_os = "macos") { "Snag waits quietly in the menu bar, ready for links" } else { "Snag waits quietly in the tray, ready for links" };
+        lines.insert(3, line("Start when you sign in", hint, switch(m.autostart, Message::Autostart, c), c));
     }
     lines
 }
@@ -319,6 +321,10 @@ fn appearance(m: &Model, c: Colors) -> Element<'_, Message> {
             c,
         ),
     ];
+    // macOS always draws with the GPU (see `renderer`): no switch.
+    if cfg!(target_os = "macos") {
+        window.pop();
+    }
     // Mica and acrylic are Windows' own: elsewhere the window stays solid, so there's no switch.
     if !cfg!(windows) {
         window.remove(1);

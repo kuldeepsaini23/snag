@@ -95,6 +95,9 @@ pub enum Message {
     WinMaximized(bool),
     /// Close button / Alt+F4: hide to the tray, keep downloading.
     HideWindow,
+    /// macOS: the menu bar icon and the app delegate, made once the app is running.
+    #[cfg(target_os = "macos")]
+    MakeTray,
     TrayOpen,
     TrayQuit,
     QuitAnyway,
@@ -280,7 +283,8 @@ pub enum Message {
 pub fn boot(manager: Manager, bridge_status: String, data_dir: PathBuf, runtime: tokio::runtime::Handle) -> (App, Task<Message>) {
     let m = manager.clone();
     let model = Model { bridge_status, system_light: crate::appearance::system_light(), autostart: crate::platform::autostart(), ..Model::default() };
-    let tray = crate::tray::create();
+    // macOS: the menu bar icon can only be made once the app runs (`Message::MakeTray`).
+    let tray = if cfg!(target_os = "macos") { None } else { crate::tray::create() };
     crate::notify::register(&data_dir);
     let system_reduced = crate::motion::system_reduced_motion();
     let motion = Motion::new(crate::view::motion_targets(&model), system_reduced);
@@ -301,6 +305,8 @@ pub fn boot(manager: Manager, bridge_status: String, data_dir: PathBuf, runtime:
     };
     // A while after start (not to slow it down), look for a newer Snag.
     let look = Task::perform(tokio::time::sleep(std::time::Duration::from_secs(8)), |_| Message::CheckUpdate);
+    #[cfg(target_os = "macos")]
+    let look = Task::batch([look, Task::done(Message::MakeTray)]);
     (app, Task::batch([Task::perform(async move { m.snapshot().await }, Message::Loaded), look]))
 }
 
@@ -607,6 +613,19 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::WinMaximized(on) => model.maximized = on,
         Message::WinClose | Message::HideWindow => return window::latest().and_then(|id| window::set_mode(id, window::Mode::Hidden)),
+        #[cfg(target_os = "macos")]
+        Message::MakeTray => {
+            if app.tray.is_none() {
+                app.tray = crate::tray::create();
+                let (manager, runtime) = (app.manager.clone(), app.runtime.clone());
+                // ⌘Q and the like end the app at once: pause and save first (on a thread of its
+                // own, as this one may be inside the UI's runtime).
+                crate::macos::install(move || {
+                    let (manager, runtime) = (manager.clone(), runtime.clone());
+                    let _ = std::thread::spawn(move || runtime.block_on(manager.shutdown())).join();
+                });
+            }
+        }
         Message::TrayOpen => return show_window(),
         Message::TrayQuit => {
             if model.request_quit() {
@@ -1210,12 +1229,18 @@ pub fn subscription(app: &App) -> Subscription<Message> {
     Subscription::batch(subs)
 }
 
-/// Ctrl+K focuses search; F1 opens Help; Escape closes whatever is on top.
+/// Ctrl+K (macOS: Cmd+K) focuses search; F1 opens Help; Escape closes whatever is on top. macOS
+/// also has Cmd+W (hide the window), Cmd+M (minimise) and Cmd+, (Settings); Cmd+Q is the app
+/// menu's.
 fn on_key(event: keyboard::Event) -> Option<Message> {
     let keyboard::Event::KeyPressed { key, modifiers, .. } = event else { return None };
+    let mac = cfg!(target_os = "macos") && modifiers.command();
     match key.as_ref() {
         keyboard::Key::Named(keyboard::key::Named::Escape) => Some(Message::Escape),
         keyboard::Key::Character("k") if modifiers.command() => Some(Message::FocusSearch),
+        keyboard::Key::Character("w") if mac => Some(Message::HideWindow),
+        keyboard::Key::Character("m") if mac => Some(Message::WinMinimize),
+        keyboard::Key::Character(",") if mac => Some(Message::OpenSettings(SettingsTab::General)),
         keyboard::Key::Named(keyboard::key::Named::F1) => Some(Message::OpenInfo(Info::Help)),
         _ => None,
     }

@@ -9,6 +9,8 @@ mod dropped;
 mod format;
 mod hsv;
 mod local_thumb;
+#[cfg(target_os = "macos")]
+mod macos;
 mod motion;
 mod queues;
 mod renderer;
@@ -32,11 +34,14 @@ mod view;
 use std::path::PathBuf;
 
 fn main() -> iced::Result {
-    // %APPDATA%\Snag (an older %APPDATA%\rdm is moved there once); ~/.local/share/snag on Linux.
+    // %APPDATA%\Snag (an older %APPDATA%\rdm is moved there once); ~/.local/share/snag on Linux;
+    // ~/Library/Application Support/Snag on macOS.
     let state_path = rdm_core::dirs::app_dir().join("state.json");
     let saved = rdm_core::store::load(&state_path).settings;
-    // CPU or GPU drawing (see `renderer`), decided before any other thread exists.
-    if let Some(backend) = renderer::backend(std::env::var("ICED_BACKEND").ok().as_deref(), saved.use_gpu) {
+    // CPU or GPU drawing (see `renderer`), decided before any other thread exists. macOS always
+    // draws with Metal unless `ICED_BACKEND` says otherwise.
+    let backend = if cfg!(target_os = "macos") { None } else { renderer::backend(std::env::var("ICED_BACKEND").ok().as_deref(), saved.use_gpu) };
+    if let Some(backend) = backend {
         // SAFETY: still single-threaded here; nothing else reads or writes the environment.
         unsafe { std::env::set_var("ICED_BACKEND", backend) };
     }
@@ -49,7 +54,7 @@ fn main() -> iced::Result {
     let quit = std::env::args().any(|a| a == "--quit");
     // `snag --background`: start in the tray, no window (sign-in, if the user chose it).
     let background = std::env::args().any(|a| a == "--background");
-    // `snag --updated`: started by the Snag it replaced (Linux AppImage update), which may still
+    // `snag --updated`: started by the Snag it replaced (Linux AppImage or macOS app update), which may still
     // be closing; wait for it to let go of the lock instead of focusing it.
     let updated = std::env::args().any(|a| a == "--updated");
     let mut instance = rdm_core::instance::lock(&data_dir);
@@ -89,8 +94,9 @@ fn main() -> iced::Result {
     let window = iced::window::Settings {
         size: iced::Size::new(1280.0, 800.0),
         min_size: Some(iced::Size::new(960.0, 600.0)),
-        // The toolbar is the title bar (spec §2.5).
-        decorations: false,
+        // The toolbar is the title bar (spec §2.5). macOS keeps its own frame: the traffic lights
+        // sit over the toolbar's left end, and the system resizes and rounds the window.
+        decorations: cfg!(target_os = "macos"),
         transparent: translucent,
         // In the saved accent from the start (then kept in step by `update::sync_icons`).
         icon: iced::window::icon::from_rgba(
@@ -107,6 +113,8 @@ fn main() -> iced::Result {
         // and name in the dock).
         #[cfg(target_os = "linux")]
         platform_specific: iced::window::settings::PlatformSpecific { application_id: "snag".into(), ..Default::default() },
+        #[cfg(target_os = "macos")]
+        platform_specific: iced::window::settings::PlatformSpecific { title_hidden: true, titlebar_transparent: true, fullsize_content_view: true },
         ..Default::default()
     };
     let result = iced::application(move || update::boot(boot_manager.clone(), bridge_status.clone(), boot_dir.clone(), boot_runtime.clone()), update::update, ui::view)

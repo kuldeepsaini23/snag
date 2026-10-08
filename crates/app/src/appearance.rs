@@ -21,21 +21,29 @@ pub fn system_light() -> bool {
     light_from_registry(key.ok().and_then(|k| k.get_value::<u32, _>("AppsUseLightTheme").ok()))
 }
 
+/// macOS: the Appearance setting. `AppleInterfaceStyle` is "Dark" in Dark mode and missing in
+/// Light (Auto sets it as the time of day changes).
+#[cfg(target_os = "macos")]
+pub fn system_light() -> bool {
+    let out = std::process::Command::new("/usr/bin/defaults").args(["read", "-g", "AppleInterfaceStyle"]).stderr(std::process::Stdio::null()).output();
+    !out.is_ok_and(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).trim() == "Dark")
+}
+
 /// Linux: the desktop's style (GNOME's `color-scheme`, which the desktop portal and most
 /// desktops follow): light unless it prefers dark. No GNOME settings: dark, Snag's own default.
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 pub fn system_light() -> bool {
     gsetting("color-scheme").is_some_and(|v| light_from_color_scheme(&v))
 }
 
 /// `'prefer-dark'` is dark; `'default'` and `'prefer-light'` are light.
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub fn light_from_color_scheme(value: &str) -> bool {
     !value.contains("prefer-dark")
 }
 
 /// Linux: one `org.gnome.desktop.interface` key, as `gsettings` prints it.
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 pub fn gsetting(key: &str) -> Option<String> {
     let out = crate::platform::host_command("gsettings").args(["get", "org.gnome.desktop.interface", key]).stderr(std::process::Stdio::null()).output().ok()?;
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
