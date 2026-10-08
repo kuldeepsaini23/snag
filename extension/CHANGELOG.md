@@ -2,6 +2,10 @@
 
 Newest first. The desktop app has its own list in the repository's CHANGELOG.md.
 
+## 1.0.2
+
+- A new icon: an engraved hook catching a download arrow, matching the Snag app.
+
 ## 1.0.1 — 2026-10-07
 
 ### Fixed

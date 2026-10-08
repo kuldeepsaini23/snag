@@ -1,9 +1,9 @@
-# Snag extension — store listing kit (1.0.0)
+# Snag extension — store listing kit
 
 Copy-paste material for the Chrome Web Store, Microsoft Edge Add-ons and Firefox Add-ons.
 
-- **Packages:** `snag-chrome-1.0.0.zip` (Chrome, Edge) and `snag_download_manager-1.0.0.zip` (Firefox), from `target/store/` after `bash installer/build.sh`, or attached to the GitHub release.
-- **Privacy policy URL:** https://snag.kuldeepsaini.dev/privacy
+- **Packages:** `snag-chrome-<version>.zip` (Chrome, Edge) and `snag_download_manager-<version>.zip` (Firefox), from `target/store/` after `bash installer/build.sh`, or attached to the GitHub release.
+- **Privacy policy URL:** https://github.com/kuldeepsaini23/snag/blob/master/PRIVACY.md (switch to https://snag.kuldeepsaini.dev/privacy once the site is live)
 - **Homepage:** https://snag.kuldeepsaini.dev
 - **Support:** https://github.com/kuldeepsaini23/snag/issues
 - **Category:** Chrome: *Productivity → Tools*, Firefox: *Download Management*, Edge: *Productivity*
