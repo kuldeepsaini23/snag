@@ -1,8 +1,11 @@
 @import "tailwindcss";
 
-/* An engraved catalogue: ink-black page, warm paper type, one copper accent (Snag's logo colours).
-   `.paper` turns a block to paper with ink type; everything inside follows the same tokens. */
-:root {
+/* An engraved catalogue in Snag's logo colours, in two printings: Ink (dark page, paper type) and
+   Paper (paper page, ink type). <html data-theme> picks one; it follows the system until the
+   visitor chooses (see the script in layout.tsx). One block per page is printed the other way
+   round, `.contrast`, for one strong moment: the privacy part. */
+:root,
+:root[data-theme="paper"] .contrast {
   --bg: #0b0b0c;
   --surface: #121211;
   --surface-2: #1a1917;
@@ -11,36 +14,46 @@
   --text: #efe9dc;
   --muted: #b5afa3;
   --faint: #8c877d;
+  /* The accent as text: the accent itself on ink, a deeper cut of it on paper (5:1 or better). */
+  --accent-text: var(--accent);
+  /* The faint line-work of the engravings, hairlines, and how deep shadows fall. */
+  --etch: color-mix(in srgb, var(--text) 9%, transparent);
+  --hairline: color-mix(in srgb, var(--text) 13%, transparent);
+  --shadow: rgb(0 0 0 / 0.9);
+  color-scheme: dark;
+}
+
+:root[data-theme="paper"],
+:root:not([data-theme="paper"]) .contrast {
+  --bg: #efe9dc;
+  --surface: #f6f1e6;
+  --surface-2: #e6dfcf;
+  --line: #d3cab8;
+  --line-strong: #a9a08c;
+  --text: #0b0b0c;
+  --muted: #45413b;
+  --faint: #5f5a51;
+  --accent-text: color-mix(in oklab, var(--accent) 66%, #000);
+  --etch: color-mix(in srgb, var(--text) 11%, transparent);
+  --hairline: color-mix(in srgb, var(--text) 14%, transparent);
+  --shadow: rgb(58 40 22 / 0.32);
+  color-scheme: light;
+}
+
+:root {
   /* The one source of the accent; the accent picker on the page sets it too. Ink on copper is 5.6:1. */
   --accent: #d9682b;
   --accent-hover: color-mix(in oklab, var(--accent) 86%, #fff);
   --accent-press: color-mix(in oklab, var(--accent) 86%, #000);
   --on-accent: #0b0b0c;
-  /* The accent as text: the accent itself on ink, a darker cut of it on paper. */
-  --accent-text: var(--accent);
-  /* The faint line-work of the engravings. */
-  --etch: color-mix(in srgb, var(--text) 9%, transparent);
 
   --bar-h: 3.75rem;
-
-  color-scheme: dark;
 }
 
 @layer components {
-  .paper {
-    --bg: #efe9dc;
-    --surface: #e7e0d0;
-    --surface-2: #ddd5c3;
-    --line: #cfc6b3;
-    --line-strong: #a9a08c;
-    --text: #0b0b0c;
-    --muted: #45413b;
-    --faint: #5f5a51;
-    --accent-text: color-mix(in oklab, var(--accent) 50%, #000);
-    --etch: color-mix(in srgb, var(--text) 12%, transparent);
+  .contrast {
     background: var(--bg);
     color: var(--text);
-    color-scheme: light;
   }
 }
 
@@ -190,9 +203,9 @@ body {
     border-radius: 10px;
     background: var(--surface);
     box-shadow:
-      0 0 0 1px rgb(239 233 220 / 0.14),
-      0 2px 4px rgb(0 0 0 / 0.3),
-      0 32px 64px -28px rgb(0 0 0 / 0.9),
+      0 0 0 1px var(--hairline),
+      0 2px 4px color-mix(in srgb, var(--shadow) 35%, transparent),
+      0 32px 64px -28px var(--shadow),
       0 48px 140px -48px color-mix(in srgb, var(--accent) 45%, transparent);
   }
   .window img {
@@ -234,7 +247,7 @@ body {
    bottom the gaps close, a shine runs across, and Done pops in. ---- */
 .dl-bar {
   background: var(--bg);
-  border-bottom: 1px solid rgb(239 233 220 / 0.1);
+  border-bottom: 1px solid var(--hairline);
 }
 @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
   .dl-bar {
@@ -258,24 +271,24 @@ body {
 }
 @media (min-width: 640px) {
   .dl-bar__grid {
-    grid-template-columns: auto minmax(7.5rem, auto) minmax(6rem, 1fr) auto auto;
+    grid-template-columns: auto minmax(7.5rem, auto) minmax(6rem, 1fr) auto auto auto;
     grid-template-areas:
-      "logo brand seg gh dl"
-      "logo lab pct gh dl";
+      "logo brand seg th gh dl"
+      "logo lab pct th gh dl";
     column-gap: 1rem;
   }
 }
 @media (min-width: 1024px) {
   .dl-bar__grid {
-    grid-template-columns: auto minmax(9.5rem, auto) 1fr minmax(8rem, 13rem) auto auto;
+    grid-template-columns: auto minmax(9.5rem, auto) 1fr minmax(8rem, 13rem) auto auto auto;
     grid-template-areas:
-      "logo brand nav seg gh dl"
-      "logo lab nav pct gh dl";
+      "logo brand nav seg th gh dl"
+      "logo lab nav pct th gh dl";
     column-gap: 1.25rem;
   }
 }
 .dl-bar__seg {
-  background: rgb(239 233 220 / 0.12);
+  background: var(--hairline);
   transition: box-shadow 0.4s ease-out;
 }
 .dl-bar__seg[data-active] {

@@ -3,6 +3,7 @@ import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 
 import { DownloadBar } from "@/components/download-bar";
 import { Reveal } from "@/components/reveal";
+import { THEME_KEY } from "@/lib/theme";
 import { SiteFooter } from "@/components/site-footer";
 import { DOWNLOAD_URL, PITCH, RELEASES_URL, REPO_URL, SITE_URL, VERSION } from "@/lib/site";
 import "./globals.css";
@@ -65,13 +66,28 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0b0b0c",
-  colorScheme: "dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#efe9dc" },
+    { media: "(prefers-color-scheme: dark)", color: "#0b0b0c" },
+  ],
+  colorScheme: "dark light",
 };
+
+// Runs before the first paint, so the page never flashes the other printing: the visitor's
+// choice if they made one, otherwise the system's. Kept tiny and inline for the static export.
+const themeScript = `try{var t=localStorage.getItem("${THEME_KEY}");if(t!=="ink"&&t!=="paper")t=matchMedia("(prefers-color-scheme: light)").matches?"paper":"ink";document.documentElement.dataset.theme=t}catch(e){}`;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${inter.variable} ${fraunces.variable} ${jetbrains.variable} antialiased`}>
+    // The theme script sets data-theme on <html> before React loads.
+    <html
+      lang="en"
+      className={`${inter.variable} ${fraunces.variable} ${jetbrains.variable} antialiased`}
+      suppressHydrationWarning
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       {/* Browser extensions often add attributes to <body> before React loads; that is not a real mismatch. */}
       <body className="min-h-dvh" suppressHydrationWarning>
         <a

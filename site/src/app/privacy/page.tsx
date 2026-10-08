@@ -66,8 +66,8 @@ export default function PrivacyPage() {
         </p>
       </header>
 
-      {/* The short version, printed on paper. */}
-      <div className="paper relative mt-14 mb-16 border border-line-strong p-1.5 md:mt-20">
+      {/* The short version, printed the other way round. */}
+      <div className="contrast relative mt-14 mb-16 border border-line-strong p-1.5 md:mt-20">
         <div className="relative border border-line p-6 sm:p-10">
           <div
             aria-hidden="true"

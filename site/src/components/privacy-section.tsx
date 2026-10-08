@@ -68,10 +68,11 @@ function Wire({ className }: { className?: string }) {
   return <span aria-hidden="true" className={cn("wire mx-auto block h-9 w-px", className)} />;
 }
 
-// The one paper-coloured part of the page: ink type, engraved hatching, like a printed notice.
+// The one part printed the other way round (paper on the Ink page, ink on the Paper one), with
+// engraved hatching, like a notice pasted into the catalogue.
 export function PrivacySection() {
   return (
-    <Section id="privacy" className="paper mt-28 overflow-hidden md:mt-40">
+    <Section id="privacy" className="contrast mt-28 overflow-hidden md:mt-40">
       <Band className="mt-3" />
       {/* Hatching and a rosette in the margin: the engraver's shading on the notice. */}
       <div

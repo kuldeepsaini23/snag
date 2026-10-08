@@ -127,11 +127,11 @@ const video: Entry[] = [
         {/* A callout, as engravers letter the part a plate is about. */}
         <span
           aria-hidden="true"
-          className="absolute top-[91%] left-[88.4%] h-[7.6%] w-[11%] rounded-full border border-text shadow-[0_0_0_4px_rgb(11_11_12/0.6)]"
+          className="absolute top-[91%] left-[88.4%] h-[7.6%] w-[11%] rounded-full border border-[#efe9dc] shadow-[0_0_0_4px_rgb(11_11_12/0.6)]"
         />
         <span
           aria-hidden="true"
-          className="absolute top-[80%] left-[84%] font-display text-base leading-none italic sm:text-xl"
+          className="absolute top-[80%] left-[84%] font-display text-base leading-none text-[#efe9dc] italic sm:text-xl"
         >
           A
         </span>

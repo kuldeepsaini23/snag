@@ -193,7 +193,7 @@ export function DownloadMenu({
           aria-label="Download Snag"
           onKeyDown={onMenuKey}
           className={cn(
-            "dl-menu absolute top-full z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] border border-line-strong bg-bg p-1 text-left shadow-[0_28px_70px_-24px_rgb(0_0_0/0.85)]",
+            "dl-menu absolute top-full z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] border border-line-strong bg-bg p-1 text-left shadow-[0_28px_70px_-24px_var(--shadow)]",
             align[menuAlign],
           )}
         >

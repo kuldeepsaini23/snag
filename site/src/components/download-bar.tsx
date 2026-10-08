@@ -8,6 +8,7 @@ import { CaretDown, CheckCircle, GithubLogo } from "@phosphor-icons/react";
 import { DownloadMenu } from "@/components/download-menu";
 import { ExternalLink } from "@/components/external-link";
 import { LogoMark } from "@/components/logo";
+import { ThemeChoice, ThemeToggle } from "@/components/theme-toggle";
 import { pad, parts, type PartId } from "@/lib/parts";
 
 // Off the landing page there are no parts to follow, so the eight segments keep pace with the
@@ -136,7 +137,7 @@ export function DownloadBar({
     <header data-done={done || undefined} className="dl-bar sticky top-0 z-40">
       <div className="dl-bar__grid mx-auto h-(--bar-h) max-w-6xl px-4 sm:px-6">
         <Link href="/" aria-label="Snag home" className="[grid-area:logo] self-center">
-          <LogoMark size={32} className="size-8 shadow-[0_0_0_1px_rgb(239_233_220/0.14)]" />
+          <LogoMark size={32} className="size-8 shadow-[0_0_0_1px_var(--hairline)]" />
         </Link>
         <Link
           href="/"
@@ -170,7 +171,7 @@ export function DownloadBar({
           </summary>
           <nav
             aria-label="Contents"
-            className="dl-bar__contents fixed inset-x-4 top-[calc(var(--bar-h)+0.5rem)] border border-line-strong bg-bg p-1 shadow-[0_24px_60px_-20px_rgb(0_0_0/0.8)] sm:absolute sm:inset-x-auto sm:top-full sm:left-0 sm:mt-2 sm:w-80"
+            className="dl-bar__contents fixed inset-x-4 top-[calc(var(--bar-h)+0.5rem)] border border-line-strong bg-bg p-1 shadow-[0_24px_60px_-20px_var(--shadow)] sm:absolute sm:inset-x-auto sm:top-full sm:left-0 sm:mt-2 sm:w-80"
           >
             <div className="border border-line py-2">
               <p className="label px-4 pt-1 pb-2">Contents · 8 parts</p>
@@ -198,6 +199,7 @@ export function DownloadBar({
                   </li>
                 ))}
               </ol>
+              <ThemeChoice className="mx-4 mt-2 border-t border-line pt-3" />
             </div>
           </nav>
         </details>
@@ -255,10 +257,12 @@ export function DownloadBar({
           )}
         </div>
 
+        <ThemeToggle className="hidden self-center [grid-area:th] sm:flex" />
+
         <ExternalLink
           href={repoUrl}
           aria-label="Snag on GitHub (opens in a new tab)"
-          className="hidden size-9 items-center justify-center self-center rounded-full text-muted shadow-[inset_0_0_0_1px_rgb(239_233_220/0.16)] transition-[color,box-shadow] [grid-area:gh] hover:text-text hover:shadow-[inset_0_0_0_1px_var(--accent)] sm:flex"
+          className="hidden size-9 items-center justify-center self-center rounded-full text-muted shadow-[inset_0_0_0_1px_var(--hairline)] transition-[color,box-shadow] [grid-area:gh] hover:text-text hover:shadow-[inset_0_0_0_1px_var(--accent)] sm:flex"
         >
           <GithubLogo weight="fill" className="size-[18px]" aria-hidden />
         </ExternalLink>
