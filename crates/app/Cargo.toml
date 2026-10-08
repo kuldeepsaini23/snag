@@ -1,6 +1,7 @@
 [package]
 name = "rdm-app"
 version.workspace = true
+description = "Download manager for files, videos, music, image galleries and torrents"
 edition.workspace = true
 
 [[bin]]
