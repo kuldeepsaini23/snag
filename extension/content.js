@@ -18,7 +18,7 @@
     const root = host.attachShadow({ mode: "closed" });
     root.innerHTML = `
       <style>
-        :host { --accent: #ff9f0a; }
+        :host { --accent: #d9682b; }
         * { box-sizing: border-box; font-family: "Inter", "Segoe UI", system-ui, sans-serif; }
         .pill {
           position: fixed; z-index: 2147483647;

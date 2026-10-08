@@ -7,7 +7,8 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
 SRC, OUT = sys.argv[1], sys.argv[2]
-ORANGE = np.array([255, 159, 10], np.float32)
+# The tile: Snag's copper brand colour (the art itself was drawn on orange and is cut out of it).
+TILE = (217, 104, 43, 255)
 
 im = np.asarray(Image.open(SRC).convert("RGB")).astype(np.float32)
 corners = np.concatenate([im[:40, :40].reshape(-1, 3), im[-40:, :40].reshape(-1, 3), im[-40:, -40:].reshape(-1, 3)])
@@ -43,7 +44,7 @@ def tile(size: int, subject: Image.Image, fill: float, top_bleed: bool, radius=0
     canvas = Image.new("RGBA", (big, big), (0, 0, 0, 0))
     mask = Image.new("L", (big, big), 0)
     ImageDraw.Draw(mask).rounded_rectangle([0, 0, big - 1, big - 1], radius=int(big * radius), fill=255)
-    bgl = Image.new("RGBA", (big, big), (255, 159, 10, 255))
+    bgl = Image.new("RGBA", (big, big), TILE)
     canvas.paste(bgl, (0, 0), mask)
     s = subject
     h = int(big * fill)

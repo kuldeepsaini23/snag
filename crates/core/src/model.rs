@@ -180,7 +180,7 @@ impl Default for Settings {
             connections: 8,
             max_concurrent: 3,
             speed_limit_bps: 0,
-            accent: "#ff9f0a".into(),
+            accent: "#d9682b".into(),
             clipboard_watch: true,
             start_immediately: true,
             extension_token: String::new(),
@@ -324,6 +324,7 @@ mod tests {
         assert!(!old.translucent);
         assert!(!old.tour_done);
         assert!(old.check_updates, "updates are looked for unless switched off");
+        assert_eq!(Settings::default().accent, "#d9682b", "Snag's copper");
         assert_eq!(old.accent, "#0a84ff");
         let s = Settings { theme: ThemeMode::System, translucent: true, tour_done: true, ..Settings::default() };
         let json = serde_json::to_string(&s).unwrap();

@@ -9,7 +9,7 @@ pub const INTER_REGULAR: &[u8] = include_bytes!("../../assets/fonts/Inter-Regula
 pub const INTER_MEDIUM: &[u8] = include_bytes!("../../assets/fonts/Inter-Medium.ttf");
 pub const INTER_SEMIBOLD: &[u8] = include_bytes!("../../assets/fonts/Inter-SemiBold.ttf");
 pub const JETBRAINS_MONO: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf");
-/// A logo as two 64×64 RGBA layers: the whole tile as drawn on #ff9f0a, and the drawing alone
+/// A logo as two 64×64 RGBA layers: the whole tile as drawn on copper #d9682b, and the drawing alone
 /// (transparent around it).
 type Layers = (&'static [u8], &'static [u8]);
 
@@ -259,7 +259,7 @@ mod tests {
         let drawing = (0..64 * 64).find(|&i| alpha(i) == 255).expect("the hook or arrow");
         let corner = 0; // transparent outside the rounded square
 
-        let orange = tint(LOGO, crate::ui::theme::parse_hex("#ff9f0a").unwrap());
+        let orange = tint(LOGO, crate::ui::theme::parse_hex(crate::ui::theme::DEFAULT_ACCENT).unwrap());
         assert!(orange.iter().zip(base).all(|(a, b)| a.abs_diff(*b) <= 10), "the default accent is the logo as drawn");
 
         let blue = tint(LOGO, crate::ui::theme::parse_hex("#0a84ff").unwrap());
@@ -275,7 +275,7 @@ mod tests {
         let tile = (0..64 * 64).find(|&i| base[i * 4 + 3] == 255 && sub[i * 4 + 3] == 0).expect("bare tile");
         let blue = tint(MARK, crate::ui::theme::parse_hex("#0a84ff").unwrap());
         assert_eq!(px(&blue, tile), [0x0a, 0x84, 0xff, 255]);
-        let orange = tint(MARK, crate::ui::theme::parse_hex("#ff9f0a").unwrap());
+        let orange = tint(MARK, crate::ui::theme::parse_hex(crate::ui::theme::DEFAULT_ACCENT).unwrap());
         assert!(orange.iter().zip(base).all(|(a, b)| a.abs_diff(*b) <= 10), "the default accent is the mark as drawn");
         assert_ne!(mark(Color::from_rgb8(1, 2, 3)).id(), logo(Color::from_rgb8(1, 2, 3)).id(), "two different images");
     }

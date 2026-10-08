@@ -52,7 +52,7 @@ async fn ping_reports_pairing() {
     assert_eq!(body["paired"], false);
     let paired = get(b.port, "/ping", Some(TOKEN)).await.1;
     assert_eq!(paired["paired"], true);
-    assert_eq!(paired["accent"], "#ff9f0a", "the extension follows Snag's colour");
+    assert_eq!(paired["accent"], "#d9682b", "the extension follows Snag's colour (copper by default)");
     assert!(body.get("accent").is_none(), "only paired extensions get the settings");
 }
 

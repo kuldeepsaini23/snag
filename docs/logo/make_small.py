@@ -6,7 +6,7 @@ OUT = sys.argv[1]
 B = 1024
 INK = (11, 11, 12, 255)
 PAPER = (239, 233, 220, 255)
-ORANGE = (255, 159, 10, 255)
+ORANGE = (217, 104, 43, 255)  # Snag copper #D9682B
 
 
 def mark(tile: bool = True) -> Image.Image:

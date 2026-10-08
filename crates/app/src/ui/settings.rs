@@ -259,7 +259,7 @@ fn appearance(m: &Model, c: Colors) -> Element<'_, Message> {
         r.push(button(Space::new()).width(20).height(20).padding(0).style(style::swatch(color, chosen, c.ink)).on_press(Message::DraftAccent((*hex).to_string())))
     });
     let invalid = theme::parse_hex(&m.draft.accent).is_none();
-    let desc = if invalid { "Type a hex value like #ff9f0a" } else { "Drag in the square, or type any hex value. Text on the accent switches between dark and light by itself" };
+    let desc = if invalid { "Type a hex value like #d9682b" } else { "Drag in the square, or type any hex value. Text on the accent switches between dark and light by itself" };
     // The square, the strip and the hex box all edit the same colour (`Model::type_accent`).
     let picker = column![
         color_picker::square(m.accent_hsv, PICKER_WIDTH, 146.0, c.surface, c),
@@ -271,7 +271,7 @@ fn appearance(m: &Model, c: Colors) -> Element<'_, Message> {
         text("Custom colour").size(13).font(style::MEDIUM),
         small(desc, c.text3),
         Space::new().height(4),
-        field("#ff9f0a", &m.draft.accent, 120.0, Message::DraftAccent, c),
+        field("#d9682b", &m.draft.accent, 120.0, Message::DraftAccent, c),
         Space::new().height(4),
         row![logo, small("The logo, file tiles and the browser extension follow it", c.text3)].spacing(10).align_y(Alignment::Center),
     ]

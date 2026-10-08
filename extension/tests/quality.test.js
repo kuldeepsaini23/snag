@@ -30,8 +30,8 @@ test("qualities: best video first, audio last, each with what to send back", () 
 test("the accent from Snag is used only when it is a real colour", () => {
   assert.strictEqual(safeAccent("#0a84ff"), "#0a84ff");
   assert.strictEqual(safeAccent("#FFF"), "#FFF");
-  assert.strictEqual(safeAccent("red; background:url(x)"), "#ff9f0a");
-  assert.strictEqual(safeAccent(undefined), "#ff9f0a");
+  assert.strictEqual(safeAccent("red; background:url(x)"), "#d9682b", "Snag copper");
+  assert.strictEqual(safeAccent(undefined), "#d9682b");
 });
 
 test("asking the extension never hangs: cut-off page script, errors and silence all answer", async () => {

@@ -59,7 +59,7 @@ function header(headers, name) {
 
 function showCount(tabId) {
   const n = tabMedia.get(tabId)?.items.length || 0;
-  chrome.action.setBadgeBackgroundColor({ tabId, color: "#ff9f0a" });
+  chrome.action.setBadgeBackgroundColor({ tabId, color: "#d9682b" });
   chrome.action.setBadgeText({ tabId, text: n ? String(n) : "" });
 }
 

@@ -3,13 +3,15 @@
 use iced::Color;
 use iced::theme::Palette;
 
-pub const DEFAULT_ACCENT: &str = "#ff9f0a";
+/// Snag's copper (the logo's tile).
+pub const DEFAULT_ACCENT: &str = "#d9682b";
 
 /// Everything is drawn this much larger than the Figma sizes (the user picked it for readability).
 pub const UI_SCALE: f32 = 1.08;
 
 /// The accent swatches offered in Settings → Appearance (name, hex).
-pub const SWATCHES: [(&str, &str); 7] = [
+pub const SWATCHES: [(&str, &str); 8] = [
+    ("Copper", "#d9682b"),
     ("Orange", "#ff9f0a"),
     ("White", "#f5f5f7"),
     ("Green", "#32d74b"),

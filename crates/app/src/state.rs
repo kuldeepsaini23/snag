@@ -207,7 +207,7 @@ impl Draft {
         }
         let accent = self.accent.trim();
         if crate::ui::theme::parse_hex(accent).is_none() {
-            return Err("Custom colour must be a hex value like #ff9f0a".into());
+            return Err("Custom colour must be a hex value like #d9682b".into());
         }
         let dir = self.download_dir.trim();
         if dir.is_empty() {

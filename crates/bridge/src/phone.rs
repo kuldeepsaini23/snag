@@ -92,7 +92,7 @@ async fn token_ok(manager: &Manager, given: &str) -> bool {
 
 const STYLE: &str = "body{margin:0;font:16px/1.4 system-ui,sans-serif;background:#1a1816;color:#ffffffe5;padding:24px}\
 h1{font-size:20px}input{width:100%;box-sizing:border-box;font-size:16px;padding:12px;border-radius:10px;border:1px solid #ffffff26;background:#211f1c;color:#fff}\
-button{margin-top:12px;width:100%;padding:14px;font-size:16px;font-weight:600;border:0;border-radius:10px;background:#ff9f0a;color:#1a1816}\
+button{margin-top:12px;width:100%;padding:14px;font-size:16px;font-weight:600;border:0;border-radius:10px;background:#d9682b;color:#1a1816}\
 p{color:#ffffffa6}";
 
 fn escape(s: &str) -> String {
@@ -139,7 +139,7 @@ async fn share(State(manager): State<Manager>, Query(p): Query<Params>) -> (Stat
     (
         StatusCode::OK,
         Html(format!(
-            "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'><style>{STYLE}</style><h1>Sent to Snag ✓</h1><p>{}</p><p><a style='color:#ff9f0a' href='/m?t={}'>Send another</a></p>",
+            "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'><style>{STYLE}</style><h1>Sent to Snag ✓</h1><p>{}</p><p><a style='color:#d9682b' href='/m?t={}'>Send another</a></p>",
             escape(&link),
             escape(&p.t)
         )),

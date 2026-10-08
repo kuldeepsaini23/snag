@@ -1,6 +1,6 @@
 // The quality menu (in-page panel and popup): pure helpers shared with the tests.
 
-const DEFAULT_ACCENT = "#ff9f0a";
+const DEFAULT_ACCENT = "#d9682b";
 
 function sizeLabel(bytes) {
   if (!bytes) return "";
