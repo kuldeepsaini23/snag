@@ -251,8 +251,8 @@ const tools: Entry[] = [
       <Plate window fig={4} caption="the stats page, over the last seven days.">
         <Shot
           name="stats"
-          widths={[720, 1129]}
-          height={778}
+          widths={[720, 1382]}
+          height={864}
           sizes="(min-width: 1024px) 560px, 100vw"
           alt="Snag’s stats page: data per day, a breakdown by type and the top sites"
         />

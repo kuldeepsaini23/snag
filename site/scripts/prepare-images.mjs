@@ -42,18 +42,9 @@ await webp(
   [350],
 );
 
-// The older screenshots still carry the old logo in their title bar, so only the part
-// without it is used: the stats panel, and the first-run tour's permissions card.
-await webp(
-  await sharp(path.join(shots, "stats.png")).extract({ left: 243, top: 57, width: 1129, height: 778 }).toBuffer(),
-  "stats",
-  [1129, 720],
-);
-await webp(
-  await sharp(path.join(shots, "permissions.png")).extract({ left: 401, top: 104, width: 580, height: 656 }).toBuffer(),
-  "permissions",
-  [580],
-);
+// The stats page and the first-run tour's last card, each as the whole window (1382x864).
+await webp(path.join(shots, "stats.png"), "stats", [1382, 720]);
+await webp(path.join(shots, "permissions.png"), "permissions", [1382, 720]);
 
 // The engraving: the hook and arrow cut out of their orange, so they hang on the dark page.
 // Each pixel's distance from the orange sets its opacity, and edge pixels are un-mixed from

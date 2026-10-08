@@ -160,13 +160,13 @@ export function PrivacySection() {
           </div>
         </div>
 
-        <div className="mt-20 grid items-center gap-x-14 gap-y-8 md:grid-cols-[minmax(0,26rem)_1fr]" data-reveal>
-          <Plate window fig={5} caption="the first-run tour’s last card.">
+        <div className="mt-20 grid items-center gap-x-14 gap-y-8 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]" data-reveal>
+          <Plate window fig={5} caption="the first-run tour’s last card, the first time Snag opens.">
             <Shot
               name="permissions"
-              widths={[580]}
-              height={656}
-              sizes="(min-width: 768px) 416px, calc(100vw - 44px)"
+              widths={[720, 1382]}
+              height={864}
+              sizes="(min-width: 1152px) 660px, (min-width: 768px) 58vw, calc(100vw - 32px)"
               alt="Snag’s first-run tour: switches for copied links, notifications and phone sharing, and what Snag does with cookies, the internet and the safety check"
             />
           </Plate>
