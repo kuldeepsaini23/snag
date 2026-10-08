@@ -28,12 +28,12 @@ const jetbrains = JetBrains_Mono({
 });
 
 const description =
-  "Snag is a free, open-source download manager for Windows. It catches any video like IDM, downloads files over 8 connections at once, and keeps everything on your PC.";
+  "Snag is a free, open-source download manager for Windows, macOS and Linux. It catches any video like IDM, downloads files over 8 connections at once, and keeps everything on your PC.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "Snag — the fast, free download manager for Windows",
+    default: "Snag — the fast, free download manager for Windows, macOS & Linux",
     template: "%s · Snag",
   },
   description,
@@ -42,6 +42,8 @@ export const metadata: Metadata = {
   keywords: [
     "download manager",
     "Windows",
+    "macOS",
+    "Linux",
     "IDM alternative",
     "video downloader",
     "yt-dlp",
@@ -53,13 +55,13 @@ export const metadata: Metadata = {
     type: "website",
     url: "/",
     siteName: "Snag",
-    title: "Snag — the fast, free download manager for Windows",
+    title: "Snag — the fast, free download manager for Windows, macOS & Linux",
     description: PITCH,
     images: [{ url: "/og.png", width: 1200, height: 630, alt: "Snag downloading files, next to its name and pitch" }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Snag — the fast, free download manager for Windows",
+    title: "Snag — the fast, free download manager for Windows, macOS & Linux",
     description: PITCH,
     images: ["/og.png"],
   },

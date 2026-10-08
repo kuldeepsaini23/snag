@@ -34,7 +34,7 @@ export function Hero() {
 
         <div className="relative pt-8 sm:pt-12 lg:pt-24 lg:pr-[24rem]">
           <p className="label">
-            {VERSION ? `Vol. ${VERSION}` : "Snag"} · For Windows
+            {VERSION ? `Vol. ${VERSION}` : "Snag"} · Windows · macOS · Linux
           </p>
           <p className="label mt-1.5 max-w-[11rem] normal-case tracking-normal sm:max-w-none">
             <span className="font-display text-sm italic">Pl. I — the hook and the arrow</span>
@@ -43,7 +43,7 @@ export function Hero() {
             Download <em>anything</em>.
           </h1>
           <p className="mt-8 max-w-[36ch] text-xl leading-snug text-muted md:text-2xl">
-            <span className="text-text">The fast, free download manager for Windows</span> — catches any video like
+            <span className="text-text">The fast, free download manager for Windows, macOS and Linux</span> — catches any video like
             IDM, downloads files 8× in parallel
           </p>
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">
@@ -53,7 +53,7 @@ export function Hero() {
               View on GitHub
             </ButtonLink>
           </div>
-          <p className="mt-5 font-mono text-xs text-faint">Windows 10 &amp; 11 · 12 MB · Mac &amp; Linux soon</p>
+          <p className="mt-5 font-mono text-xs text-faint">Windows 10 &amp; 11 · macOS 11+ · Linux · free &amp; open source</p>
         </div>
       </div>
 

@@ -10,7 +10,7 @@ type Os = "windows" | "mac" | "linux";
 
 // The visitor's desktop OS, read after hydration; the server (and the first client render)
 // always assume Windows, so the markup matches. Phones count as Windows: they can't install
-// either build, and the link is what they'd send to their PC.
+// any build, and the link is what they'd send to their PC.
 function readOs(): Os {
   const nav = navigator as Navigator & { userAgentData?: { platform?: string; mobile?: boolean } };
   const platform = (nav.userAgentData?.platform || nav.platform || "").toLowerCase();
@@ -33,8 +33,8 @@ const align = {
   center: "left-1/2 -translate-x-1/2",
 };
 
-// The download button, split: the main part downloads the Windows installer at once, the chevron
-// opens every platform. `wholeOnPhone` makes the whole button open the menu on small screens,
+// The download button, split: the main part downloads the build for the visitor's system at once,
+// the chevron opens every platform. `wholeOnPhone` makes the whole button open the menu on small screens,
 // where there is no room for two targets.
 export function DownloadMenu({
   downloadUrl,
@@ -63,8 +63,23 @@ export function DownloadMenu({
   const focusOnOpen = useRef<"first" | "last" | null>(null);
   const id = useId();
   const s = sizes[size];
-  // On a Mac or Linux the main part can't download anything useful, so it opens the menu too.
-  const elsewhere = os !== "windows";
+  // Every release carries the macOS and Linux builds under stable names too (.github/workflows/release.yml).
+  const latest = `${releasesUrl}/latest/download`;
+  const builds = {
+    windows: { href: downloadUrl, icon: WindowsLogo, label },
+    mac: { href: `${latest}/Snag-macOS.dmg`, icon: AppleLogo, label: "Download for macOS" },
+    linux: { href: `${latest}/Snag-x86_64.AppImage`, icon: LinuxLogo, label: "Download for Linux" },
+  };
+  const main = builds[os];
+  const MainIcon = main.icon;
+  const platforms = [
+    { href: downloadUrl, icon: WindowsLogo, name: "Windows 10 & 11", detail: "Installer · .exe" },
+    { href: builds.mac.href, icon: AppleLogo, name: "macOS 11+", detail: "Apple silicon & Intel · .dmg" },
+    { href: builds.linux.href, icon: LinuxLogo, name: "Linux", detail: "Any distro · AppImage" },
+    ...(version
+      ? [{ href: `${latest}/snag_${version}_amd64.deb`, icon: LinuxLogo, name: "Ubuntu & Debian", detail: "22.04 or newer · .deb" }]
+      : []),
+  ];
 
   const items = () => [...(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
 
@@ -125,9 +140,7 @@ export function DownloadMenu({
       e.preventDefault();
       close(true);
     } else if (e.key === "Tab") setOpen(false);
-    else if ((e.key === "Enter" || e.key === " ") && (e.target as HTMLElement).getAttribute("aria-disabled") === "true") {
-      e.preventDefault();
-    } else if (e.key === " " && e.target instanceof HTMLAnchorElement) {
+    else if (e.key === " " && e.target instanceof HTMLAnchorElement) {
       e.preventDefault();
       e.target.click();
     }
@@ -148,21 +161,10 @@ export function DownloadMenu({
   return (
     <div ref={root} className={cn("relative inline-flex", className)}>
       <div className="dl-button flex w-full overflow-hidden rounded-[4px]">
-        {elsewhere ? (
-          <button
-            {...triggerProps}
-            id={`${id}-main`}
-            className={cn(face, fill, s.main, "flex-1", wholeOnPhone && "hidden sm:flex")}
-          >
-            <WindowsLogo weight="fill" className={s.icon} aria-hidden />
-            Windows only, for now
-          </button>
-        ) : (
-          <a href={downloadUrl} className={cn(face, fill, s.main, "flex-1", wholeOnPhone && "hidden sm:flex")}>
-            <WindowsLogo weight="fill" className={s.icon} aria-hidden />
-            {label}
-          </a>
-        )}
+        <a href={main.href} className={cn(face, fill, s.main, "flex-1", wholeOnPhone && "hidden sm:flex")}>
+          <MainIcon weight="fill" className={s.icon} aria-hidden />
+          {main.label}
+        </a>
         <button
           {...triggerProps}
           id={`${id}-trigger`}
@@ -202,42 +204,22 @@ export function DownloadMenu({
               <span>Download Snag</span>
               {version && <span className="normal-case">v{version}</span>}
             </p>
-            <a
-              href={downloadUrl}
-              role="menuitem"
-              tabIndex={-1}
-              onClick={() => setOpen(false)}
-              className="group mx-1 flex items-center gap-3 px-3 py-3 text-text outline-none hover:bg-surface-2 focus-visible:bg-surface-2"
-            >
-              <WindowsLogo weight="fill" className="size-6 shrink-0" aria-hidden />
-              <span className="min-w-0 flex-1">
-                <span className="block font-medium">Windows 10 &amp; 11</span>
-                <span className="block font-mono text-xs text-faint">
-                  Download · 12 MB{version ? ` · v${version}` : ""}
-                </span>
-              </span>
-              <DownloadSimple weight="bold" className="size-4 shrink-0 text-accent-text transition-transform group-hover:translate-y-0.5" aria-hidden />
-            </a>
-            {[
-              { name: "macOS", icon: AppleLogo },
-              { name: "Linux", icon: LinuxLogo },
-            ].map(({ name, icon: Icon }) => (
-              <div
-                key={name}
+            {platforms.map(({ href, icon: Icon, name, detail }) => (
+              <a
+                key={href}
+                href={href}
                 role="menuitem"
                 tabIndex={-1}
-                aria-disabled="true"
-                className="mx-1 flex cursor-not-allowed items-center gap-3 px-3 py-3 text-faint outline-none focus-visible:bg-surface-2"
+                onClick={() => setOpen(false)}
+                className="group mx-1 flex items-center gap-3 px-3 py-3 text-text outline-none hover:bg-surface-2 focus-visible:bg-surface-2"
               >
                 <Icon weight="fill" className="size-6 shrink-0" aria-hidden />
-                <span className="flex-1">
-                  {name}
-                  <span className="sr-only">, not available yet</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium">{name}</span>
+                  <span className="block font-mono text-xs text-faint">{detail}</span>
                 </span>
-                <span aria-hidden="true" className="border border-line-strong px-2 py-0.5 font-mono text-[10px] tracking-wider uppercase">
-                  Coming soon
-                </span>
-              </div>
+                <DownloadSimple weight="bold" className="size-4 shrink-0 text-accent-text transition-transform group-hover:translate-y-0.5" aria-hidden />
+              </a>
             ))}
             <div role="separator" className="mx-4 my-1 h-px bg-line" />
             <ExternalLink

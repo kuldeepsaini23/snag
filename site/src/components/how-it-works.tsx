@@ -8,7 +8,7 @@ const steps = [
     numeral: "I",
     icon: DownloadSimple,
     title: "Install Snag",
-    body: "Run the installer. It sets Snag up for your Windows user only, so it needs no admin rights.",
+    body: "On Windows, run the installer — it needs no admin rights. On a Mac, drag Snag to Applications. On Linux, run the AppImage or install the .deb.",
     hint: `${INSTALLER_NAME} · 12 MB`,
   },
   {

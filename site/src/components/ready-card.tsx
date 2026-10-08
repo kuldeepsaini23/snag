@@ -57,7 +57,7 @@ export function ReadyCard() {
                 View on GitHub
               </ButtonLink>
             </div>
-            <p className="mt-6 font-display text-lg text-muted italic">Free and open source. No account. Mac &amp; Linux soon.</p>
+            <p className="mt-6 font-display text-lg text-muted italic">Free and open source. No account. Windows, macOS and Linux.</p>
           </div>
           <Band />
         </div>

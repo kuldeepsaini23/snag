@@ -15,7 +15,7 @@ export const metadata: Metadata = {
     siteName: "Snag",
     title: "Snag privacy policy",
     description: "No account, no analytics, no server. What the Snag app and extension read, and where it goes.",
-    images: [{ url: "/og.png", width: 1200, height: 630, alt: "Snag, the download manager for Windows" }],
+    images: [{ url: "/og.png", width: 1200, height: 630, alt: "Snag, the download manager for Windows, macOS and Linux" }],
   },
 };
 

@@ -43,8 +43,8 @@ const questions: { q: string; value: string; a: React.ReactNode }[] = [
   },
   {
     q: "Is there a Mac or Linux version?",
-    value: "Coming",
-    a: "Not yet. Both are coming. For now Snag runs on Windows 10 and 11.",
+    value: "Yes · both",
+    a: "Yes. On a Mac, open Snag-macOS.dmg and drag Snag to Applications (one app for Apple silicon and Intel, macOS 11 or newer). It isn’t signed by Apple yet, so the first time, right-click Snag and choose Open — on macOS 15, open System Settings → Privacy & Security and click Open Anyway. On Linux, download the AppImage (any distro: make it executable and run it) or the .deb for Ubuntu and Debian 22.04 or newer. Snag updates itself on all three.",
   },
   {
     q: "Can it download from Netflix or Spotify?",

@@ -10,7 +10,7 @@ export const ISSUES_URL = `${REPO_URL}/issues`;
 export const DOWNLOAD_URL = `${REPO_URL}/releases/latest/download/Snag-Setup.exe`;
 
 export const PITCH =
-  "The fast, free download manager for Windows — catches any video like IDM, downloads files 8× in parallel";
+  "The fast, free download manager for Windows, macOS and Linux — catches any video like IDM, downloads files 8× in parallel";
 
 // The app's version, from `[workspace.package] version` in the repository's Cargo.toml.
 // The build runs in site/, so that is one folder up. If a host builds site/ on its own and the

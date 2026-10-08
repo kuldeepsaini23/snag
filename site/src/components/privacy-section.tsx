@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 
 const switches = [
   { icon: Clipboard, title: "Read copied links", body: "Only links: a copied link pops up in the corner, ready to download.", on: true },
-  { icon: Bell, title: "Windows notifications", body: "When a download finishes or fails.", on: true },
+  { icon: Bell, title: "Desktop notifications", body: "When a download finishes or fails.", on: true },
   { icon: DeviceMobile, title: "Phone sharing on your Wi-Fi", body: "Send links from your phone. Off until you turn it on.", on: false },
 ];
 
