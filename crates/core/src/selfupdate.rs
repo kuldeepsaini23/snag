@@ -240,7 +240,7 @@ mod tests {
         assert_eq!(parse_latest_for(LATEST_BOTH, Platform::MacOS), None, "a release without a Mac build offers a Mac nothing");
         assert_eq!(parse_latest_for(&LATEST_ALL.replace("SHA256SUMS-1.2.0.txt", "x.txt"), Platform::MacOS), None, "never unchecked");
         let (a, b) = ("a".repeat(64), "b".repeat(64));
-        // As the release job appends it: shasum over the macOS files.
+        // As older releases listed files (a folder before the name).
         let sums = format!("{a} *installer/Snag-Setup-1.2.0.exe\n{b}  macos/Snag-macOS.zip\n");
         assert_eq!(checksum_for(&sums, MAC_ZIP), Some(b));
     }
@@ -301,7 +301,7 @@ mod tests {
     #[test]
     fn finds_the_appimages_checksum() {
         let (a, b, c) = ("a".repeat(64), "b".repeat(64), "c".repeat(64));
-        // As the release job writes it: sha256sum over the Windows and the Linux files.
+        // As older releases listed files (a folder before the name).
         let sums = format!("{a} *installer/Snag-Setup-1.1.0.exe\n{b}  linux/Snag-x86_64.AppImage\n{c}  linux/snag_1.1.0_amd64.deb\n");
         assert_eq!(checksum_for(&sums, APPIMAGE), Some(b));
         assert_eq!(checksum_for(&sums, "snag_1.1.0_amd64.deb"), Some(c));
@@ -325,6 +325,20 @@ mod tests {
         assert_eq!(left, ["Snag-x86_64.AppImage"], "no temporary file left behind");
         assert!(replace_appimage(&dir.path().join("missing"), &target).is_err());
         assert_eq!(std::fs::read(&target).unwrap(), b"new", "a failed update leaves the old one");
+    }
+
+    #[test]
+    fn reads_the_checksums_the_release_workflow_writes() {
+        // .github/workflows/release.yml: `sha256sum -- *` over every file of the release.
+        let (a, b, c, d) = ("a".repeat(64), "b".repeat(64), "c".repeat(64), "d".repeat(64));
+        let sums = format!("{a}  Snag-Setup-1.2.0.exe
+{b}  Snag-Setup.exe
+{c}  Snag-macOS.zip
+{d}  Snag-x86_64.AppImage
+");
+        for (platform, hash) in [(Platform::Windows, &a), (Platform::MacOS, &c), (Platform::Linux, &d)] {
+            assert_eq!(checksum_for(&sums, &platform.installer_name("1.2.0")).as_ref(), Some(hash), "{platform:?}");
+        }
     }
 
     #[test]
