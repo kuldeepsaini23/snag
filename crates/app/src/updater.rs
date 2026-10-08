@@ -1,4 +1,5 @@
-//! Snag updating itself: when to offer a newer release, and handing its installer over.
+//! Snag updating itself: when to offer a newer release, and handing its installer over
+//! (Windows), or putting the new AppImage in place of the running one (Linux).
 
 use std::path::Path;
 
@@ -15,7 +16,11 @@ pub fn offers(latest: &str, current: &str, later: Option<&str>) -> bool {
 pub fn announce(offered: Option<&str>, latest: &str) -> Option<crate::state::Note> {
     (offered != Some(latest)).then(|| crate::state::Note {
         title: format!("Snag {latest} is ready"),
-        body: "Open Snag and click Update now: it installs in a few seconds and opens again.".into(),
+        body: if can_install() {
+            "Open Snag and click Update now: it installs in a few seconds and opens again.".into()
+        } else {
+            "Open Snag and click Download to get the new package.".into()
+        },
     })
 }
 
@@ -28,11 +33,37 @@ pub fn checked(m: &mut crate::state::Model, offered: Option<&rdm_core::selfupdat
 
 /// Inno Setup, quietly: a progress window only, no questions, then Snag opens again
 /// (`/RELAUNCH=1`, see installer/snag.iss).
+#[cfg_attr(not(windows), allow(dead_code))]
 pub const INSTALLER_ARGS: [&str; 5] = ["/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/RELAUNCH=1"];
 
+/// Whether "Update now" can update this copy: always on Windows (the installer); on Linux only
+/// the AppImage (`$APPIMAGE`), which Snag can replace. A .deb install gets a Download button.
+pub fn can_install() -> bool {
+    cfg!(windows) || appimage().is_some()
+}
+
+/// Linux: the AppImage file this Snag runs from (set by the AppImage runtime).
+fn appimage() -> Option<std::path::PathBuf> {
+    if cfg!(windows) {
+        return None;
+    }
+    std::env::var_os("APPIMAGE").map(std::path::PathBuf::from).filter(|p| p.is_file())
+}
+
 /// Starts the installer; it closes this Snag (`snag.exe --quit`) before replacing it.
+#[cfg(windows)]
 pub fn run(installer: &Path) -> std::io::Result<()> {
     std::process::Command::new(installer).args(INSTALLER_ARGS).spawn().map(|_| ())
+}
+
+/// Linux: the checked AppImage replaces `$APPIMAGE`, and the new one is started; it waits for
+/// this Snag to exit (`--updated`), which the caller does next.
+#[cfg(not(windows))]
+pub fn run(new: &Path) -> std::io::Result<()> {
+    let target = appimage().ok_or_else(|| std::io::Error::other("this copy of Snag isn't an AppImage"))?;
+    rdm_core::selfupdate::replace_appimage(new, &target)?;
+    let _ = std::fs::remove_file(new);
+    std::process::Command::new(&target).arg("--updated").spawn().map(|_| ())
 }
 
 #[cfg(test)]
@@ -53,7 +84,7 @@ mod tests {
     fn a_new_update_is_announced_once() {
         let note = announce(None, "1.0.2").expect("first time: a notification");
         assert_eq!(note.title, "Snag 1.0.2 is ready");
-        assert!(note.body.contains("Update now"), "{}", note.body);
+        assert!(note.body.contains(if can_install() { "Update now" } else { "Download" }), "{}", note.body);
         assert_eq!(announce(Some("1.0.2"), "1.0.2"), None, "already offered: no second notification");
         assert!(announce(Some("1.0.2"), "1.0.3").is_some(), "a newer one is announced");
     }

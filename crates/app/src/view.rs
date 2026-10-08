@@ -941,7 +941,7 @@ mod tests {
     fn save_dir_follows_category_sorting() {
         let mut s = rdm_core::Settings { download_dir: std::path::PathBuf::from(r"C:\dl"), ..Default::default() };
         s.sort_into_folders = true;
-        assert_eq!(save_dir(&s, Category::Video), std::path::PathBuf::from(r"C:\dl\Videos"));
+        assert_eq!(save_dir(&s, Category::Video), std::path::Path::new(r"C:\dl").join("Videos"));
         s.sort_into_folders = false;
         assert_eq!(save_dir(&s, Category::Music), std::path::PathBuf::from(r"C:\dl"));
     }

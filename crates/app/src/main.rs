@@ -18,6 +18,7 @@ mod sharing;
 #[cfg(debug_assertions)]
 mod snap;
 mod notify;
+mod platform;
 mod speed_history;
 mod stats;
 mod state;
@@ -31,9 +32,8 @@ mod view;
 use std::path::PathBuf;
 
 fn main() -> iced::Result {
-    // %APPDATA%\Snag (an older %APPDATA%\rdm is moved there once).
-    let appdata = std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_default();
-    let state_path = rdm_core::store::data_dir(&appdata).join("state.json");
+    // %APPDATA%\Snag (an older %APPDATA%\rdm is moved there once); ~/.local/share/snag on Linux.
+    let state_path = rdm_core::dirs::app_dir().join("state.json");
     let saved = rdm_core::store::load(&state_path).settings;
     // CPU or GPU drawing (see `renderer`), decided before any other thread exists.
     if let Some(backend) = renderer::backend(std::env::var("ICED_BACKEND").ok().as_deref(), saved.use_gpu) {
@@ -47,9 +47,20 @@ fn main() -> iced::Result {
     let data_dir = state_path.parent().map(PathBuf::from).unwrap_or_default();
     // `rdm --quit`: ask the running RDM to pause, save and quit (used by the uninstaller).
     let quit = std::env::args().any(|a| a == "--quit");
-    // `snag --background`: start in the tray, no window (Windows sign-in, if the user chose it).
+    // `snag --background`: start in the tray, no window (sign-in, if the user chose it).
     let background = std::env::args().any(|a| a == "--background");
-    let Some(_instance) = rdm_core::instance::lock(&data_dir) else {
+    // `snag --updated`: started by the Snag it replaced (Linux AppImage update), which may still
+    // be closing; wait for it to let go of the lock instead of focusing it.
+    let updated = std::env::args().any(|a| a == "--updated");
+    let mut instance = rdm_core::instance::lock(&data_dir);
+    for _ in 0..if updated { 100 } else { 0 } {
+        if instance.is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        instance = rdm_core::instance::lock(&data_dir);
+    }
+    let Some(_instance) = instance else {
         let token = rdm_core::store::load(&state_path).settings.extension_token;
         if quit {
             rdm_bridge::quit_running(rdm_bridge::PORTS, &token);
@@ -62,7 +73,7 @@ fn main() -> iced::Result {
         return Ok(()); // nothing running
     }
     // A translucent window has to be created see-through (Mica goes behind it once it's open).
-    let translucent = saved.translucent;
+    let translucent = saved.translucent && cfg!(windows);
     let manager = {
         let _enter = runtime.enter();
         rdm_core::Manager::start(state_path)
@@ -92,6 +103,10 @@ fn main() -> iced::Result {
         // Debug: tests that need a drawn (visible) window open it off-screen.
         #[cfg(debug_assertions)]
         position: if std::env::var_os("RDM_TEST_OFFSCREEN").is_some() { iced::window::Position::Specific(iced::Point::new(-4000.0, 40.0)) } else { Default::default() },
+        // Linux: the Wayland app id / X11 class that ties the window to snag.desktop (its icon
+        // and name in the dock).
+        #[cfg(target_os = "linux")]
+        platform_specific: iced::window::settings::PlatformSpecific { application_id: "snag".into(), ..Default::default() },
         ..Default::default()
     };
     let result = iced::application(move || update::boot(boot_manager.clone(), bridge_status.clone(), boot_dir.clone(), boot_runtime.clone()), update::update, ui::view)

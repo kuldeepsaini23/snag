@@ -260,9 +260,11 @@ pub fn reduced_for(setting: rdm_core::Animations, system_reduced: bool) -> bool 
     }
 }
 
+/// Linux: GNOME's "Animations" switch (`enable-animations`), which other desktops' settings
+/// daemons mirror; on when it can't be read.
 #[cfg(not(windows))]
 pub fn system_reduced_motion() -> bool {
-    false
+    crate::appearance::gsetting("enable-animations").is_some_and(|v| v == "false")
 }
 
 #[cfg(test)]

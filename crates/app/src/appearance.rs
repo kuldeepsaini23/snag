@@ -1,5 +1,5 @@
-//! The window's look from Windows: the app mode (light or dark, for "Follow Windows") and the
-//! Mica backdrop behind a translucent window.
+//! The window's look from the system: the app mode (light or dark, for "Follow Windows" /
+//! "Follow system") and, on Windows, the Mica backdrop behind a translucent window.
 
 use iced::Subscription;
 use std::time::Duration;
@@ -9,6 +9,7 @@ const POLL: Duration = Duration::from_secs(2);
 
 /// `AppsUseLightTheme` as read from the registry: 0 is dark; anything else, or no value at all
 /// (Windows' own default), is light.
+#[cfg_attr(not(windows), allow(dead_code))]
 pub fn light_from_registry(value: Option<u32>) -> bool {
     value.is_none_or(|v| v != 0)
 }
@@ -20,9 +21,24 @@ pub fn system_light() -> bool {
     light_from_registry(key.ok().and_then(|k| k.get_value::<u32, _>("AppsUseLightTheme").ok()))
 }
 
+/// Linux: the desktop's style (GNOME's `color-scheme`, which the desktop portal and most
+/// desktops follow): light unless it prefers dark. No GNOME settings: dark, Snag's own default.
 #[cfg(not(windows))]
 pub fn system_light() -> bool {
-    false
+    gsetting("color-scheme").is_some_and(|v| light_from_color_scheme(&v))
+}
+
+/// `'prefer-dark'` is dark; `'default'` and `'prefer-light'` are light.
+#[cfg_attr(windows, allow(dead_code))]
+pub fn light_from_color_scheme(value: &str) -> bool {
+    !value.contains("prefer-dark")
+}
+
+/// Linux: one `org.gnome.desktop.interface` key, as `gsettings` prints it.
+#[cfg(not(windows))]
+pub fn gsetting(key: &str) -> Option<String> {
+    let out = std::process::Command::new("gsettings").args(["get", "org.gnome.desktop.interface", key]).stderr(std::process::Stdio::null()).output().ok()?;
+    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
 /// The app mode now, then again each time it changes (only subscribed while following Windows).
@@ -67,5 +83,12 @@ mod tests {
         assert!(!light_from_registry(Some(0)));
         assert!(light_from_registry(Some(1)));
         assert!(light_from_registry(None), "no value: Windows' default, light");
+    }
+
+    #[test]
+    fn gnome_color_scheme_to_mode() {
+        assert!(!light_from_color_scheme("'prefer-dark'"));
+        assert!(light_from_color_scheme("'prefer-light'"));
+        assert!(light_from_color_scheme("'default'"), "GNOME's default is light");
     }
 }

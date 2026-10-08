@@ -9,15 +9,15 @@ const LOG_LINES: usize = 50;
 
 /// What "include diagnostics" adds.
 pub struct Diagnostics<'a> {
-    /// "Windows 11 24H2 (build 26200.6584)"
-    pub windows: String,
+    /// "Windows 11 24H2 (build 26200.6584)", or "Ubuntu 24.04.1 LTS (Linux 6.8.0-45-generic)"
+    pub system: String,
     /// (tool, version or why there's none)
     pub tools: Vec<(&'static str, String)>,
     pub settings: &'a Settings,
     pub items: &'a [Item],
     /// The whole of `snag.log` (only its end is used).
     pub log: &'a str,
-    /// %USERPROFILE%, written as that wherever it appears.
+    /// The home folder, written as `HOME_MASK` wherever it appears.
     pub home: Option<&'a str>,
 }
 
@@ -70,7 +70,7 @@ pub fn build(what: &str, stamp: &str, diagnostics: Option<&Diagnostics>) -> Stri
     );
     let Some(d) = diagnostics else { return out };
     out.push_str("\nDiagnostics\n-----------\n");
-    out.push_str(&format!("{}\n", d.windows));
+    out.push_str(&format!("{}\n", d.system));
     for (tool, version) in &d.tools {
         out.push_str(&format!("{tool}: {version}\n"));
     }
@@ -119,7 +119,10 @@ pub fn redact(value: serde_json::Value) -> serde_json::Value {
     }
 }
 
-/// The pairing code wherever it appears, the user's home folder as `%USERPROFILE%` (any case),
+/// How the user's home folder is written in a report.
+pub const HOME_MASK: &str = if cfg!(windows) { "%USERPROFILE%" } else { "~" };
+
+/// The pairing code wherever it appears, the user's home folder as `HOME_MASK` (any case),
 /// and everything after `?` in links (signed links and sessions live there).
 fn scrub(text: &str, token: &str, home: Option<&str>) -> String {
     let mut out = if token.len() >= 8 { text.replace(token, "<pairing code>") } else { text.to_string() };
@@ -130,7 +133,7 @@ fn scrub(text: &str, token: &str, home: Option<&str>) -> String {
         let mut rest = out.as_str();
         while let Some(at) = rest.to_ascii_lowercase().find(&lower_home) {
             masked.push_str(&rest[..at]);
-            masked.push_str("%USERPROFILE%");
+            masked.push_str(HOME_MASK);
             rest = &rest[at + home.len()..];
         }
         masked.push_str(rest);
@@ -156,15 +159,18 @@ pub async fn save(what: String, include: bool, settings: Settings, items: Vec<It
     let text = if include {
         let log = tokio::fs::read(data_dir.join("snag.log")).await.map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
         let bin = data_dir.join("bin");
-        let tools = vec![("yt-dlp", tool_version(&bin.join("yt-dlp.exe")).await), ("gallery-dl", tool_version(&bin.join("gallery-dl.exe")).await)];
-        let home = std::env::var("USERPROFILE").ok();
-        let d = Diagnostics { windows: windows_version(), tools, settings: &settings, items: &items, log: &log, home: home.as_deref() };
+        let tool = |name| bin.join(rdm_core::manager::tool_file(name));
+        let tools = vec![("yt-dlp", tool_version(&tool("yt-dlp")).await), ("gallery-dl", tool_version(&tool("gallery-dl")).await)];
+        let home = std::env::var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).ok();
+        let d = Diagnostics { system: system_version(), tools, settings: &settings, items: &items, log: &log, home: home.as_deref() };
         build(&what, &stamp, Some(&d))
     } else {
         build(&what, &stamp, None)
     };
     let file = dir.join(file_name(now.date_naive()));
-    tokio::fs::write(&file, text.replace('\n', "\r\n")).await.map_err(|e| format!("Couldn't save the report: {e}"))?;
+    // Notepad's line ends on Windows.
+    let on_disk = if cfg!(windows) { text.replace('\n', "\r\n") } else { text.clone() };
+    tokio::fs::write(&file, on_disk).await.map_err(|e| format!("Couldn't save the report: {e}"))?;
     Ok((file, text))
 }
 
@@ -185,7 +191,8 @@ async fn tool_version(exe: &Path) -> String {
 }
 
 /// "Windows 11 24H2 (build 26200.6584)", from the registry.
-fn windows_version() -> String {
+#[cfg(windows)]
+fn system_version() -> String {
     let key = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE).open_subkey(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
     let Ok(key) = key else { return "Windows (version unknown)".into() };
     let build: String = key.get_value("CurrentBuild").unwrap_or_default();
@@ -200,7 +207,29 @@ fn windows_version() -> String {
     format!("{name} {display} (build {build})").replace("  ", " ")
 }
 
+/// Linux: "Ubuntu 24.04.1 LTS (Linux 6.8.0-45-generic)", from os-release and the kernel.
+#[cfg(not(windows))]
+fn system_version() -> String {
+    let release = std::fs::read_to_string("/etc/os-release").or_else(|_| std::fs::read_to_string("/usr/lib/os-release")).unwrap_or_default();
+    let kernel = std::fs::read_to_string("/proc/sys/kernel/osrelease").unwrap_or_default();
+    linux_version(&release, kernel.trim())
+}
+
+/// The distribution's `PRETTY_NAME` and the kernel release.
+#[cfg_attr(windows, allow(dead_code))]
+fn linux_version(os_release: &str, kernel: &str) -> String {
+    let name = os_release.lines().find_map(|l| l.strip_prefix("PRETTY_NAME=")).map(|v| v.trim().trim_matches(['"', '\''])).filter(|v| !v.is_empty()).unwrap_or("Linux");
+    if kernel.is_empty() { name.to_string() } else { format!("{name} (Linux {kernel})") }
+}
+
+/// Linux: the Desktop (XDG), else the home folder.
+#[cfg(not(windows))]
+pub fn desktop() -> Option<PathBuf> {
+    rdm_core::dirs::desktop().or_else(|| Some(rdm_core::dirs::home()).filter(|h| h.is_dir()))
+}
+
 /// The user's Desktop (also when OneDrive moved it).
+#[cfg(windows)]
 pub fn desktop() -> Option<PathBuf> {
     let folders = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER).open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders");
     let from_registry = folders.ok().and_then(|k| k.get_value::<String, _>("Desktop").ok()).map(PathBuf::from);
@@ -243,7 +272,7 @@ mod tests {
     fn report(what: &str, log: &str, with: bool) -> String {
         let (s, items) = (settings(), [item(1, Status::Running), item(2, Status::Done), item(3, Status::Done), item(4, Status::Failed("HTTP 403".into()))]);
         let d = Diagnostics {
-            windows: "Windows 11 24H2 (build 26200.6584)".into(),
+            system: "Windows 11 24H2 (build 26200.6584)".into(),
             tools: vec![("yt-dlp", "2025.09.26".into()), ("gallery-dl", "not installed yet".into())],
             settings: &s,
             items: &items,
@@ -292,7 +321,7 @@ line 2");
         assert!(!text.contains("SECRETSIG"), "link parameters (signed links, sessions)");
         assert!(!text.contains("DECRYPTKEY"), "a link's #part (file keys live there)");
         assert!(!text.to_lowercase().contains("alice"), "the user's name in paths");
-        assert!(text.contains(r"%USERPROFILE%\Downloads\Snag"), "folder names stay readable");
+        assert!(text.contains(&format!(r"{HOME_MASK}\Downloads\Snag")), "folder names stay readable");
         assert!(text.contains("https://rr3.googlevideo.com/videoplayback?…"), "the link minus its parameters");
         // Settings added later that hold secrets are dropped by name.
         let value = serde_json::json!({ "accent": "#fff", "browser_cookies": "SID=1", "virustotal_key": "vt", "nested": { "api_token": "x", "password": "y", "keep": 1, "keep_sharing": true } });
@@ -312,6 +341,14 @@ line 2");
             assert!(text.contains(want), "missing {want:?} in:\n{text}");
         }
         assert!(!text.contains(TOKEN));
+    }
+
+    #[test]
+    fn linux_version_names_the_distribution_and_kernel() {
+        let release = "NAME=\"Ubuntu\"\nPRETTY_NAME=\"Ubuntu 24.04.1 LTS\"\nID=ubuntu\n";
+        assert_eq!(linux_version(release, "6.8.0-45-generic"), "Ubuntu 24.04.1 LTS (Linux 6.8.0-45-generic)");
+        assert_eq!(linux_version("ID=arch\nPRETTY_NAME='Arch Linux'\n", ""), "Arch Linux");
+        assert_eq!(linux_version("", "6.1"), "Linux (Linux 6.1)");
     }
 
     #[test]

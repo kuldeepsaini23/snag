@@ -135,7 +135,7 @@ const HELP: [(Icon, &str, &[&str]); 5] = [
             "A video site stopped working: Settings → Tools → Update yt-dlp.",
             "Link expired (HTTP 403): select the download and use Refresh link with a fresh link from the page.",
             "The extension says to reload the page, or does nothing: press F5 on the page (after an update, reload the extension first).",
-            "Still stuck? ? → Report a bug saves a report you can send. Errors are also kept in %APPDATA%\\Snag\\snag.log.",
+            crate::platform::LOG_HINT,
         ],
     ),
 ];
@@ -183,7 +183,7 @@ fn bug_report<'a>(m: &'a Model, bug_text: &'a text_editor::Content, c: Colors) -
     let diagnostics = column![
         checkbox(m.bug_diagnostics).label("Include diagnostics").on_toggle(Message::BugDiagnostics).size(16).text_size(13).style(style::check(c)),
         container(small(
-            "Snag and Windows versions, yt-dlp and gallery-dl versions, your settings without the pairing code, how many downloads are in each state, and the last 50 lines of Snag's log. Link parameters and your user name in paths are left out.",
+            crate::platform::DIAGNOSTICS_HINT,
             c.text3
         ))
         .padding(iced::Padding { left: 26.0, ..Default::default() }),

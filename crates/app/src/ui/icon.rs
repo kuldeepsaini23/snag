@@ -131,6 +131,8 @@ pub enum Icon {
     ListNumbers,
     Magnet,
     MagnifyingGlass,
+    /// Minimise, on Linux (Windows draws its own caption glyphs).
+    Minus,
     MusicNote,
     MusicNotes,
     Palette,
@@ -156,7 +158,7 @@ pub enum Icon {
 impl Icon {
     /// Every icon (the font test checks each one).
     #[cfg(test)]
-    pub const ALL: [Icon; 51] = [Icon::ChartBar, Icon::Rows, Icon::SquaresFour, Icon::AppWindow, Icon::ArrowClockwise, Icon::ArrowRight, Icon::Browser, Icon::Bug, Icon::CaretDown, Icon::CaretRight, Icon::Check, Icon::CheckCircle, Icon::DeviceMobile, Icon::ClipboardText, Icon::Clock, Icon::Copy, Icon::Download, Icon::File, Icon::FilePdf, Icon::FileText, Icon::FileZip, Icon::FilmStrip, Icon::FolderOpen, Icon::Folder, Icon::Gauge, Icon::Gear, Icon::Image, Icon::Keyboard, Icon::Lifebuoy, Icon::Link, Icon::ListNumbers, Icon::Magnet, Icon::MagnifyingGlass, Icon::MusicNote, Icon::MusicNotes, Icon::Palette, Icon::Pause, Icon::Play, Icon::PlayFill, Icon::Plug, Icon::Plus, Icon::Question, Icon::Queue, Icon::Sidebar, Icon::Sparkle, Icon::Square, Icon::Trash, Icon::TrayDown, Icon::WarningCircle, Icon::Wrench, Icon::X];
+    pub const ALL: [Icon; 52] = [Icon::ChartBar, Icon::Rows, Icon::SquaresFour, Icon::AppWindow, Icon::ArrowClockwise, Icon::ArrowRight, Icon::Browser, Icon::Bug, Icon::CaretDown, Icon::CaretRight, Icon::Check, Icon::CheckCircle, Icon::DeviceMobile, Icon::ClipboardText, Icon::Clock, Icon::Copy, Icon::Download, Icon::File, Icon::FilePdf, Icon::FileText, Icon::FileZip, Icon::FilmStrip, Icon::FolderOpen, Icon::Folder, Icon::Gauge, Icon::Gear, Icon::Image, Icon::Keyboard, Icon::Lifebuoy, Icon::Link, Icon::ListNumbers, Icon::Magnet, Icon::MagnifyingGlass, Icon::Minus, Icon::MusicNote, Icon::MusicNotes, Icon::Palette, Icon::Pause, Icon::Play, Icon::PlayFill, Icon::Plug, Icon::Plus, Icon::Question, Icon::Queue, Icon::Sidebar, Icon::Sparkle, Icon::Square, Icon::Trash, Icon::TrayDown, Icon::WarningCircle, Icon::Wrench, Icon::X];
 
     pub fn ch(self) -> char {
         let code = match self {
@@ -191,6 +193,7 @@ impl Icon {
             Self::ListNumbers => 0xe2f6,
             Self::Magnet => 0xe680,
             Self::MagnifyingGlass => 0xe30c,
+            Self::Minus => 0xe32a,
             Self::MusicNote => 0xe33c,
             Self::MusicNotes => 0xe340,
             Self::Palette => 0xe6c8,

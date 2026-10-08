@@ -1,12 +1,15 @@
-//! Windows notifications (toasts) for finished and failed downloads.
+//! Notifications for finished and failed downloads: Windows toasts, or desktop notifications
+//! over D-Bus on Linux.
 
 use crate::state::Note;
 use std::path::Path;
 
 /// The identity Windows shows toasts under (registered per user at start-up).
+#[cfg(windows)]
 pub const APP_ID: &str = "Snag.DownloadManager";
 
 /// Lets an unpackaged app send toasts: registers its name and icon under HKCU.
+#[cfg(windows)]
 pub fn register(data_dir: &Path) {
     let icon = data_dir.join("icon.ico");
     let _ = std::fs::create_dir_all(data_dir);
@@ -19,11 +22,39 @@ pub fn register(data_dir: &Path) {
 }
 
 /// Shows one toast (blocking: call off the UI thread).
+#[cfg(windows)]
 pub fn show(note: &Note) {
     let _ = tauri_winrt_notification::Toast::new(APP_ID).title(&note.title).text1(&note.body).show();
 }
 
+/// Linux: the icon notifications show, as a PNG in the data folder (an installed `snag` icon
+/// isn't there for a bare AppImage).
+#[cfg(not(windows))]
+static ICON: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
+#[cfg(not(windows))]
+pub fn register(data_dir: &Path) {
+    let icon = data_dir.join("icon.png");
+    let _ = std::fs::create_dir_all(data_dir);
+    if image::save_buffer(&icon, crate::tray::ICON_64, 64, 64, image::ColorType::Rgba8).is_ok() {
+        let _ = ICON.set(icon);
+    }
+}
+
+/// One desktop notification (blocking: call off the UI thread).
+#[cfg(not(windows))]
+pub fn show(note: &Note) {
+    let mut n = notify_rust::Notification::new();
+    n.appname("Snag").summary(&note.title).body(&note.body);
+    match ICON.get() {
+        Some(icon) => n.icon(&icon.to_string_lossy()),
+        None => n.icon("snag"),
+    };
+    let _ = n.show();
+}
+
 /// A single-image .ico (32-bit BMP payload) from top-down RGBA pixels.
+#[cfg_attr(not(windows), allow(dead_code))]
 pub fn ico_from_rgba(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
     let mask_row = width.div_ceil(32) * 4;
     let image_len = 40 + width * height * 4 + mask_row * height;
@@ -72,7 +103,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod real {
     /// Shows a real toast on this PC: `cargo test -p rdm-app real_toast -- --ignored`.
     #[test]

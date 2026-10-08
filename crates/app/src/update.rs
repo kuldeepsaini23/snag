@@ -1,6 +1,6 @@
 use crate::motion::Motion;
 use crate::queues::QueueDraft;
-use crate::state::{Info, MediaTab, Model, Screen, SettingsTab, explorer_select_arg};
+use crate::state::{Info, MediaTab, Model, Screen, SettingsTab};
 use crate::view::{Filter, Library};
 use iced::widget::{Id, operation, text_editor};
 use iced::{Subscription, Task, keyboard, window};
@@ -105,6 +105,8 @@ pub enum Message {
     FlushNotes,
     DraftNotify(bool),
     DraftCheckUpdates(bool),
+    /// Linux: start at sign-in on or off (applied at once: it's a file, not a setting).
+    Autostart(bool),
     /// Look for a newer Snag (at start, then every few hours).
     CheckUpdate,
     /// "Check for updates" in the ? menu: like `CheckUpdate`, but always answers.
@@ -277,7 +279,7 @@ pub enum Message {
 
 pub fn boot(manager: Manager, bridge_status: String, data_dir: PathBuf, runtime: tokio::runtime::Handle) -> (App, Task<Message>) {
     let m = manager.clone();
-    let model = Model { bridge_status, system_light: crate::appearance::system_light(), ..Model::default() };
+    let model = Model { bridge_status, system_light: crate::appearance::system_light(), autostart: crate::platform::autostart(), ..Model::default() };
     let tray = crate::tray::create();
     crate::notify::register(&data_dir);
     let system_reduced = crate::motion::system_reduced_motion();
@@ -596,8 +598,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::OpenFile(id) => {
             if let Some(path) = model.dest_of(id).filter(|p| p.exists()) {
-                // Explorer opens a file with its usual program (and a folder in a window).
-                let _ = std::process::Command::new("explorer").arg(&path).spawn();
+                crate::platform::open(&path);
             }
         }
         Message::WinResized(size) => {
@@ -629,6 +630,10 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::DraftNotify(v) => model.draft.notify = v,
         Message::DraftCheckUpdates(v) => model.draft.check_updates = v,
+        Message::Autostart(on) => match crate::platform::set_autostart(on) {
+            Ok(()) => model.autostart = on,
+            Err(e) => model.notice = Some(e),
+        },
         Message::CheckUpdate => {
             if !model.settings.check_updates || model.update.as_ref().is_some_and(|u| u.busy) {
                 return Task::none();
@@ -681,7 +686,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::UpdateNotes => {
             if let Some(u) = &model.update {
-                let _ = std::process::Command::new("explorer").arg(&u.release.page).spawn();
+                crate::platform::open(&u.release.page);
             }
         }
         Message::UpdateLater => model.update_later = model.update.take().map(|u| u.release.version),
@@ -990,7 +995,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             });
         }
         Message::OpenDataFolder => {
-            let _ = std::process::Command::new("explorer").arg(&app.data_dir).spawn();
+            crate::platform::open(&app.data_dir);
         }
         Message::ClearFinished => {
             let done: Vec<ItemId> = model.items.iter().filter(|i| i.status == Status::Done).map(|i| i.id).collect();
@@ -1092,7 +1097,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
                     if github {
                         // A new browser tab with the issue filled in; the report is also copied.
                         let url = crate::report::issue_url(&app.bug_text.text(), &text);
-                        let _ = std::process::Command::new("explorer").arg(url).spawn();
+                        crate::platform::open(url);
                         model.notice = Some("Opened GitHub in your browser: check the report and press Create. It's also saved on your Desktop".into());
                     } else {
                         model.notice = Some("Bug report saved on your Desktop and copied: paste it wherever you report the bug".into());
@@ -1138,21 +1143,9 @@ fn edit_picker(model: &mut Model, change: impl FnOnce(&mut crate::state::Picker)
     }
 }
 
-/// Opens Explorer with the file selected; if the file isn't there, opens its folder.
+/// Shows the file selected in the file manager; if the file isn't there, opens its folder.
 fn reveal(path: &std::path::Path) {
-    let mut cmd = std::process::Command::new("explorer");
-    if path.exists() {
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            cmd.raw_arg(explorer_select_arg(path));
-        }
-    } else if let Some(dir) = path.parent().filter(|d| d.exists()) {
-        cmd.arg(dir);
-    } else {
-        return;
-    }
-    let _ = cmd.spawn();
+    crate::platform::reveal(path);
 }
 
 /// Identity for the core event subscription (there is only ever one feed).

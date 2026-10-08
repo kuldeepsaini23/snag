@@ -383,12 +383,21 @@ fn toast(m: &Model, c: Colors) -> Option<Element<'_, Message>> {
 fn update_offer(u: &crate::state::UpdateOffer, c: Colors) -> Element<'static, Message> {
     let badge = container(icon(Icon::Sparkle, 16).color(c.accent)).center(32).style(style::tag(c.accent_soft, c.accent));
     let notes = button(text("What's new").size(12).font(style::SEMIBOLD)).style(style::ghost(c)).padding([6, 10]).on_press(Message::UpdateNotes);
-    let install = button(text(if u.busy { "Updating…" } else { "Update now" }).size(12).font(style::SEMIBOLD))
+    // A copy Snag can't replace itself (Linux, not the AppImage): the release page has the package.
+    let installable = crate::updater::can_install();
+    let (label, press) = if installable { ("Update now", Message::UpdateNow) } else { ("Download", Message::UpdateNotes) };
+    let install = button(text(if u.busy { "Updating…" } else { label }).size(12).font(style::SEMIBOLD))
         .style(style::accent(c))
         .padding([6, 12])
-        .on_press_maybe((!u.busy).then_some(Message::UpdateNow));
+        .on_press_maybe((!u.busy).then_some(press));
     let later = button(icon(Icon::X, 13)).style(style::ghost(c)).padding(6).on_press_maybe((!u.busy).then_some(Message::UpdateLater));
-    let line = if u.busy { "Downloading and checking it…".to_string() } else { "Snag closes, updates and opens again".to_string() };
+    let line = if u.busy {
+        "Downloading and checking it…".to_string()
+    } else if installable {
+        "Snag closes, updates and opens again".to_string()
+    } else {
+        "Get the new package from the release page".to_string()
+    };
     row![
         badge,
         column![text(format!("Snag {} is ready", u.release.version)).size(13).font(style::SEMIBOLD), small(line, c.text3)].spacing(2).width(Fill),

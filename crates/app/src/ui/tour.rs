@@ -163,7 +163,7 @@ fn folder<'a>(m: &'a Model, c: Colors) -> Element<'a, Message> {
 }
 
 fn look<'a>(m: &'a Model, c: Colors) -> Element<'a, Message> {
-    let modes = [(ThemeMode::Dark, "Dark"), (ThemeMode::Light, "Light"), (ThemeMode::System, "Follow Windows")];
+    let modes = [(ThemeMode::Dark, "Dark"), (ThemeMode::Light, "Light"), (ThemeMode::System, crate::platform::FOLLOW_SYSTEM)];
     let segments = modes.iter().fold(row![].spacing(2), |r, &(mode, label)| {
         let on = m.draft.theme == mode;
         r.push(
@@ -246,8 +246,8 @@ fn clipboard<'a>(m: &'a Model, c: Colors) -> Element<'a, Message> {
     let choices = card(
         vec![
             switch_row(Icon::ClipboardText, "Read copied links", "Only links: a copied link pops up in the corner, ready to download", m.draft.clipboard_watch, Message::DraftClipboard),
-            switch_row(Icon::CheckCircle, "Windows notifications", "When a download finishes or fails", m.draft.notify, Message::DraftNotify),
-            switch_row(Icon::DeviceMobile, "Phone sharing on your Wi-Fi", "Send links from your phone. Windows may ask to allow Snag on private networks", m.draft.phone_sharing, Message::PhoneSharing),
+            switch_row(Icon::CheckCircle, crate::platform::NOTIFICATIONS, "When a download finishes or fails", m.draft.notify, Message::DraftNotify),
+            switch_row(Icon::DeviceMobile, "Phone sharing on your Wi-Fi", crate::platform::SHARING_HINT, m.draft.phone_sharing, Message::PhoneSharing),
         ],
         c,
     );

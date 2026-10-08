@@ -103,13 +103,16 @@ fn search(m: &Model, a: Anim, c: Colors) -> Element<'_, Message> {
 
 /// Minimise, maximise/restore and close, flush with the window's top-right corner.
 fn captions(m: &Model, c: Colors) -> Element<'_, Message> {
-    let glyph = |code: char| text(code.to_string()).font(CAPTION_FONT).size(10).line_height(1.0);
-    let win = |code: char, msg: Message| button(container(glyph(code)).center(Fill)).width(46).height(32).padding(0).on_press(msg);
-    let max = if m.maximized { '\u{E923}' } else { '\u{E922}' };
+    // Windows 11's own glyphs; Linux has no Segoe, so the same three come from Phosphor.
+    let glyph = |code: char, other: Icon| {
+        if cfg!(windows) { text(code.to_string()).font(CAPTION_FONT).size(10).line_height(1.0) } else { super::icon::icon(other, 13).line_height(1.0) }
+    };
+    let win = |code: char, other: Icon, msg: Message| button(container(glyph(code, other)).center(Fill)).width(46).height(32).padding(0).on_press(msg);
+    let (max, max_other) = if m.maximized { ('\u{E923}', Icon::Copy) } else { ('\u{E922}', Icon::Square) };
     let buttons = row![
-        win('\u{E921}', Message::WinMinimize).style(style::caption(c)),
-        win(max, Message::WinMaximize).style(style::caption(c)),
-        win('\u{E8BB}', Message::WinClose).style(style::close_button(c)),
+        win('\u{E921}', Icon::Minus, Message::WinMinimize).style(style::caption(c)),
+        win(max, max_other, Message::WinMaximize).style(style::caption(c)),
+        win('\u{E8BB}', Icon::X, Message::WinClose).style(style::close_button(c)),
     ];
     column![buttons].height(52).into()
 }

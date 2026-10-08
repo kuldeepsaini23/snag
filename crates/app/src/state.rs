@@ -259,6 +259,7 @@ pub fn clipboard_link(text: &str, last_seen: Option<&str>) -> Option<String> {
 
 /// Explorer argument that selects `path`. Quoted, because file names can contain
 /// commas and spaces, which Explorer would otherwise split on.
+#[cfg_attr(not(windows), allow(dead_code))]
 pub fn explorer_select_arg(path: &std::path::Path) -> String {
     format!("/select,\"{}\"", path.display())
 }
@@ -490,6 +491,8 @@ pub struct Model {
     pub version_checked: bool,
     /// Windows' app mode is light (read from the registry; followed when the theme is "Follow Windows").
     pub system_light: bool,
+    /// Linux: Snag starts in the tray at sign-in (its autostart entry exists).
+    pub autostart: bool,
     /// Mica (or acrylic) is behind the window: the translucent tokens can be drawn.
     pub backdrop: bool,
     /// The first-run tour's step, while it runs (see `tour.rs`).
@@ -578,6 +581,7 @@ impl Default for Model {
             bug_saving: false,
             version_checked: false,
             system_light: false,
+            autostart: false,
             backdrop: false,
             tour: None,
             tour_checked: false,

@@ -128,6 +128,27 @@ fn numbers<'a>(choices: Vec<usize>, current: &str, msg: fn(usize) -> Message, c:
     container(r).padding(3).style(style::segmented(c)).into()
 }
 
+fn behaviour(m: &Model, c: Colors) -> Vec<Element<'_, Message>> {
+    let d = &m.draft;
+    let mut lines = vec![
+        line("Start downloads immediately", "Otherwise new items wait, paused, until you start them", switch(d.start_immediately, Message::DraftStart, c), c),
+        line("Watch the clipboard for links", "A copied link pops up in the corner, ready to download", switch(d.clipboard_watch, Message::DraftClipboard, c), c),
+        line("Notify when downloads finish", crate::platform::NOTIFY_HINT, switch(d.notify, Message::DraftNotify, c), c),
+        line("Check for updates", "Asks GitHub for a newer Snag at start and every few hours; you choose when to install", switch(d.check_updates, Message::DraftCheckUpdates, c), c),
+        line(
+            "Show the tour again",
+            "The five-step welcome and the tips on the toolbar",
+            button(text("Show tour").size(12.5)).style(style::outline(c)).padding([7, 12]).on_press(Message::ShowTour).into(),
+            c,
+        ),
+    ];
+    // Windows: the installer's "Start Snag when I sign in" task. Linux has no installer to ask.
+    if cfg!(target_os = "linux") {
+        lines.insert(3, line("Start when you sign in", "Snag waits quietly in the tray, ready for links", switch(m.autostart, Message::Autostart, c), c));
+    }
+    lines
+}
+
 // ---------- tabs ----------
 
 fn general(m: &Model, c: Colors) -> Element<'_, Message> {
@@ -157,22 +178,7 @@ fn general(m: &Model, c: Colors) -> Element<'_, Message> {
             ],
             c,
         ),
-        section(
-            "Behaviour",
-            vec![
-                line("Start downloads immediately", "Otherwise new items wait, paused, until you start them", switch(d.start_immediately, Message::DraftStart, c), c),
-                line("Watch the clipboard for links", "A copied link pops up in the corner, ready to download", switch(d.clipboard_watch, Message::DraftClipboard, c), c),
-                line("Notify when downloads finish", "A Windows notification when a download finishes or fails", switch(d.notify, Message::DraftNotify, c), c),
-                line("Check for updates", "Asks GitHub for a newer Snag at start and every few hours; you choose when to install", switch(d.check_updates, Message::DraftCheckUpdates, c), c),
-                line(
-                    "Show the tour again",
-                    "The five-step welcome and the tips on the toolbar",
-                    button(text("Show tour").size(12.5)).style(style::outline(c)).padding([7, 12]).on_press(Message::ShowTour).into(),
-                    c,
-                ),
-            ],
-            c,
-        ),
+        section("Behaviour", behaviour(m, c), c),
         section(
             "Videos",
             vec![
@@ -278,12 +284,12 @@ fn appearance(m: &Model, c: Colors) -> Element<'_, Message> {
     .spacing(4)
     .padding(iced::Padding { top: 8.0, right: 8.0, ..Default::default() })
     .width(Fill);
-    let modes = [(ThemeMode::Dark, "Dark"), (ThemeMode::Light, "Light"), (ThemeMode::System, "Follow Windows")];
+    let modes = [(ThemeMode::Dark, "Dark"), (ThemeMode::Light, "Light"), (ThemeMode::System, crate::platform::FOLLOW_SYSTEM)];
     let segments = modes.iter().fold(row![].spacing(2), |r, &(mode, label)| {
         let on = m.draft.theme == mode;
         r.push(button(text(label).size(12).font(if on { style::SEMIBOLD } else { style::INTER })).padding([4, 10]).style(style::choice(c, on, 5.0)).on_press(Message::DraftTheme(mode)))
     });
-    let paces = [(rdm_core::Animations::On, "On"), (rdm_core::Animations::Off, "Off"), (rdm_core::Animations::System, "Follow Windows")];
+    let paces = [(rdm_core::Animations::On, "On"), (rdm_core::Animations::Off, "Off"), (rdm_core::Animations::System, crate::platform::FOLLOW_SYSTEM)];
     let pace = paces.iter().fold(row![].spacing(2), |r, &(a, label)| {
         let on = m.draft.animations == a;
         r.push(button(text(label).size(12).font(if on { style::SEMIBOLD } else { style::INTER })).padding([4, 10]).style(style::choice(c, on, 5.0)).on_press(Message::DraftAnimations(a)))
@@ -293,31 +299,32 @@ fn appearance(m: &Model, c: Colors) -> Element<'_, Message> {
     } else {
         "Mica behind the window on Windows 11 (acrylic on Windows 10), with slightly see-through panels"
     };
-    column![
-        section(
-            "Window",
-            vec![
-                line("Theme", "Follow Windows switches with your app mode in Windows settings", container(segments).padding(3).style(style::segmented(c)).into(), c),
-                line("Translucent window", mica, switch(m.draft.translucent, Message::DraftTranslucent, c), c),
-                line(
-                    "Animations",
-                    "Sliding panels, fading rows and growing charts. Off makes everything jump into place",
-                    container(pace).padding(3).style(style::segmented(c)).into(),
-                    c,
-                ),
-                line(
-                    "Draw with the graphics card",
-                    if m.draft.use_gpu != m.settings.use_gpu {
-                        "Takes effect the next time Snag starts"
-                    } else {
-                        "Off: the processor draws Snag (about 35 MB). On: smoother on very large screens, about 150 MB more"
-                    },
-                    switch(m.draft.use_gpu, Message::DraftGpu, c),
-                    c,
-                ),
-            ],
+    let mut window = vec![
+        line("Theme", crate::platform::THEME_HINT, container(segments).padding(3).style(style::segmented(c)).into(), c),
+        line("Translucent window", mica, switch(m.draft.translucent, Message::DraftTranslucent, c), c),
+        line(
+            "Animations",
+            "Sliding panels, fading rows and growing charts. Off makes everything jump into place",
+            container(pace).padding(3).style(style::segmented(c)).into(),
             c,
         ),
+        line(
+            "Draw with the graphics card",
+            if m.draft.use_gpu != m.settings.use_gpu {
+                "Takes effect the next time Snag starts"
+            } else {
+                "Off: the processor draws Snag (about 35 MB). On: smoother on very large screens, about 150 MB more"
+            },
+            switch(m.draft.use_gpu, Message::DraftGpu, c),
+            c,
+        ),
+    ];
+    // Mica and acrylic are Windows' own: elsewhere the window stays solid, so there's no switch.
+    if !cfg!(windows) {
+        window.remove(1);
+    }
+    column![
+        section("Window", window, c),
         section(
             "Accent colour",
             vec![
@@ -538,7 +545,7 @@ fn tools(m: &Model, c: Colors) -> Element<'_, Message> {
         section(
             "Data",
             vec![
-                line("App data", r"%APPDATA%\Snag · state.json, tools", open.into(), c),
+                line("App data", &format!("{} · state.json, tools", crate::platform::DATA_DIR), open.into(), c),
                 line("Download history", &format!("{done} finished item{} · files stay on disk", if done == 1 { "" } else { "s" }), clear.into(), c),
             ],
             c,

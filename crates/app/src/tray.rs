@@ -1,4 +1,6 @@
 //! The notification-area (tray) icon: Snag keeps running there when its window is closed.
+//! Windows: it lives on the UI thread. Linux: on its own GTK thread (an AppIndicator; GNOME
+//! shows it with the AppIndicator extension), which the `Tray` handle sends new icons to.
 
 use crate::update::Message;
 use iced::futures::SinkExt;
@@ -15,8 +17,10 @@ const RESUME_ALL: &str = "resume-all";
 const QUIT: &str = "quit";
 
 /// Keeps the icon alive (dropping it removes it from the tray).
+#[cfg(not(target_os = "linux"))]
 pub struct Tray(TrayIcon);
 
+#[cfg(not(target_os = "linux"))]
 impl Tray {
     /// Redraws the tray icon (32×32 RGBA), e.g. in a new accent.
     pub fn set_icon(&self, rgba: Vec<u8>) {
@@ -27,7 +31,64 @@ impl Tray {
 }
 
 /// Must run on the UI thread (it owns the Windows message loop the icon talks to).
+#[cfg(not(target_os = "linux"))]
 pub fn create() -> Option<Tray> {
+    build().map(Tray)
+}
+
+/// Linux: the icon's GTK thread takes new pictures from here (dropping it ends the thread).
+#[cfg(target_os = "linux")]
+pub struct Tray(std::sync::mpsc::Sender<Vec<u8>>);
+
+#[cfg(target_os = "linux")]
+impl Tray {
+    /// Redraws the tray icon (32×32 RGBA), e.g. in a new accent.
+    pub fn set_icon(&self, rgba: Vec<u8>) {
+        let _ = self.0.send(rgba);
+    }
+}
+
+/// Linux: starts GTK on a thread of its own and builds the icon there (tray-icon needs a GTK
+/// main loop on the thread that made it). `None` when there is no display or GTK won't start.
+#[cfg(target_os = "linux")]
+pub fn create() -> Option<Tray> {
+    let (icons, rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    let (ready, started) = std::sync::mpsc::channel();
+    std::thread::Builder::new()
+        .name("tray".into())
+        .spawn(move || {
+            if gtk::init().is_err() {
+                let _ = ready.send(false);
+                return;
+            }
+            let Some(tray) = build() else {
+                let _ = ready.send(false);
+                return;
+            };
+            let _ = ready.send(true);
+            gtk::glib::timeout_add_local(std::time::Duration::from_millis(250), move || {
+                loop {
+                    match rx.try_recv() {
+                        Ok(rgba) => {
+                            if let Ok(icon) = Icon::from_rgba(rgba, 32, 32) {
+                                let _ = tray.set_icon(Some(icon));
+                            }
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Empty) => return gtk::glib::ControlFlow::Continue,
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                            gtk::main_quit();
+                            return gtk::glib::ControlFlow::Break;
+                        }
+                    }
+                }
+            });
+            gtk::main();
+        })
+        .ok()?;
+    started.recv().ok()?.then_some(Tray(icons))
+}
+
+fn build() -> Option<TrayIcon> {
     let menu = Menu::new();
     menu.append_items(&[
         &MenuItem::with_id(OPEN, "Open Snag", true, None),
@@ -45,7 +106,6 @@ pub fn create() -> Option<Tray> {
         .with_icon(icon)
         .build()
         .ok()
-        .map(Tray)
 }
 
 pub fn subscription() -> Subscription<Message> {
