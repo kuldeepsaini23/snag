@@ -63,7 +63,7 @@ pub fn run(new: &Path) -> std::io::Result<()> {
     let target = appimage().ok_or_else(|| std::io::Error::other("this copy of Snag isn't an AppImage"))?;
     rdm_core::selfupdate::replace_appimage(new, &target)?;
     let _ = std::fs::remove_file(new);
-    std::process::Command::new(&target).arg("--updated").spawn().map(|_| ())
+    crate::platform::host_command(&target).arg("--updated").spawn().map(|_| ())
 }
 
 #[cfg(test)]

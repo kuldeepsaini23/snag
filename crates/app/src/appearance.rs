@@ -37,7 +37,7 @@ pub fn light_from_color_scheme(value: &str) -> bool {
 /// Linux: one `org.gnome.desktop.interface` key, as `gsettings` prints it.
 #[cfg(not(windows))]
 pub fn gsetting(key: &str) -> Option<String> {
-    let out = std::process::Command::new("gsettings").args(["get", "org.gnome.desktop.interface", key]).stderr(std::process::Stdio::null()).output().ok()?;
+    let out = crate::platform::host_command("gsettings").args(["get", "org.gnome.desktop.interface", key]).stderr(std::process::Stdio::null()).output().ok()?;
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 

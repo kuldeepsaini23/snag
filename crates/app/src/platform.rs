@@ -44,7 +44,42 @@ pub fn open(target: impl AsRef<OsStr>) {
 
 #[cfg(not(windows))]
 pub fn open(target: impl AsRef<OsStr>) {
-    let _ = std::process::Command::new("xdg-open").arg(target).spawn();
+    let _ = host_command("xdg-open").arg(target).spawn();
+}
+
+/// Linux: a program of the desktop's (xdg-open, the file manager, gsettings), started without
+/// what the AppImage's launcher set up for Snag itself: its bundled GTK modules, schemas and data
+/// folders (`$APPDIR/…`) would break the programs it starts, and vanish when Snag exits.
+#[cfg(not(windows))]
+pub fn host_command(program: impl AsRef<OsStr>) -> std::process::Command {
+    let mut cmd = std::process::Command::new(program);
+    if let Some(appdir) = std::env::var("APPDIR").ok().filter(|d| d.len() > 1) {
+        for (key, value) in host_env(std::env::vars_os(), &appdir) {
+            match value {
+                Some(v) => cmd.env(key, v),
+                None => cmd.env_remove(key),
+            };
+        }
+    }
+    cmd
+}
+
+/// The variables to change for `host_command`: each one naming something inside `appdir` loses
+/// those entries (`a:b` lists keep the rest), or goes when nothing is left.
+#[cfg_attr(windows, allow(dead_code))]
+pub fn host_env(vars: impl Iterator<Item = (std::ffi::OsString, std::ffi::OsString)>, appdir: &str) -> Vec<(std::ffi::OsString, Option<String>)> {
+    let appdir = appdir.trim_end_matches('/');
+    let inside = |entry: &str| entry == appdir || entry.starts_with(&format!("{appdir}/"));
+    vars.filter_map(|(key, value)| {
+        let value = value.into_string().ok()?;
+        if !value.split(':').any(inside) {
+            return None;
+        }
+        let kept: Vec<&str> = value.split(':').filter(|e| !inside(e)).collect();
+        let kept = kept.join(":");
+        Some((key, (!kept.is_empty()).then_some(kept)))
+    })
+    .collect()
 }
 
 /// Opens Explorer with the file selected; if the file isn't there, opens its folder.
@@ -74,7 +109,7 @@ pub fn reveal(path: &Path) {
     let uri = file_uri(path);
     // Off the UI thread: the call waits for the file manager's answer.
     std::thread::spawn(move || {
-        let shown = std::process::Command::new("dbus-send")
+        let shown = host_command("dbus-send")
             .args(["--session", "--print-reply", "--dest=org.freedesktop.FileManager1", "/org/freedesktop/FileManager1", "org.freedesktop.FileManager1.ShowItems"])
             .arg(format!("array:string:{uri}"))
             .arg("string:")
@@ -178,6 +213,29 @@ mod tests {
         assert_eq!(file_uri(Path::new("/home/a/My Video (1).mp4")), "file:///home/a/My%20Video%20%281%29.mp4");
         assert_eq!(file_uri(Path::new("/tmp/é😳.txt")), "file:///tmp/%C3%A9%F0%9F%98%B3.txt");
         assert_eq!(file_uri(Path::new("/x/a-b_c.d~e")), "file:///x/a-b_c.d~e");
+    }
+
+    #[test]
+    fn programs_snag_starts_leave_the_appimage_behind() {
+        let vars = [
+            ("APPDIR", "/tmp/.mount_SnagAb"),
+            ("APPIMAGE", "/home/a/Snag-x86_64.AppImage"),
+            ("GDK_PIXBUF_MODULE_FILE", "/tmp/.mount_SnagAb/usr/lib/loaders.cache"),
+            ("XDG_DATA_DIRS", "/tmp/.mount_SnagAb/usr/share:/usr/local/share:/usr/share"),
+            ("PATH", "/tmp/.mount_SnagAb/usr/bin:/usr/bin"),
+            ("HOME", "/home/a"),
+            ("OTHER", "/tmp/.mount_SnagAbc/x"),
+        ]
+        .map(|(k, v)| (k.into(), v.into()));
+        let mut changes = host_env(vars.into_iter(), "/tmp/.mount_SnagAb/");
+        changes.sort();
+        let expected: Vec<(std::ffi::OsString, Option<String>)> = vec![
+            ("APPDIR".into(), None),
+            ("GDK_PIXBUF_MODULE_FILE".into(), None),
+            ("PATH".into(), Some("/usr/bin".into())),
+            ("XDG_DATA_DIRS".into(), Some("/usr/local/share:/usr/share".into())),
+        ];
+        assert_eq!(changes, expected, "the rest (the AppImage file itself, a look-alike folder) untouched");
     }
 
     #[test]
