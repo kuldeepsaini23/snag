@@ -1,0 +1,155 @@
+name: Release
+
+# Publishing a GitHub release builds Snag for all three systems and attaches it:
+#   Windows  Snag-Setup-<version>.exe, Snag-Setup.exe (the same, for a link that never goes
+#            stale), snag-chrome-<ext>.zip and snag_download_manager-<ext>.zip (store packages)
+#   Linux    Snag-x86_64.AppImage, snag_<version>_amd64.deb
+#   macOS    Snag-macOS.zip (what the updater installs), Snag-macOS.dmg
+# then, once all three are up, SHA256SUMS-<version>.txt over every file of the release (the
+# in-app updater checks its download against it: crates/core/src/selfupdate.rs, checksum_for).
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and upload to (e.g. v1.0.4)
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
+  GH_REPO: ${{ github.repository }}
+
+jobs:
+  version:
+    # The files are named after Cargo.toml's version and the updater looks for the tag's: they
+    # must be the same.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: The tag matches Cargo.toml
+        run: |
+          version=$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"(.*)".*/\1/')
+          [ "v$version" = "$TAG" ] || { echo "Cargo.toml says $version but the release is $TAG"; exit 1; }
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Inno Setup 6
+        run: choco install innosetup --no-progress -y
+
+      - name: Test
+        run: cargo test --workspace
+
+      # The app, the extension, the installer and the store packages (installer/build.sh).
+      - name: Build the installer and the store packages
+        run: bash installer/build.sh
+
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${TAG#v}"
+          ext_version=$(node -p "require('./extension/manifest.json').version")
+          gh release upload "$TAG" "target/installer/Snag-Setup-$version.exe" target/installer/Snag-Setup.exe \
+            target/store/*-"$ext_version".zip --clobber
+
+  linux:
+    needs: version
+    # The oldest supported Ubuntu: its glibc (2.35) is the oldest the binaries run on.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config curl file \
+            libgtk-3-dev libayatana-appindicator3-dev libxdo-dev libxkbcommon-dev libwayland-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-deb
+        run: cargo install cargo-deb --locked
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Build the AppImage and .deb
+        run: bash packaging/linux/build.sh
+
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" target/linux/Snag-x86_64.AppImage "target/linux/snag_${TAG#v}_amd64.deb" --clobber
+
+  macos:
+    needs: version
+    # Apple silicon; the Intel half of the universal app is cross-compiled on it.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Build Snag.app, the zip and the disk image
+        run: bash packaging/macos/build.sh
+
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" target/macos/Snag-macOS.zip target/macos/Snag-macOS.dmg --clobber
+
+  checksums:
+    # Written once, after every system's files are up: nothing appends to it concurrently.
+    needs: [windows, linux, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write and upload SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sums="SHA256SUMS-${TAG#v}.txt"
+          mkdir assets
+          gh release download "$TAG" --dir assets
+          cd assets
+          rm -f SHA256SUMS-*.txt
+          # "<hash>  <file>", one line per release file.
+          sha256sum -- * | sort -k2 > "../$sums"
+          cd ..
+          cat "$sums"
+          gh release upload "$TAG" "$sums" --clobber

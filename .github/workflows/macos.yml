@@ -2,7 +2,7 @@ name: macOS
 
 # Builds and tests Snag on macOS, and packages Snag.app (universal) as Snag-macOS.zip and
 # Snag-macOS.dmg workflow artifacts (to try a branch on a Mac before it's released).
-# Releases: release-macos.yml.
+# Releases: release.yml.
 on:
   push:
     branches: [master, feat/macos]
