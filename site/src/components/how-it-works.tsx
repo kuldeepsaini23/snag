@@ -106,15 +106,17 @@ export function HowItWorks() {
             extension from the source on GitHub and load it from about:debugging as a temporary add-on.
           </p>
         </div>
-        <Plate fig={6} caption="the extension’s popup, connected to Snag." frameClassName="aspect-[16/15]" className="self-start">
-          <Shot
-            name="ext-popup"
-            widths={[720, 1280]}
-            height={800}
-            sizes="(min-width: 1024px) 900px, 170vw"
-            alt="The extension’s popup, connected to Snag, with switches for catching downloads and the media found on the page"
-            className="absolute top-0 right-0 w-[150%] max-w-none"
-          />
+        {/* The popup set on a hatched ground inside the double rule, at its own size. */}
+        <Plate fig={6} caption="the extension’s popup, connected to Snag." className="self-start" frameClassName="hatch grid place-items-center px-6 py-10 sm:py-14">
+          <div className="window w-full max-w-[350px]">
+            <Shot
+              name="ext-popup-panel"
+              widths={[350]}
+              height={640}
+              sizes="350px"
+              alt="The extension’s popup, connected to Snag, with switches for catching downloads and the media found on the page"
+            />
+          </div>
         </Plate>
       </div>
     </Section>

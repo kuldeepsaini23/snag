@@ -16,17 +16,17 @@ export function ReadyCard() {
   return (
     <Section id="get-started" className="mx-auto max-w-6xl px-4 pt-28 pb-24 sm:px-6 md:pt-40 md:pb-32">
       <div className="border border-line-strong p-1.5" data-reveal>
-        <div className="relative overflow-hidden border border-line bg-surface">
+        <div className="relative border border-line bg-surface">
+          {/* The engraving is clipped to the card; the download menu is not. */}
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+            <div className="rosette absolute top-1/2 left-1/2 size-[46rem] -translate-1/2" />
+            <div className="rosette absolute top-1/2 left-1/2 size-[28rem] -translate-1/2 opacity-30 [background:var(--accent)]" />
+            <Corner className="top-12 left-3 md:top-14 md:left-5" />
+            <Corner className="top-12 right-3 md:top-14 md:right-5" />
+            <Corner className="right-3 bottom-12 md:right-5 md:bottom-14" />
+            <Corner className="bottom-12 left-3 md:bottom-14 md:left-5" />
+          </div>
           <Band />
-          <div aria-hidden="true" className="rosette absolute top-1/2 left-1/2 size-[46rem] -translate-1/2" />
-          <div
-            aria-hidden="true"
-            className="rosette absolute top-1/2 left-1/2 size-[28rem] -translate-1/2 opacity-30 [background:var(--accent)]"
-          />
-          <Corner className="top-12 left-3 md:top-14 md:left-5" />
-          <Corner className="top-12 right-3 md:top-14 md:right-5" />
-          <Corner className="right-3 bottom-12 md:right-5 md:bottom-14" />
-          <Corner className="bottom-12 left-3 md:bottom-14 md:left-5" />
 
           <div className="relative px-5 py-16 text-center sm:px-10 md:py-24">
             <p className="label inline-flex items-center gap-2 text-accent-text">

@@ -58,6 +58,7 @@ export function DownloadBar({
       const sections = parts.map(({ id }) => document.getElementById(id));
 
       let progress: number[];
+      let at = -1;
       if (sections.every(Boolean)) {
         // A reading point that runs from the top of the screen (at the top of the page) to its
         // bottom (at the end), so the first part starts empty and the last one ends full.
@@ -65,7 +66,7 @@ export function DownloadBar({
         const tops = sections.map((el) => el!.getBoundingClientRect().top + window.scrollY);
         tops.push(document.documentElement.scrollHeight);
         progress = parts.map((_, i) => clamp((anchor - tops[i]) / (tops[i + 1] - tops[i])));
-        let at = 0;
+        at = 0;
         tops.slice(0, parts.length).forEach((top, i) => {
           if (anchor >= top) at = i;
         });
@@ -78,6 +79,8 @@ export function DownloadBar({
       progress.forEach((value, i) => {
         const fill = fills.current[i];
         if (fill) fill.style.transform = `scaleX(${value})`;
+        // The part being read glows, once it has started to fill.
+        fill?.parentElement?.toggleAttribute("data-active", i === at && value > 0.01 && !finished);
         const count = counts.current[i];
         if (count) count.textContent = `${Math.round(value * 100)}%`;
       });
@@ -219,7 +222,6 @@ export function DownloadBar({
           {parts.map((part, i) => (
             <span
               key={part.id}
-              data-active={home && i === current && !done ? "" : undefined}
               className="dl-bar__seg h-full flex-1 overflow-hidden rounded-full"
             >
               <span

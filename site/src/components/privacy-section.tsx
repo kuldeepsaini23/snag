@@ -160,7 +160,7 @@ export function PrivacySection() {
         </div>
 
         <div className="mt-20 grid items-center gap-x-14 gap-y-8 md:grid-cols-[minmax(0,26rem)_1fr]" data-reveal>
-          <Plate fig={5} caption="the first-run tour’s last card.">
+          <Plate window fig={5} caption="the first-run tour’s last card.">
             <Shot
               name="permissions"
               widths={[580]}

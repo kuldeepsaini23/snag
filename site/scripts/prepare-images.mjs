@@ -33,8 +33,14 @@ await webp(
   "app-phone",
   [732],
 );
+// The extension: the video page with its Download button, whole, and the popup on its own. They
+// are 1x captures, so they are served at their own size at most, never scaled up.
 await webp(path.join(store, "1-download-menu.png"), "ext-download-menu", [1280, 720]);
-await webp(path.join(store, "2-popup.png"), "ext-popup", [1280, 720]);
+await webp(
+  await sharp(path.join(store, "2-popup.png")).extract({ left: 918, top: 46, width: 350, height: 640 }).toBuffer(),
+  "ext-popup-panel",
+  [350],
+);
 
 // The older screenshots still carry the old logo in their title bar, so only the part
 // without it is used: the stats panel, and the first-run tour's permissions card.
@@ -84,7 +90,7 @@ async function cutOut() {
 }
 
 const subject = await sharp(await cutOut()).trim({ threshold: 1 }).png().toBuffer();
-for (const height of [960, 560]) {
+for (const height of [972, 560]) {
   await sharp(subject)
     .resize({ height })
     .webp({ quality: 86, alphaQuality: 90, effort: 6 })

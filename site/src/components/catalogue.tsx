@@ -126,25 +126,32 @@ export function CatalogueLine({ entry }: { entry: Entry }) {
   );
 }
 
+// `window` sets a screenshot of a window in its own rounded frame instead of the double rule.
 export function Plate({
   fig,
   caption,
+  window,
   className,
   frameClassName,
   children,
 }: {
   fig: number;
   caption: React.ReactNode;
+  window?: boolean;
   className?: string;
   frameClassName?: string;
   children: React.ReactNode;
 }) {
   return (
     <figure className={className}>
-      <div className="plate">
-        <div className={cn("plate__frame", frameClassName)}>{children}</div>
-      </div>
-      <figcaption className="mt-3 font-display text-[0.95rem] leading-snug text-muted italic">
+      {window ? (
+        <div className={cn("window", frameClassName)}>{children}</div>
+      ) : (
+        <div className="plate">
+          <div className={cn("plate__frame", frameClassName)}>{children}</div>
+        </div>
+      )}
+      <figcaption className={cn("font-display text-[0.95rem] leading-snug text-muted italic", window ? "mt-5" : "mt-3")}>
         <span className="text-text">Fig. {fig}</span> — {caption}
       </figcaption>
     </figure>

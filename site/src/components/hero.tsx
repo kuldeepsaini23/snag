@@ -1,7 +1,7 @@
 import { GithubLogo } from "@phosphor-icons/react/dist/ssr";
 
 import { ButtonLink } from "@/components/button";
-import { Plate, Section } from "@/components/catalogue";
+import { Section } from "@/components/catalogue";
 import { DownloadMenu } from "@/components/download-menu";
 import { DOWNLOAD_URL, RELEASES_URL, REPO_URL, VERSION } from "@/lib/site";
 
@@ -16,12 +16,14 @@ export function Hero() {
           aria-hidden="true"
           className="pointer-events-none absolute top-0 right-3 h-[12.5rem] w-[6.5rem] sm:right-8 sm:h-[17rem] sm:w-[9rem] lg:right-12 lg:h-[37rem] lg:w-[22rem]"
         >
+          {/* The ground: a little cross-hatching, fading out from the hook. */}
+          <div className="hatch absolute top-[38%] left-1/2 size-[13rem] -translate-1/2 rounded-full [mask-image:radial-gradient(closest-side,black_30%,transparent)] sm:size-[17rem] lg:size-[28rem]" />
           <div className="rosette absolute top-[38%] left-1/2 size-[17rem] -translate-x-1/2 -translate-y-1/2 sm:size-[22rem] lg:size-[38rem]" />
           <div className="rosette absolute top-[38%] left-1/2 size-[11rem] -translate-x-1/2 -translate-y-1/2 opacity-60 [background:var(--accent)] sm:size-[14rem] lg:size-[24rem]" />
           {/* eslint-disable-next-line @next/next/no-img-element -- static export, pre-sized WebP */}
           <img
             src="/images/hook-560.webp"
-            srcSet="/images/hook-560.webp 196w, /images/hook-960.webp 337w"
+            srcSet="/images/hook-560.webp 196w, /images/hook-972.webp 341w"
             sizes="(min-width: 1024px) 13rem, (min-width: 640px) 6rem, 4.75rem"
             alt=""
             width={196}
@@ -55,28 +57,46 @@ export function Hero() {
         </div>
       </div>
 
-      <div className="mx-auto mt-16 max-w-6xl px-4 sm:px-6 md:mt-24">
-        <Plate fig={1} caption="Snag’s main window: three downloads under way, one at 8.4 MB/s.">
-          {/* On phones the plate shows the left of the window at its own size. */}
-          <picture>
-            <source media="(max-width: 639px)" type="image/webp" srcSet="/images/app-phone-732.webp" />
-            <source
-              type="image/webp"
-              srcSet="/images/app-720.webp 720w, /images/app-1280.webp 1280w"
-              sizes="(min-width: 1152px) 1090px, calc(100vw - 60px)"
-            />
+      {/* Two plates laid on each other: the app's window, and the extension's popup over its corner. */}
+      <figure className="mx-auto mt-16 max-w-6xl px-4 sm:px-6 md:mt-24">
+        <div className="relative">
+          <div className="window">
+            {/* On phones the window shows its left half at its own size. */}
+            <picture>
+              <source media="(max-width: 639px)" type="image/webp" srcSet="/images/app-phone-732.webp" />
+              <source
+                type="image/webp"
+                srcSet="/images/app-720.webp 720w, /images/app-1280.webp 1280w"
+                sizes="(min-width: 1152px) 1104px, calc(100vw - 48px)"
+              />
+              <img
+                src="/images/app-1280.webp"
+                alt="Snag’s main window: a library of downloads by type, three downloads in progress with one at 8.4 MB/s, and the details of the selected video"
+                width={1280}
+                height={800}
+                loading="lazy"
+                decoding="async"
+                className="aspect-[4/3] sm:aspect-[8/5]"
+              />
+            </picture>
+          </div>
+          <div className="window absolute right-2 -bottom-10 w-[38%] max-w-[350px] sm:-right-3 sm:-bottom-14 sm:w-[25%] lg:-right-8">
+            {/* eslint-disable-next-line @next/next/no-img-element -- static export, a 1x capture at its own size */}
             <img
-              src="/images/app-1280.webp"
-              alt="Snag’s main window: a library of downloads by type, three downloads in progress with one at 8.4 MB/s, and the details of the selected video"
-              width={1280}
-              height={800}
+              src="/images/ext-popup-panel-350.webp"
+              alt="The browser extension’s popup: connected to Snag, catching downloads, the media found on the page, and buttons to download or save the page"
+              width={350}
+              height={640}
               loading="lazy"
               decoding="async"
-              className="block aspect-[4/3] h-auto w-full sm:aspect-[8/5]"
             />
-          </picture>
-        </Plate>
-      </div>
+          </div>
+        </div>
+        <figcaption className="mt-16 font-display sm:max-w-[58%] text-[0.95rem] leading-snug text-muted italic sm:mt-20">
+          <span className="text-text">Fig. 1</span> — Snag’s main window, three downloads under way; over it, the
+          browser extension’s popup.
+        </figcaption>
+      </figure>
     </Section>
   );
 }

@@ -116,18 +116,18 @@ const video: Entry[] = [
     description:
       "The extension sees the stream a page’s player loads and puts a Download button on it, with every quality it found, even on sites no list knows about.",
     demo: (
-      <Plate fig={3} caption="the Download button (A), on any video page.">
+      <Plate window fig={3} caption="the Download button (A), on any video page.">
         <Shot
           name="ext-download-menu"
           widths={[720, 1280]}
           height={800}
           sizes="(min-width: 1024px) 560px, 100vw"
-          alt="A video page with the extension’s orange Download button in its bottom-right corner"
+          alt="A video page with the extension’s Download button in its bottom-right corner"
         />
         {/* A callout, as engravers letter the part a plate is about. */}
         <span
           aria-hidden="true"
-          className="absolute top-[91%] left-[88.2%] h-[7.8%] w-[11.4%] rounded-full border border-text"
+          className="absolute top-[91%] left-[88.4%] h-[7.6%] w-[11%] rounded-full border border-text shadow-[0_0_0_4px_rgb(11_11_12/0.6)]"
         />
         <span
           aria-hidden="true"
@@ -248,7 +248,7 @@ const tools: Entry[] = [
     spec: "7d · 30d · all",
     description: "See what you downloaded by day, by type and by site, over the last week, month or all time.",
     demo: (
-      <Plate fig={4} caption="the stats page, over the last seven days.">
+      <Plate window fig={4} caption="the stats page, over the last seven days.">
         <Shot
           name="stats"
           widths={[720, 1129]}

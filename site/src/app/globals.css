@@ -182,6 +182,24 @@ body {
     border: 1px solid var(--line-strong);
     padding: 5px;
   }
+  /* An app or browser window: rounded, a paper hairline, a long soft shadow and a faint glow of
+     the accent under it. */
+  .window {
+    position: relative;
+    overflow: hidden;
+    border-radius: 10px;
+    background: var(--surface);
+    box-shadow:
+      0 0 0 1px rgb(239 233 220 / 0.14),
+      0 2px 4px rgb(0 0 0 / 0.3),
+      0 32px 64px -28px rgb(0 0 0 / 0.9),
+      0 48px 140px -48px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  .window img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
   .plate__frame {
     position: relative;
     overflow: hidden;
@@ -204,10 +222,11 @@ body {
   filter: blur(6px);
   translate: 0 18px;
 }
-.plate img {
+.plate img,
+.window img {
   transition: filter 1.4s 0.2s ease-out;
 }
-[data-reveal="hidden"] .plate img {
+[data-reveal="hidden"] :is(.plate, .window) img {
   filter: grayscale(1) contrast(0.7) brightness(0.75);
 }
 
@@ -299,13 +318,16 @@ body {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(100deg, transparent 30%, rgb(255 255 255 / 0.55) 50%, transparent 70%);
-  transform: translateX(-100%);
+  border-radius: 9999px;
+  /* The shine moves by its background, so it never reaches outside the bar. */
+  background: linear-gradient(100deg, transparent, rgb(255 255 255 / 0.6), transparent) no-repeat;
+  background-size: 30% 100%;
+  background-position: -50% 0;
   animation: bar-shine 0.9s 0.2s ease-out both;
 }
 @keyframes bar-shine {
   to {
-    transform: translateX(100%);
+    background-position: 150% 0;
   }
 }
 .dl-bar[data-done] .dl-bar__line {
