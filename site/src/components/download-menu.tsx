@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
-import { AppleLogo, ArrowRight, CaretDown, DownloadSimple, LinuxLogo, WindowsLogo } from "@phosphor-icons/react";
+import { AppleLogo, ArrowUpRight, CaretDown, DownloadSimple, LinuxLogo, WindowsLogo } from "@phosphor-icons/react";
 
+import { ExternalLink } from "@/components/external-link";
 import { cn } from "@/lib/utils";
 
 type Os = "windows" | "mac" | "linux";
@@ -239,7 +240,7 @@ export function DownloadMenu({
               </div>
             ))}
             <div role="separator" className="mx-4 my-1 h-px bg-line" />
-            <a
+            <ExternalLink
               href={releasesUrl}
               role="menuitem"
               tabIndex={-1}
@@ -247,8 +248,8 @@ export function DownloadMenu({
               className="mx-1 mb-1 flex items-center justify-between px-3 py-2.5 text-sm text-muted outline-none hover:bg-surface-2 hover:text-text focus-visible:bg-surface-2 focus-visible:text-text"
             >
               All releases on GitHub
-              <ArrowRight className="size-4" aria-hidden />
-            </a>
+              <ArrowUpRight className="size-4" aria-hidden />
+            </ExternalLink>
           </div>
         </div>
       )}

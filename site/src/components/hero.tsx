@@ -48,7 +48,7 @@ export function Hero() {
           </p>
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">
             <DownloadMenu downloadUrl={DOWNLOAD_URL} releasesUrl={RELEASES_URL} version={VERSION} />
-            <ButtonLink href={REPO_URL} variant="secondary">
+            <ButtonLink href={REPO_URL} variant="secondary" external>
               <GithubLogo weight="fill" className="size-5" aria-hidden />
               View on GitHub
             </ButtonLink>

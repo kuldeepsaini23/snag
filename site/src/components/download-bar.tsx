@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { CaretDown, CheckCircle, GithubLogo } from "@phosphor-icons/react";
 
 import { DownloadMenu } from "@/components/download-menu";
+import { ExternalLink } from "@/components/external-link";
 import { LogoMark } from "@/components/logo";
 import { pad, parts, type PartId } from "@/lib/parts";
 
@@ -254,13 +255,13 @@ export function DownloadBar({
           )}
         </div>
 
-        <a
+        <ExternalLink
           href={repoUrl}
-          aria-label="Snag on GitHub"
+          aria-label="Snag on GitHub (opens in a new tab)"
           className="hidden size-9 items-center justify-center self-center rounded-full text-muted shadow-[inset_0_0_0_1px_rgb(239_233_220/0.16)] transition-[color,box-shadow] [grid-area:gh] hover:text-text hover:shadow-[inset_0_0_0_1px_var(--accent)] sm:flex"
         >
           <GithubLogo weight="fill" className="size-[18px]" aria-hidden />
-        </a>
+        </ExternalLink>
 
         <DownloadMenu
           downloadUrl={downloadUrl}

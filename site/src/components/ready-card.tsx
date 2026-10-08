@@ -52,7 +52,7 @@ export function ReadyCard() {
 
             <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
               <DownloadMenu downloadUrl={DOWNLOAD_URL} releasesUrl={RELEASES_URL} version={VERSION} menuAlign="center" />
-              <ButtonLink href={REPO_URL} variant="secondary" className="bg-bg">
+              <ButtonLink href={REPO_URL} variant="secondary" external className="bg-bg">
                 <GithubLogo weight="fill" className="size-5" aria-hidden />
                 View on GitHub
               </ButtonLink>

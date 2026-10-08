@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { ExternalLink } from "@/components/external-link";
 import { Logo } from "@/components/logo";
 import { ISSUES_URL, RELEASES_URL, REPO_URL } from "@/lib/site";
 
@@ -17,9 +18,9 @@ export function SiteFooter() {
         <nav aria-label="Footer">
           <ul className="flex flex-wrap gap-x-6 gap-y-3 text-sm text-muted">
             <li>
-              <a href={REPO_URL} className="hover:text-text">
+              <ExternalLink href={REPO_URL} className="hover:text-text">
                 GitHub
-              </a>
+              </ExternalLink>
             </li>
             <li>
               {/* Not prefetched: the static export doesn't write the file the router would prefetch, so it would 404. */}
@@ -28,14 +29,14 @@ export function SiteFooter() {
               </Link>
             </li>
             <li>
-              <a href={RELEASES_URL} className="hover:text-text">
+              <ExternalLink href={RELEASES_URL} className="hover:text-text">
                 Changelog
-              </a>
+              </ExternalLink>
             </li>
             <li>
-              <a href={ISSUES_URL} className="hover:text-text">
+              <ExternalLink href={ISSUES_URL} className="hover:text-text">
                 Report a bug
-              </a>
+              </ExternalLink>
             </li>
           </ul>
         </nav>

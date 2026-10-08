@@ -1,3 +1,4 @@
+import { ExternalLink } from "@/components/external-link";
 import { cn } from "@/lib/utils";
 
 const variants = {
@@ -10,23 +11,26 @@ const sizes = {
   lg: "h-12 px-6 text-[0.95rem]",
 };
 
-// Square-shouldered buttons, like the type blocks of a catalogue: orange for the main action,
-// a ruled outline otherwise.
+// Square-shouldered buttons, like the type blocks of a catalogue: copper for the main action,
+// a ruled outline otherwise. `external` opens the link in a new tab.
 export function ButtonLink({
   href,
   variant = "primary",
   size = "lg",
+  external,
   className,
   children,
 }: {
   href: string;
   variant?: keyof typeof variants;
   size?: keyof typeof sizes;
+  external?: boolean;
   className?: string;
   children: React.ReactNode;
 }) {
+  const Link = external ? ExternalLink : "a";
   return (
-    <a
+    <Link
       href={href}
       className={cn(
         "inline-flex items-center justify-center gap-2.5 rounded-[3px] font-semibold whitespace-nowrap transition-[background-color,filter,transform] active:scale-[0.97]",
@@ -36,6 +40,6 @@ export function ButtonLink({
       )}
     >
       {children}
-    </a>
+    </Link>
   );
 }

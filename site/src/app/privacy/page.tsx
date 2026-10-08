@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { ExternalLink } from "@/components/external-link";
 import { ISSUES_URL, REPO_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -176,9 +177,9 @@ export default function PrivacyPage() {
         </List>
         <p>
           Snag is open source, so you can check all of this in the{" "}
-          <a href={REPO_URL} className={link}>
+          <ExternalLink href={REPO_URL} className={link}>
             source code
-          </a>
+          </ExternalLink>
           .
         </p>
       </Section>
@@ -197,9 +198,9 @@ export default function PrivacyPage() {
         </p>
         <p>
           Questions or concerns? Open an issue at{" "}
-          <a href={ISSUES_URL} className={link}>
+          <ExternalLink href={ISSUES_URL} className={link}>
             github.com/kuldeepsaini23/snag/issues
-          </a>
+          </ExternalLink>
           .
         </p>
       </Section>

@@ -1,6 +1,7 @@
 import { Plus } from "@phosphor-icons/react/dist/ssr";
 
 import { Section, SectionHead } from "@/components/catalogue";
+import { ExternalLink } from "@/components/external-link";
 import { pad } from "@/lib/parts";
 import { RELEASES_URL, REPO_URL } from "@/lib/site";
 
@@ -13,9 +14,9 @@ const questions: { q: string; value: string; a: React.ReactNode }[] = [
     a: (
       <>
         Yes, completely. Snag is open source under the MIT licence: no trial, no ads, no paid tier. The code is on{" "}
-        <a href={REPO_URL} className={link}>
+        <ExternalLink href={REPO_URL} className={link}>
           GitHub
-        </a>
+        </ExternalLink>
         .
       </>
     ),
@@ -27,9 +28,9 @@ const questions: { q: string; value: string; a: React.ReactNode }[] = [
       <>
         <p>
           The whole app is open source, so anyone can read what it does. Each{" "}
-          <a href={RELEASES_URL} className={link}>
+          <ExternalLink href={RELEASES_URL} className={link}>
             release on GitHub
-          </a>{" "}
+          </ExternalLink>{" "}
           lists the installer’s SHA-256 checksum, so you can check your file is the one that was published.
         </p>
         <p className="mt-3">
