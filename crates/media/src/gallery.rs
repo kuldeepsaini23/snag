@@ -96,7 +96,7 @@ pub async fn download(
     loop {
         let line = tokio::select! {
             _ = cancel.cancelled() => {
-                let _ = child.kill().await;
+                crate::kill(&mut child).await;
                 return Ok(MediaOutcome::Paused);
             }
             line = lines.next_line() => line.map_err(|e| e.to_string())?,
@@ -110,7 +110,7 @@ pub async fn download(
     }
     let status = tokio::select! {
         _ = cancel.cancelled() => {
-            let _ = child.kill().await;
+            crate::kill(&mut child).await;
             return Ok(MediaOutcome::Paused);
         }
         status = child.wait() => status.map_err(|e| e.to_string())?,

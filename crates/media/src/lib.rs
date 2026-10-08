@@ -352,7 +352,23 @@ fn command(program: &Path) -> tokio::process::Command {
     // Report titles and paths in UTF-8, not the console code page (which drops emoji).
     cmd.env("PYTHONUTF8", "1").env("PYTHONIOENCODING", "utf-8");
     cmd.stdin(std::process::Stdio::null()).kill_on_drop(true);
+    // Linux: a group of its own, so `kill` reaches what it starts (see there).
+    #[cfg(unix)]
+    cmd.process_group(0);
     cmd
+}
+
+/// Stops a tool and what it started. Linux: the standalone yt-dlp and gallery-dl are launchers
+/// whose Python child does the work (and runs ffmpeg); killing the launcher alone would leave
+/// them downloading, so the whole process group goes.
+pub(crate) async fn kill(child: &mut tokio::process::Child) {
+    #[cfg(unix)]
+    if let Some(pid) = child.id() {
+        // SAFETY: a plain signal to the group `command` made for this child (its id is the
+        // group's, and the child isn't reaped yet, so the id can't have been reused).
+        unsafe { libc::kill(-(pid as libc::pid_t), libc::SIGKILL) };
+    }
+    let _ = child.kill().await;
 }
 
 /// The most useful line of yt-dlp's stderr: the last `ERROR:` line, else the last line.
@@ -441,7 +457,7 @@ pub async fn download(
     loop {
         let line = tokio::select! {
             _ = cancel.cancelled() => {
-                let _ = child.kill().await;
+                crate::kill(&mut child).await;
                 return Ok(stopped(&recording));
             }
             line = lines.next_line() => line.map_err(|e| e.to_string())?,
@@ -457,7 +473,7 @@ pub async fn download(
     }
     let status = tokio::select! {
         _ = cancel.cancelled() => {
-            let _ = child.kill().await;
+            crate::kill(&mut child).await;
             return Ok(stopped(&recording));
         }
         status = child.wait() => status.map_err(|e| e.to_string())?,

@@ -21,5 +21,8 @@ serde.workspace = true
 serde_json.workspace = true
 memchr = "2"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 tempfile.workspace = true

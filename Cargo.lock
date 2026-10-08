@@ -5860,6 +5860,7 @@ dependencies = [
 name = "rdm-media"
 version = "1.0.3"
 dependencies = [
+ "libc",
  "memchr",
  "serde",
  "serde_json",
