@@ -25,6 +25,12 @@ pub const SHARING_HINT: &str = if cfg!(windows) {
 } else {
     "Send links from your phone. A firewall may need to allow Snag on your network"
 };
+/// What closing the window does (Help → Basics).
+pub const CLOSE_HINT: &str = if cfg!(target_os = "macos") {
+    "Closing the window keeps Snag downloading in the menu bar. Quit from its menu bar icon or with Cmd + Q."
+} else {
+    "Closing the window keeps Snag downloading in the tray. Quit from the tray icon."
+};
 /// Where the data folder is, as people would type it.
 pub const DATA_DIR: &str = if cfg!(windows) {
     r"%APPDATA%\Snag"

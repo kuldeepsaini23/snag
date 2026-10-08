@@ -321,6 +321,10 @@ fn appearance(m: &Model, c: Colors) -> Element<'_, Message> {
             c,
         ),
     ];
+    // macOS always draws with the GPU (see `renderer`): no switch.
+    if cfg!(target_os = "macos") {
+        window.pop();
+    }
     // Mica and acrylic are Windows' own: elsewhere the window stays solid, so there's no switch.
     if !cfg!(windows) {
         window.remove(1);

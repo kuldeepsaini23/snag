@@ -1229,12 +1229,18 @@ pub fn subscription(app: &App) -> Subscription<Message> {
     Subscription::batch(subs)
 }
 
-/// Ctrl+K focuses search; F1 opens Help; Escape closes whatever is on top.
+/// Ctrl+K (macOS: Cmd+K) focuses search; F1 opens Help; Escape closes whatever is on top. macOS
+/// also has Cmd+W (hide the window), Cmd+M (minimise) and Cmd+, (Settings); Cmd+Q is the app
+/// menu's.
 fn on_key(event: keyboard::Event) -> Option<Message> {
     let keyboard::Event::KeyPressed { key, modifiers, .. } = event else { return None };
+    let mac = cfg!(target_os = "macos") && modifiers.command();
     match key.as_ref() {
         keyboard::Key::Named(keyboard::key::Named::Escape) => Some(Message::Escape),
         keyboard::Key::Character("k") if modifiers.command() => Some(Message::FocusSearch),
+        keyboard::Key::Character("w") if mac => Some(Message::HideWindow),
+        keyboard::Key::Character("m") if mac => Some(Message::WinMinimize),
+        keyboard::Key::Character(",") if mac => Some(Message::OpenSettings(SettingsTab::General)),
         keyboard::Key::Named(keyboard::key::Named::F1) => Some(Message::OpenInfo(Info::Help)),
         _ => None,
     }
