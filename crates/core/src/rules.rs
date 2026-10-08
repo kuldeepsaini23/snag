@@ -271,13 +271,14 @@ mod tests {
         assert!(!again.exists() && moved.result.exists(), "moved");
     }
 
+    // Windows only: Linux moves a file another program has open.
+    #[cfg(windows)]
     #[test]
     fn a_move_that_cannot_remove_the_original_says_so() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("busy.exe");
         std::fs::write(&file, b"exe").unwrap();
         // Another program has it open (e.g. a torrent still sharing it): Windows won't move it.
-        #[cfg(windows)]
         let _held = {
             use std::os::windows::fs::OpenOptionsExt;
             // Read and write sharing only (no delete), like most programs open files.

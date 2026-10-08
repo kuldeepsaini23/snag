@@ -355,9 +355,9 @@ fn install_fake_ytdlp(data_dir: &Path) {
         out
     });
     std::fs::create_dir_all(data_dir.join("bin")).unwrap();
-    std::fs::copy(fake, data_dir.join("bin").join("yt-dlp.exe")).unwrap();
+    std::fs::copy(fake, data_dir.join("bin").join(format!("yt-dlp{}", std::env::consts::EXE_SUFFIX))).unwrap();
     // A stand-in ffmpeg, so tests never fetch the real one.
-    std::fs::write(data_dir.join("bin").join("ffmpeg.exe"), b"").unwrap();
+    std::fs::write(data_dir.join("bin").join(format!("ffmpeg{}", std::env::consts::EXE_SUFFIX)), b"").unwrap();
 }
 
 #[tokio::test]

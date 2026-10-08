@@ -8,7 +8,11 @@ use tokio_util::sync::CancellationToken;
 pub mod disguise;
 pub mod gallery;
 
+#[cfg(windows)]
 pub const YTDLP_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
+/// Linux: the standalone x86_64 build (no Python needed); `yt-dlp -U` updates it in place.
+#[cfg(not(windows))]
+pub const YTDLP_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MediaFormat {

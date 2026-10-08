@@ -75,11 +75,11 @@ pub fn install_fake_ytdlp(data_dir: &std::path::Path) {
     });
     let bin = data_dir.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
-    std::fs::copy(fake, bin.join("yt-dlp.exe")).unwrap();
+    std::fs::copy(fake, bin.join(format!("yt-dlp{}", std::env::consts::EXE_SUFFIX))).unwrap();
     // A stand-in ffmpeg, so tests never fetch the real one (yt-dlp here is fake anyway).
-    std::fs::write(bin.join("ffmpeg.exe"), b"").unwrap();
+    std::fs::write(bin.join(format!("ffmpeg{}", std::env::consts::EXE_SUFFIX)), b"").unwrap();
     // The same fake plays gallery-dl (it switches on the `-D <dir>` argument).
-    std::fs::copy(fake, bin.join("gallery-dl.exe")).unwrap();
+    std::fs::copy(fake, bin.join(format!("gallery-dl{}", std::env::consts::EXE_SUFFIX))).unwrap();
 }
 
 /// Range-capable file of `size` deterministic bytes, optionally slowed per 16 KiB chunk.

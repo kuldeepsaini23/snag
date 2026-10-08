@@ -128,14 +128,20 @@ struct Tools {
 }
 
 impl Tools {
-    /// ffmpeg for conversions: Snag's own copy in `bin`, else one on the PATH.
+    /// ffmpeg for conversions: Snag's own copy in `bin`, else (Linux) one shipped next to Snag,
+    /// else one on the PATH.
     fn ffmpeg(&self) -> Option<PathBuf> {
-        let own = self.bin_dir.join("ffmpeg.exe");
+        let name = tool_file("ffmpeg");
+        let own = self.bin_dir.join(&name);
         if own.exists() {
             return Some(own);
         }
+        #[cfg(not(windows))]
+        if let Some(bundled) = std::env::current_exe().ok().and_then(|exe| Some(exe.parent()?.join(&name))).filter(|p| p.is_file()) {
+            return Some(bundled);
+        }
         let path = std::env::var_os("PATH")?;
-        std::env::split_paths(&path).map(|d| d.join("ffmpeg.exe")).find(|p| p.exists())
+        std::env::split_paths(&path).map(|d| d.join(&name)).find(|p| p.exists())
     }
 
     /// Runs detached: a caller that gives up (pause) never interrupts a download or update of the exe.
@@ -160,10 +166,10 @@ impl Tools {
             return Ok(found);
         }
         notify();
-        let archive = this.bin_dir.join("ffmpeg-download.7z");
+        let archive = this.bin_dir.join(crate::ffmpeg::ARCHIVE);
         let fetched = async {
             let expected = this.client.get(crate::ffmpeg::SHA256_URL).send().await.map_err(|e| e.to_string())?.text().await.map_err(|e| e.to_string())?;
-            let expected = crate::ffmpeg::parse_sha256(&expected).ok_or("no checksum published for the ffmpeg download")?;
+            let expected = crate::ffmpeg::expected_sha256(&expected).ok_or("no checksum published for the ffmpeg download")?;
             let (progress, _) = watch::channel(Progress::default());
             match download(&this.client, crate::ffmpeg::URL, &archive, &DownloadOptions::default(), CancellationToken::new(), &progress).await {
                 Ok(Outcome::Completed(_)) => {}
@@ -192,13 +198,16 @@ impl Tools {
         let this = self.clone();
         tokio::spawn(async move {
             let _only_one = this.lock.lock().await;
-            let path = this.bin_dir.join("gallery-dl.exe");
+            let path = this.bin_dir.join(tool_file("gallery-dl"));
             if path.exists() {
                 return Ok(path);
             }
             let (progress, _) = watch::channel(Progress::default());
             match download(&this.client, rdm_media::gallery::GALLERY_DL_URL, &path, &DownloadOptions::default(), CancellationToken::new(), &progress).await {
-                Ok(Outcome::Completed(_)) => Ok(path),
+                Ok(Outcome::Completed(_)) => {
+                    make_runnable(&path);
+                    Ok(path)
+                }
                 Ok(Outcome::Paused) => Err("gallery-dl download was interrupted".into()),
                 Err(e) => Err(format!("couldn't download gallery-dl: {e}")),
             }
@@ -209,7 +218,7 @@ impl Tools {
 
     async fn ytdlp_now(&self) -> Result<PathBuf, String> {
         let _only_one = self.lock.lock().await;
-        let path = self.bin_dir.join("yt-dlp.exe");
+        let path = self.bin_dir.join(tool_file("yt-dlp"));
         if path.exists() {
             let checked = std::fs::metadata(self.marker()).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok());
             if checked.is_none_or(|age| age >= UPDATE_EVERY) {
@@ -222,6 +231,7 @@ impl Tools {
         let (progress, _) = watch::channel(Progress::default());
         match download(&self.client, YTDLP_URL, &path, &DownloadOptions::default(), CancellationToken::new(), &progress).await {
             Ok(Outcome::Completed(_)) => {
+                make_runnable(&path);
                 let _ = std::fs::write(self.marker(), b"");
                 Ok(path)
             }
@@ -229,6 +239,22 @@ impl Tools {
             Err(e) => Err(format!("couldn't download yt-dlp: {e}")),
         }
     }
+}
+
+/// A tool's file name in `bin`: `yt-dlp.exe` on Windows, `yt-dlp` elsewhere.
+pub fn tool_file(name: &str) -> String {
+    format!("{name}{}", std::env::consts::EXE_SUFFIX)
+}
+
+/// A downloaded program can be run (Linux: the executable bit; nothing to do on Windows).
+fn make_runnable(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
+    }
+    #[cfg(not(unix))]
+    let _ = path;
 }
 
 enum Cmd {

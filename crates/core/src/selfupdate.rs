@@ -1,4 +1,28 @@
 //! Snag's own updates: the newest GitHub release, its installer and the checksum it must match.
+//! Windows installs with `Snag-Setup-<version>.exe`; Linux replaces its AppImage with the
+//! release's `Snag-x86_64.AppImage`.
+
+/// Which release file updates this copy of Snag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Platform {
+    Windows,
+    Linux,
+}
+
+impl Platform {
+    pub const CURRENT: Platform = if cfg!(windows) { Platform::Windows } else { Platform::Linux };
+
+    /// The release asset this platform installs, as named in the checksums file.
+    pub fn installer_name(self, version: &str) -> String {
+        match self {
+            Platform::Windows => format!("Snag-Setup-{version}.exe"),
+            Platform::Linux => APPIMAGE.into(),
+        }
+    }
+}
+
+/// The Linux release's AppImage (the same name in every release; SHA256SUMS-<version>.txt lists it).
+pub const APPIMAGE: &str = "Snag-x86_64.AppImage";
 
 /// Where releases are listed (tests point it at a local server with `SNAG_UPDATE_URL`).
 pub fn latest_url() -> String {
@@ -28,6 +52,11 @@ pub struct Release {
 /// The release in GitHub's "latest release" answer; `None` for a draft or pre-release, or one
 /// without both an installer and a checksums file (never installed unchecked).
 pub fn parse_latest(json: &str) -> Option<Release> {
+    parse_latest_for(json, Platform::CURRENT)
+}
+
+/// `parse_latest` for `platform`'s installer.
+pub fn parse_latest_for(json: &str, platform: Platform) -> Option<Release> {
     let v: serde_json::Value = serde_json::from_str(json).ok()?;
     if v["draft"].as_bool() == Some(true) || v["prerelease"].as_bool() == Some(true) {
         return None;
@@ -35,7 +64,7 @@ pub fn parse_latest(json: &str) -> Option<Release> {
     let version = v["tag_name"].as_str()?.trim_start_matches('v').to_string();
     let assets = v["assets"].as_array()?;
     let asset = |name: &str| assets.iter().find(|a| a["name"].as_str() == Some(name)).and_then(|a| a["browser_download_url"].as_str()).map(String::from);
-    let installer_name = format!("Snag-Setup-{version}.exe");
+    let installer_name = platform.installer_name(&version);
     Some(Release {
         installer: asset(&installer_name)?,
         sums: asset(&format!("SHA256SUMS-{version}.txt"))?,
@@ -55,6 +84,31 @@ pub fn checksum_for(sums: &str, file: &str) -> Option<String> {
     })
 }
 
+/// Puts the downloaded, checked AppImage `new` in place of the running one (`target`, which is
+/// `$APPIMAGE`): copied next to it first (same file system), made executable, then renamed over
+/// it in one step, so `target` is always either the old or the new Snag. The running copy keeps
+/// working from the old file until it exits.
+#[cfg(unix)]
+pub fn replace_appimage(new: &std::path::Path, target: &std::path::Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = target.parent().ok_or_else(|| std::io::Error::other("the AppImage has no folder"))?;
+    let name = target.file_name().ok_or_else(|| std::io::Error::other("the AppImage has no name"))?;
+    let mut tmp_name = std::ffi::OsString::from(".");
+    tmp_name.push(name);
+    tmp_name.push(".update");
+    let tmp = dir.join(tmp_name);
+    let placed = (|| {
+        std::fs::copy(new, &tmp)?;
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))?;
+        std::fs::File::open(&tmp)?.sync_all()?;
+        std::fs::rename(&tmp, target)
+    })();
+    if placed.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    placed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -71,7 +125,7 @@ mod tests {
 
     #[test]
     fn reads_the_latest_release() {
-        let r = parse_latest(LATEST).expect("a release");
+        let r = parse_latest_for(LATEST, Platform::Windows).expect("a release");
         assert_eq!(r.version, "1.0.2");
         assert_eq!(r.installer, "https://x.test/Snag-Setup-1.0.2.exe", "the versioned file: it's the one the checksums list");
         assert_eq!(r.installer_name, "Snag-Setup-1.0.2.exe");
@@ -81,12 +135,63 @@ mod tests {
 
     #[test]
     fn skips_what_shouldnt_be_installed() {
-        assert_eq!(parse_latest(&LATEST.replace(r#""prerelease": false"#, r#""prerelease": true"#)), None, "pre-release");
-        assert_eq!(parse_latest(&LATEST.replace(r#""draft": false"#, r#""draft": true"#)), None, "draft");
-        assert_eq!(parse_latest(&LATEST.replace("SHA256SUMS-1.0.2.txt", "notes.txt")), None, "no checksums: never installed unchecked");
-        assert_eq!(parse_latest(&LATEST.replace("Snag-Setup-1.0.2.exe", "Other.exe")), None, "no installer");
-        assert_eq!(parse_latest("{\"message\": \"Not Found\"}"), None);
-        assert_eq!(parse_latest("not json"), None);
+        assert_eq!(parse_latest_for(&LATEST.replace(r#""prerelease": false"#, r#""prerelease": true"#), Platform::Windows), None, "pre-release");
+        assert_eq!(parse_latest_for(&LATEST.replace(r#""draft": false"#, r#""draft": true"#), Platform::Windows), None, "draft");
+        assert_eq!(parse_latest_for(&LATEST.replace("SHA256SUMS-1.0.2.txt", "notes.txt"), Platform::Windows), None, "no checksums: never installed unchecked");
+        assert_eq!(parse_latest_for(&LATEST.replace("Snag-Setup-1.0.2.exe", "Other.exe"), Platform::Windows), None, "no installer");
+        assert_eq!(parse_latest_for("{\"message\": \"Not Found\"}", Platform::Windows), None);
+        assert_eq!(parse_latest_for("not json", Platform::Windows), None);
+    }
+
+    const LATEST_BOTH: &str = r#"{
+        "tag_name": "v1.1.0", "draft": false, "prerelease": false,
+        "html_url": "https://github.com/kuldeepsaini23/snag/releases/tag/v1.1.0",
+        "assets": [
+            {"name": "Snag-Setup-1.1.0.exe", "browser_download_url": "https://x.test/Snag-Setup-1.1.0.exe"},
+            {"name": "Snag-x86_64.AppImage", "browser_download_url": "https://x.test/Snag-x86_64.AppImage"},
+            {"name": "snag_1.1.0_amd64.deb", "browser_download_url": "https://x.test/snag_1.1.0_amd64.deb"},
+            {"name": "SHA256SUMS-1.1.0.txt", "browser_download_url": "https://x.test/SHA256SUMS-1.1.0.txt"}
+        ]
+    }"#;
+
+    #[test]
+    fn each_platform_picks_its_own_installer() {
+        let win = parse_latest_for(LATEST_BOTH, Platform::Windows).expect("windows");
+        assert_eq!((win.installer.as_str(), win.installer_name.as_str()), ("https://x.test/Snag-Setup-1.1.0.exe", "Snag-Setup-1.1.0.exe"));
+        let linux = parse_latest_for(LATEST_BOTH, Platform::Linux).expect("linux");
+        assert_eq!((linux.installer.as_str(), linux.installer_name.as_str()), ("https://x.test/Snag-x86_64.AppImage", APPIMAGE));
+        assert_eq!(linux.sums, "https://x.test/SHA256SUMS-1.1.0.txt", "the same checksums file");
+        assert_eq!(parse_latest_for(LATEST, Platform::Linux), None, "a Windows-only release offers Linux nothing");
+        assert_eq!(parse_latest_for(&LATEST_BOTH.replace("SHA256SUMS-1.1.0.txt", "x.txt"), Platform::Linux), None, "never unchecked");
+    }
+
+    #[test]
+    fn finds_the_appimages_checksum() {
+        let (a, b, c) = ("a".repeat(64), "b".repeat(64), "c".repeat(64));
+        // As the release job writes it: sha256sum over the Windows and the Linux files.
+        let sums = format!("{a} *installer/Snag-Setup-1.1.0.exe\n{b}  linux/Snag-x86_64.AppImage\n{c}  linux/snag_1.1.0_amd64.deb\n");
+        assert_eq!(checksum_for(&sums, APPIMAGE), Some(b));
+        assert_eq!(checksum_for(&sums, "snag_1.1.0_amd64.deb"), Some(c));
+        assert_eq!(checksum_for(&sums, "Snag-Setup-1.1.0.exe"), Some(a));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_appimage_is_replaced_in_one_step() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("apps").join("Snag-x86_64.AppImage");
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(&target, b"old").unwrap();
+        let new = dir.path().join("download");
+        std::fs::write(&new, b"new").unwrap();
+        replace_appimage(&new, &target).unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"new");
+        assert_eq!(std::fs::metadata(&target).unwrap().permissions().mode() & 0o777, 0o755, "runnable");
+        let left: Vec<_> = std::fs::read_dir(target.parent().unwrap()).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(left, ["Snag-x86_64.AppImage"], "no temporary file left behind");
+        assert!(replace_appimage(&dir.path().join("missing"), &target).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"new", "a failed update leaves the old one");
     }
 
     #[test]

@@ -19,6 +19,11 @@ sevenz-rust = "0.6"
 monolith = { version = "2.11", default-features = false }
 reqwest.workspace = true
 
+# Linux: ffmpeg comes as a .tar.xz (xz2 is already built for zip).
+[target.'cfg(not(windows))'.dependencies]
+tar = "0.4"
+xz2 = "0.1"
+
 [dev-dependencies]
 librqbit = { version = "9.0.1", default-features = false, features = ["default-tls"] }
 tokio = { workspace = true, features = ["test-util"] }

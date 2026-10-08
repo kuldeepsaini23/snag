@@ -7,7 +7,10 @@ use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 /// gallery-dl's official standalone builds (its main repo no longer attaches the exe).
+#[cfg(windows)]
 pub const GALLERY_DL_URL: &str = "https://github.com/gdl-org/builds/releases/latest/download/gallery-dl_windows.exe";
+#[cfg(not(windows))]
+pub const GALLERY_DL_URL: &str = "https://github.com/gdl-org/builds/releases/latest/download/gallery-dl_linux";
 
 /// Sites that are mostly images: their links go to gallery-dl rather than yt-dlp or the file engine.
 const HOSTS: [&str; 13] = [

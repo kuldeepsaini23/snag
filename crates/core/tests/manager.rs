@@ -1100,23 +1100,23 @@ async fn a_web_page_is_told_apart_from_a_file() {
     assert!(!m.is_web_page("http://127.0.0.1:1/unreachable".into()).await, "unknown: let the download say what's wrong");
 }
 
-/// The real ffmpeg fetch (35 MB from gyan.dev): checksum, unpack, found afterwards.
+/// The real ffmpeg fetch (35 MB from gyan.dev; Linux: 150 MB from BtbN's GitHub builds): checksum, unpack, found afterwards.
 /// Run with: cargo test -p rdm-core --test manager real_ffmpeg_fetch -- --ignored --nocapture
 #[tokio::test]
 #[ignore]
 async fn real_ffmpeg_fetch() {
     // SAFETY: only this ignored test runs (by name); nothing else reads PATH meanwhile.
-    unsafe { std::env::set_var("PATH", r"C:\Windows\System32") };
+    unsafe { std::env::set_var("PATH", if cfg!(windows) { r"C:\Windows\System32" } else { "/nonexistent" }) };
     let dir = tempfile::tempdir().unwrap();
     let m = manager(dir.path(), |_| {}).await;
     let started = std::time::Instant::now();
     let path = m.ensure_ffmpeg().await.expect("fetched");
     println!("ffmpeg at {} after {:?}", path.display(), started.elapsed());
-    assert_eq!(path, dir.path().join("bin").join("ffmpeg.exe"));
+    assert_eq!(path, dir.path().join("bin").join(rdm_core::manager::tool_file("ffmpeg")));
     let version = std::process::Command::new(&path).arg("-version").output().unwrap();
     assert!(String::from_utf8_lossy(&version.stdout).starts_with("ffmpeg version"), "it runs");
-    assert!(dir.path().join("bin").join("ffprobe.exe").exists());
-    assert!(!dir.path().join("bin").join("ffmpeg-download.7z").exists(), "the archive is cleaned up");
+    assert!(dir.path().join("bin").join(rdm_core::manager::tool_file("ffprobe")).exists());
+    assert!(!dir.path().join("bin").join(rdm_core::ffmpeg::ARCHIVE).exists(), "the archive is cleaned up");
 }
 
 #[tokio::test]
@@ -1149,16 +1149,18 @@ async fn an_update_is_downloaded_only_when_it_matches_its_checksum() {
     let good = format!("{:x}", sha2::Sha256::digest(&setup));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
+    // This platform's installer: Snag-Setup-9.9.9.exe on Windows, Snag-x86_64.AppImage on Linux.
+    let name = rdm_core::selfupdate::Platform::CURRENT.installer_name("9.9.9");
     let latest = format!(
         r#"{{"tag_name":"v9.9.9","draft":false,"prerelease":false,"html_url":"{base}/page","assets":[
-            {{"name":"Snag-Setup-9.9.9.exe","browser_download_url":"{base}/Snag-Setup-9.9.9.exe"}},
+            {{"name":"{name}","browser_download_url":"{base}/installer"}},
             {{"name":"SHA256SUMS-9.9.9.txt","browser_download_url":"{base}/sums"}}]}}"#
     );
-    let sums = std::sync::Arc::new(std::sync::Mutex::new(format!("{good} *installer/Snag-Setup-9.9.9.exe\n")));
+    let sums = std::sync::Arc::new(std::sync::Mutex::new(format!("{good} *installer/{name}\n")));
     let served = sums.clone();
     let app = Router::new()
         .route("/latest", get(move || async move { latest }))
-        .route("/Snag-Setup-9.9.9.exe", get(move || async move { setup }))
+        .route("/installer", get(move || async move { setup }))
         .route("/sums", get(move || async move { served.lock().unwrap().clone() }));
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     // SAFETY: set before anything reads it; only this test asks for updates.
@@ -1170,10 +1172,10 @@ async fn an_update_is_downloaded_only_when_it_matches_its_checksum() {
     assert_eq!(release.version, "9.9.9");
     let file = m.fetch_update(&release).await.expect("downloaded and checked");
     assert_eq!(std::fs::read(&file).unwrap(), b"MZ pretend installer");
-    assert!(file.ends_with("Snag-Setup-9.9.9.exe"));
+    assert!(file.ends_with(&name));
 
     // Tampered with on the way (or a wrong upload): refused, and nothing is left to run.
-    *sums.lock().unwrap() = format!("{} *installer/Snag-Setup-9.9.9.exe\n", "0".repeat(64));
+    *sums.lock().unwrap() = format!("{} *installer/{name}\n", "0".repeat(64));
     let err = m.fetch_update(&release).await.expect_err("checksum mismatch");
     assert!(err.contains("checksum"), "{err}");
     assert!(!file.exists(), "the bad download is deleted");
