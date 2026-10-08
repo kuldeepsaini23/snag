@@ -626,7 +626,11 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::UpdateFound(release) => {
             if let Some(r) = release.filter(|r| crate::updater::offers(&r.version, crate::changelog::VERSION, model.update_later.as_deref())) {
+                let note = crate::updater::announce(model.update.as_ref().map(|u| u.release.version.as_str()), &r.version).filter(|_| model.settings.notify);
                 model.update = Some(crate::state::UpdateOffer { release: r, busy: false });
+                if let Some(note) = note {
+                    return Task::perform(async move { tokio::task::spawn_blocking(move || crate::notify::show(&note)).await }, |_| Message::Done);
+                }
             }
         }
         Message::UpdateNow => {
