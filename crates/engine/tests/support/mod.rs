@@ -144,7 +144,8 @@ async fn etag_file(Path((tag, size)): Path<(String, usize)>, headers: HeaderMap)
 }
 
 async fn slow(Path(size): Path<usize>, headers: HeaderMap) -> Response {
-    ranged(&headers, data(size), "\"v1\"", Some(Duration::from_millis(10)))
+    // 64 chunks per connection × 40 ms ≈ 2.6 s, well past the engine's 1 s sidecar save on any OS timer.
+    ranged(&headers, data(size), "\"v1\"", Some(Duration::from_millis(40)))
 }
 
 async fn norange(Path(size): Path<usize>) -> Response {
