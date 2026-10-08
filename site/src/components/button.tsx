@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 
 const variants = {
-  primary: "bg-accent text-on-accent hover:brightness-110",
+  primary: "bg-accent text-on-accent hover:bg-accent-hover active:bg-accent-press",
   secondary: "text-text shadow-[inset_0_0_0_1px_var(--line-strong)] hover:bg-surface-2",
 };
 

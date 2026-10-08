@@ -4,7 +4,7 @@ import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 import { DownloadBar } from "@/components/download-bar";
 import { Reveal } from "@/components/reveal";
 import { SiteFooter } from "@/components/site-footer";
-import { DOWNLOAD_URL, PITCH, SITE_URL } from "@/lib/site";
+import { DOWNLOAD_URL, PITCH, RELEASES_URL, REPO_URL, SITE_URL, VERSION } from "@/lib/site";
 import "./globals.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"], display: "swap" });
@@ -80,7 +80,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         >
           Skip to content
         </a>
-        <DownloadBar downloadUrl={DOWNLOAD_URL} />
+        <DownloadBar downloadUrl={DOWNLOAD_URL} releasesUrl={RELEASES_URL} repoUrl={REPO_URL} version={VERSION} />
         <main id="main">{children}</main>
         <SiteFooter />
         <Reveal />

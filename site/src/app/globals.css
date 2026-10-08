@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* An engraved catalogue: ink-black page, warm paper type, one orange accent (Snag's logo colours).
+/* An engraved catalogue: ink-black page, warm paper type, one copper accent (Snag's logo colours).
    `.paper` turns a block to paper with ink type; everything inside follows the same tokens. */
 :root {
   --bg: #0b0b0c;
@@ -11,14 +11,17 @@
   --text: #efe9dc;
   --muted: #b5afa3;
   --faint: #8c877d;
-  --accent: #ff9f0a;
+  /* The one source of the accent; the accent picker on the page sets it too. Ink on copper is 5.6:1. */
+  --accent: #d9682b;
+  --accent-hover: color-mix(in oklab, var(--accent) 86%, #fff);
+  --accent-press: color-mix(in oklab, var(--accent) 86%, #000);
   --on-accent: #0b0b0c;
   /* The accent as text: the accent itself on ink, a darker cut of it on paper. */
   --accent-text: var(--accent);
   /* The faint line-work of the engravings. */
   --etch: color-mix(in srgb, var(--text) 9%, transparent);
 
-  --bar-h: 3.5rem;
+  --bar-h: 3.75rem;
 
   color-scheme: dark;
 }
@@ -51,6 +54,8 @@
   --color-muted: var(--muted);
   --color-faint: var(--faint);
   --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-press: var(--accent-press);
   --color-accent-text: var(--accent-text);
   --color-on-accent: var(--on-accent);
 
@@ -208,6 +213,76 @@ body {
 
 /* ---- The top bar: the page's own download. Each part fills as you read its section; at the
    bottom the gaps close, a shine runs across, and Done pops in. ---- */
+.dl-bar {
+  background: var(--bg);
+  border-bottom: 1px solid rgb(239 233 220 / 0.1);
+}
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .dl-bar {
+    background: color-mix(in srgb, var(--bg) 80%, transparent);
+    -webkit-backdrop-filter: blur(18px) saturate(1.4);
+    backdrop-filter: blur(18px) saturate(1.4);
+  }
+}
+/* Two lines in one row of the page: name and part on the left, the download and its numbers in
+   the middle, links between them on wide screens. On phones the part label sits under the bar. */
+.dl-bar__grid {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "logo seg dl"
+    "logo lab dl";
+  grid-template-rows: auto auto;
+  align-content: center;
+  column-gap: 0.75rem;
+  row-gap: 0.25rem;
+}
+@media (min-width: 640px) {
+  .dl-bar__grid {
+    grid-template-columns: auto minmax(7.5rem, auto) minmax(6rem, 1fr) auto auto;
+    grid-template-areas:
+      "logo brand seg gh dl"
+      "logo lab pct gh dl";
+    column-gap: 1rem;
+  }
+}
+@media (min-width: 1024px) {
+  .dl-bar__grid {
+    grid-template-columns: auto minmax(9.5rem, auto) 1fr minmax(8rem, 13rem) auto auto;
+    grid-template-areas:
+      "logo brand nav seg gh dl"
+      "logo lab nav pct gh dl";
+    column-gap: 1.25rem;
+  }
+}
+.dl-bar__seg {
+  background: rgb(239 233 220 / 0.12);
+  transition: box-shadow 0.4s ease-out;
+}
+.dl-bar__seg[data-active] {
+  box-shadow: 0 0 10px 0 color-mix(in srgb, var(--accent) 65%, transparent);
+}
+/* The section links: an underline draws in from the left on hover and for the part you're in. */
+.dl-bar__link {
+  position: relative;
+  padding-block: 0.25rem;
+}
+.dl-bar__link::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: right;
+  transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.dl-bar__link:hover::after,
+.dl-bar__link[aria-current]::after {
+  transform: scaleX(1);
+  transform-origin: left;
+}
 .dl-bar__fill,
 .dl-bar__line {
   transition: transform 0.22s cubic-bezier(0.2, 0.7, 0.2, 1);
@@ -264,6 +339,31 @@ body {
   from {
     opacity: 0;
     transform: translateY(-4px) scale(0.98);
+  }
+}
+
+/* ---- The download button: a lit top edge and a shaded bottom one, like a raised plate. ---- */
+.dl-button {
+  position: relative;
+}
+.dl-button::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.28),
+    inset 0 -1px 0 rgb(0 0 0 / 0.2);
+  pointer-events: none;
+}
+.dl-menu {
+  transform-origin: top;
+  animation: menu-in 0.18s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    scale: 0.97;
   }
 }
 

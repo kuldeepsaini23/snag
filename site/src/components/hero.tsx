@@ -1,8 +1,9 @@
-import { GithubLogo, WindowsLogo } from "@phosphor-icons/react/dist/ssr";
+import { GithubLogo } from "@phosphor-icons/react/dist/ssr";
 
 import { ButtonLink } from "@/components/button";
 import { Plate, Section } from "@/components/catalogue";
-import { DOWNLOAD_URL, REPO_URL, VERSION } from "@/lib/site";
+import { DownloadMenu } from "@/components/download-menu";
+import { DOWNLOAD_URL, RELEASES_URL, REPO_URL, VERSION } from "@/lib/site";
 
 // The frontispiece: the engraved hook hangs from the download bar beside the headline, and the
 // app itself is the first plate.
@@ -44,10 +45,7 @@ export function Hero() {
             IDM, downloads files 8× in parallel
           </p>
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-            <ButtonLink href={DOWNLOAD_URL}>
-              <WindowsLogo weight="fill" className="size-5" aria-hidden />
-              Download for Windows
-            </ButtonLink>
+            <DownloadMenu downloadUrl={DOWNLOAD_URL} releasesUrl={RELEASES_URL} version={VERSION} />
             <ButtonLink href={REPO_URL} variant="secondary">
               <GithubLogo weight="fill" className="size-5" aria-hidden />
               View on GitHub

@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 const swatches = [
-  { name: "Orange", value: "#ff9f0a" },
+  { name: "Copper", value: "#d9682b" },
   { name: "Blue", value: "#3d9bff" },
   { name: "Green", value: "#34c759" },
   { name: "Pink", value: "#ff5c8a" },

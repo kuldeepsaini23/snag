@@ -1,10 +1,11 @@
-import { CheckCircle, GithubLogo, WindowsLogo } from "@phosphor-icons/react/dist/ssr";
+import { CheckCircle, GithubLogo } from "@phosphor-icons/react/dist/ssr";
 
 import { ButtonLink } from "@/components/button";
 import { Band, Section } from "@/components/catalogue";
+import { DownloadMenu } from "@/components/download-menu";
 import { LogoMark } from "@/components/logo";
 import { pad, parts } from "@/lib/parts";
-import { DOWNLOAD_URL, INSTALLER_NAME, REPO_URL } from "@/lib/site";
+import { DOWNLOAD_URL, INSTALLER_NAME, RELEASES_URL, REPO_URL, VERSION } from "@/lib/site";
 
 function Corner({ className }: { className: string }) {
   return <span aria-hidden="true" className={`rosette absolute size-16 [background:var(--line-strong)] md:size-24 ${className}`} />;
@@ -50,10 +51,7 @@ export function ReadyCard() {
             </div>
 
             <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
-              <ButtonLink href={DOWNLOAD_URL}>
-                <WindowsLogo weight="fill" className="size-5" aria-hidden />
-                Download for Windows
-              </ButtonLink>
+              <DownloadMenu downloadUrl={DOWNLOAD_URL} releasesUrl={RELEASES_URL} version={VERSION} menuAlign="center" />
               <ButtonLink href={REPO_URL} variant="secondary" className="bg-bg">
                 <GithubLogo weight="fill" className="size-5" aria-hidden />
                 View on GitHub

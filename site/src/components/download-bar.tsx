@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CaretDown, CheckCircle, WindowsLogo } from "@phosphor-icons/react";
+import { CaretDown, CheckCircle, GithubLogo } from "@phosphor-icons/react";
 
+import { DownloadMenu } from "@/components/download-menu";
 import { LogoMark } from "@/components/logo";
-import { pad, parts } from "@/lib/parts";
+import { pad, parts, type PartId } from "@/lib/parts";
 
 // Off the landing page there are no parts to follow, so the eight segments keep pace with the
 // scroll on their own: all start together, some race ahead, some lag, all land at 100%.
@@ -14,9 +15,27 @@ const pace = [0.7, 1.35, 0.9, 1.7, 1.1, 0.6, 1.5, 1.0];
 
 const clamp = (n: number) => Math.min(1, Math.max(0, n));
 
+// The desktop links, each lit while you read any of its parts.
+const links: { label: string; href: PartId; parts: PartId[] }[] = [
+  { label: "Features", href: "features", parts: ["features", "video", "catalogue"] },
+  { label: "Privacy", href: "privacy", parts: ["privacy"] },
+  { label: "How it works", href: "how-it-works", parts: ["how-it-works"] },
+  { label: "FAQ", href: "faq", parts: ["faq"] },
+];
+
 // The page is the download, and its index. One segment per part of the page: each fills as you
 // read through its part, the label names the part you are in, and opening the label lists them all.
-export function DownloadBar({ downloadUrl }: { downloadUrl: string }) {
+export function DownloadBar({
+  downloadUrl,
+  releasesUrl,
+  repoUrl,
+  version,
+}: {
+  downloadUrl: string;
+  releasesUrl: string;
+  repoUrl: string;
+  version: string | null;
+}) {
   const pathname = usePathname();
   const home = pathname === "/";
   const fills = useRef<(HTMLSpanElement | null)[]>([]);
@@ -107,114 +126,150 @@ export function DownloadBar({ downloadUrl }: { downloadUrl: string }) {
   const closeContents = () => {
     if (contents.current) contents.current.open = false;
   };
+  const hrefFor = (id: string) => (home ? `#${id}` : `/#${id}`);
 
   return (
-    <header
-      data-done={done || undefined}
-      className="dl-bar sticky top-0 z-40 border-b border-line bg-bg/92 backdrop-blur-md"
-    >
-      <div className="mx-auto flex h-(--bar-h) max-w-6xl items-center gap-3 px-4 sm:gap-5 sm:px-6">
-        <Link href="/" aria-label="Snag home" className="flex shrink-0 items-center gap-2.5">
-          <LogoMark size={28} />
-          <span className="hidden text-[0.95rem] font-semibold tracking-tight md:inline">Snag</span>
+    <header data-done={done || undefined} className="dl-bar sticky top-0 z-40">
+      <div className="dl-bar__grid mx-auto h-(--bar-h) max-w-6xl px-4 sm:px-6">
+        <Link href="/" aria-label="Snag home" className="[grid-area:logo] self-center">
+          <LogoMark size={32} className="size-8 shadow-[0_0_0_1px_rgb(239_233_220/0.14)]" />
+        </Link>
+        <Link
+          href="/"
+          tabIndex={-1}
+          aria-hidden="true"
+          className="hidden self-end font-display text-[1.35rem] leading-none tracking-tight italic [grid-area:brand] sm:block"
+        >
+          Snag
         </Link>
 
-        <div className="min-w-0 flex-1 md:max-w-lg">
-          <div className="dl-bar__parts relative flex h-1.5 overflow-hidden" aria-hidden="true">
-            {parts.map((part, i) => (
-              <span key={part.id} className="hatch-1 h-full flex-1 overflow-hidden bg-surface-2">
-                <span
-                  ref={(el) => {
-                    fills.current[i] = el;
-                  }}
-                  className="dl-bar__fill block h-full origin-left bg-accent"
-                  style={{ transform: "scaleX(0)" }}
-                />
-              </span>
-            ))}
-          </div>
-
-          <div className="mt-1 flex items-center justify-between gap-3 font-mono text-[11px]">
-            <details ref={contents} className="min-w-0 sm:relative">
-              <summary className="flex h-6 cursor-pointer items-center gap-1.5 whitespace-nowrap text-muted hover:text-text">
-                {home ? (
-                  <>
-                    <span className="hidden sm:inline">Part</span>
-                    <span>
-                      <span className="text-text">{pad(current + 1)}</span>
-                      <span className="sm:hidden">/</span>
-                      <span className="hidden sm:inline"> of </span>
-                      {pad(parts.length)} ·
-                    </span>
-                    <span key={current} className="dl-bar__name truncate text-text">
-                      {parts[current].name}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-text">Contents</span>
-                )}
-                <CaretDown weight="bold" className="size-3 shrink-0" aria-hidden />
-              </summary>
-              <nav
-                aria-label="Contents"
-                className="dl-bar__contents fixed inset-x-4 top-[calc(var(--bar-h)+0.5rem)] border border-line-strong bg-bg p-1 shadow-[0_24px_60px_-20px_rgb(0_0_0/0.8)] sm:absolute sm:inset-x-auto sm:top-full sm:left-0 sm:mt-2 sm:w-80"
-              >
-                <div className="border border-line py-2">
-                  <p className="label px-4 pt-1 pb-2">Contents · 8 parts</p>
-                  <ol>
-                    {parts.map((part, i) => (
-                      <li key={part.id}>
-                        <Link
-                          href={home ? `#${part.id}` : `/#${part.id}`}
-                          onClick={closeContents}
-                          aria-current={home && i === current ? "location" : undefined}
-                          className="flex items-baseline gap-3 px-4 py-2 text-muted hover:bg-surface-2 hover:text-text aria-[current]:text-text"
-                        >
-                          <span className="w-5 text-faint">{pad(i + 1)}</span>
-                          <span className="font-display text-base italic">{part.name}</span>
-                          <span aria-hidden="true" className="leader" />
-                          <span
-                            ref={(el) => {
-                              counts.current[i] = el;
-                            }}
-                            className={home ? "text-faint tabular-nums" : "hidden"}
-                          >
-                            0%
-                          </span>
-                        </Link>
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              </nav>
-            </details>
-
-            {done ? (
-              <Link
-                href="/#get-started"
-                className="dl-bar__done flex h-6 shrink-0 items-center gap-1.5 text-accent hover:brightness-110"
-              >
-                <CheckCircle weight="fill" className="size-3.5" aria-hidden />
-                Done<span className="hidden sm:inline"> · Open</span>
-              </Link>
-            ) : (
-              <span className="flex shrink-0 gap-3 text-faint tabular-nums" aria-hidden="true">
-                <span ref={percent} className="text-text">
-                  0%
+        {/* The part you are in, and the contents of the page behind it. */}
+        <details ref={contents} className="mr-[5ch] min-w-0 self-start [grid-area:lab] sm:relative sm:mr-0">
+          <summary className="flex h-6 cursor-pointer items-center gap-1.5 font-mono text-[10.5px] whitespace-nowrap text-faint transition-colors hover:text-text sm:h-5">
+            {home ? (
+              <>
+                <span className="hidden sm:inline">Part</span>
+                <span>
+                  <span className="text-muted">{pad(current + 1)}</span>
+                  <span className="sm:hidden">/</span>
+                  <span className="hidden sm:inline"> of </span>
+                  {pad(parts.length)} ·
                 </span>
-                <span className="hidden w-[4.5rem] sm:inline">{speed.toFixed(1)} MB/s</span>
-              </span>
+                <span key={current} className="dl-bar__name truncate text-muted">
+                  {parts[current].name}
+                </span>
+              </>
+            ) : (
+              <span className="text-muted">Contents</span>
             )}
-          </div>
+            <CaretDown weight="bold" className="size-2.5 shrink-0" aria-hidden />
+          </summary>
+          <nav
+            aria-label="Contents"
+            className="dl-bar__contents fixed inset-x-4 top-[calc(var(--bar-h)+0.5rem)] border border-line-strong bg-bg p-1 shadow-[0_24px_60px_-20px_rgb(0_0_0/0.8)] sm:absolute sm:inset-x-auto sm:top-full sm:left-0 sm:mt-2 sm:w-80"
+          >
+            <div className="border border-line py-2">
+              <p className="label px-4 pt-1 pb-2">Contents · 8 parts</p>
+              <ol>
+                {parts.map((part, i) => (
+                  <li key={part.id}>
+                    <Link
+                      href={hrefFor(part.id)}
+                      onClick={closeContents}
+                      aria-current={home && i === current ? "location" : undefined}
+                      className="flex items-baseline gap-3 px-4 py-2 font-mono text-[11px] text-muted hover:bg-surface-2 hover:text-text aria-[current]:text-text"
+                    >
+                      <span className="w-5 text-faint">{pad(i + 1)}</span>
+                      <span className="font-display text-base italic">{part.name}</span>
+                      <span aria-hidden="true" className="leader" />
+                      <span
+                        ref={(el) => {
+                          counts.current[i] = el;
+                        }}
+                        className={home ? "text-faint tabular-nums" : "hidden"}
+                      >
+                        0%
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </nav>
+        </details>
+
+        <nav aria-label="Sections" className="hidden items-center gap-6 self-center justify-self-center [grid-area:nav] lg:flex">
+          {links.map((link) => {
+            const active = home && link.parts.includes(parts[current].id);
+            return (
+              <Link
+                key={link.href}
+                href={hrefFor(link.href)}
+                aria-current={active ? "true" : undefined}
+                className="dl-bar__link text-[13px] text-muted transition-colors hover:text-text aria-[current]:text-text"
+              >
+                {link.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* The download itself: one rounded segment per part, the current one glowing. */}
+        <div className="dl-bar__parts relative flex h-[5px] self-end [grid-area:seg]" aria-hidden="true">
+          {parts.map((part, i) => (
+            <span
+              key={part.id}
+              data-active={home && i === current && !done ? "" : undefined}
+              className="dl-bar__seg h-full flex-1 overflow-hidden rounded-full"
+            >
+              <span
+                ref={(el) => {
+                  fills.current[i] = el;
+                }}
+                className="dl-bar__fill block h-full origin-left rounded-full bg-accent"
+                style={{ transform: "scaleX(0)" }}
+              />
+            </span>
+          ))}
+        </div>
+
+        <div className="flex h-6 items-center justify-self-end font-mono text-[10.5px] text-faint tabular-nums [grid-area:lab] sm:h-5 sm:justify-self-stretch sm:[grid-area:pct]">
+          {done ? (
+            <Link
+              href="/#get-started"
+              className="dl-bar__done flex items-center gap-1.5 text-accent-text hover:text-accent-hover sm:ml-auto"
+            >
+              <CheckCircle weight="fill" className="size-3.5" aria-hidden />
+              Done<span className="hidden sm:inline"> · Open</span>
+            </Link>
+          ) : (
+            <span className="flex w-full justify-between gap-3" aria-hidden="true">
+              <span ref={percent} className="w-[4ch] text-muted">
+                0%
+              </span>
+              <span className="hidden sm:inline">{speed.toFixed(1)} MB/s</span>
+            </span>
+          )}
         </div>
 
         <a
-          href={downloadUrl}
-          className="ml-auto flex h-9 shrink-0 items-center gap-2 rounded-[3px] bg-accent px-3.5 text-sm font-semibold text-on-accent transition-[filter] hover:brightness-110 sm:px-4"
+          href={repoUrl}
+          aria-label="Snag on GitHub"
+          className="hidden size-9 items-center justify-center self-center rounded-full text-muted shadow-[inset_0_0_0_1px_rgb(239_233_220/0.16)] transition-[color,box-shadow] [grid-area:gh] hover:text-text hover:shadow-[inset_0_0_0_1px_var(--accent)] sm:flex"
         >
-          <WindowsLogo weight="fill" className="size-4" aria-hidden />
-          Download
+          <GithubLogo weight="fill" className="size-[18px]" aria-hidden />
         </a>
+
+        <DownloadMenu
+          downloadUrl={downloadUrl}
+          releasesUrl={releasesUrl}
+          version={version}
+          label="Download"
+          size="sm"
+          menuAlign="end"
+          wholeOnPhone
+          className="self-center [grid-area:dl]"
+        />
       </div>
       {/* The whole page's progress along the bar's bottom edge. */}
       <span
