@@ -32,7 +32,8 @@ mod view;
 use std::path::PathBuf;
 
 fn main() -> iced::Result {
-    // %APPDATA%\Snag (an older %APPDATA%\rdm is moved there once); ~/.local/share/snag on Linux.
+    // %APPDATA%\Snag (an older %APPDATA%\rdm is moved there once); ~/.local/share/snag on Linux;
+    // ~/Library/Application Support/Snag on macOS.
     let state_path = rdm_core::dirs::app_dir().join("state.json");
     let saved = rdm_core::store::load(&state_path).settings;
     // CPU or GPU drawing (see `renderer`), decided before any other thread exists.

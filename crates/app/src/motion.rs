@@ -260,9 +260,16 @@ pub fn reduced_for(setting: rdm_core::Animations, system_reduced: bool) -> bool 
     }
 }
 
+/// macOS: Accessibility → Display → Reduce motion; on when it can't be read.
+#[cfg(target_os = "macos")]
+pub fn system_reduced_motion() -> bool {
+    let out = std::process::Command::new("/usr/bin/defaults").args(["read", "com.apple.universalaccess", "reduceMotion"]).stderr(std::process::Stdio::null()).output();
+    out.is_ok_and(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).trim() == "1")
+}
+
 /// Linux: GNOME's "Animations" switch (`enable-animations`), which other desktops' settings
 /// daemons mirror; on when it can't be read.
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 pub fn system_reduced_motion() -> bool {
     crate::appearance::gsetting("enable-animations").is_some_and(|v| v == "false")
 }

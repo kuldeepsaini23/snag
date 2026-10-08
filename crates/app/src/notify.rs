@@ -1,5 +1,5 @@
-//! Notifications for finished and failed downloads: Windows toasts, or desktop notifications
-//! over D-Bus on Linux.
+//! Notifications for finished and failed downloads: Windows toasts, desktop notifications over
+//! D-Bus on Linux, the Notification Center on macOS.
 
 use crate::state::Note;
 use std::path::Path;
@@ -29,10 +29,10 @@ pub fn show(note: &Note) {
 
 /// Linux: the icon notifications show, as a PNG in the data folder (an installed `snag` icon
 /// isn't there for a bare AppImage).
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 static ICON: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 pub fn register(data_dir: &Path) {
     let icon = data_dir.join("icon.png");
     let _ = std::fs::create_dir_all(data_dir);
@@ -41,8 +41,21 @@ pub fn register(data_dir: &Path) {
     }
 }
 
+/// macOS: notifications come from Snag.app (its name and icon) by its bundle identifier. Not set
+/// when that app isn't installed (a bare `cargo run`): they then come from the default app.
+#[cfg(target_os = "macos")]
+pub fn register(_data_dir: &Path) {
+    let _ = notify_rust::set_application(crate::platform::BUNDLE_ID);
+}
+
+/// macOS: one Notification Center notification (blocking: call off the UI thread).
+#[cfg(target_os = "macos")]
+pub fn show(note: &Note) {
+    let _ = notify_rust::Notification::new().summary(&note.title).body(&note.body).show();
+}
+
 /// One desktop notification (blocking: call off the UI thread).
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 pub fn show(note: &Note) {
     let mut n = notify_rust::Notification::new();
     n.appname("Snag").summary(&note.title).body(&note.body);
