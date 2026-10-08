@@ -34,7 +34,9 @@ impl TestServer {
     pub async fn start() -> Self {
         let app = Router::new()
             .route("/file/{size}", get(|Path(size): Path<usize>, h: HeaderMap| async move { serve(&h, size, "test.bin", None) }))
-            .route("/slow/{size}", get(|Path(size): Path<usize>, h: HeaderMap| async move { serve(&h, size, "test.bin", Some(Duration::from_millis(10))) }))
+            // 40 ms per 16 KB chunk: a 4 MB file over 8 connections takes ~1.3 s, several of the
+            // manager's 250 ms progress ticks, so tests can catch it running on any OS timer.
+            .route("/slow/{size}", get(|Path(size): Path<usize>, h: HeaderMap| async move { serve(&h, size, "test.bin", Some(Duration::from_millis(40))) }))
             .route("/named/{name}/{size}", get(|Path((name, size)): Path<(String, usize)>, h: HeaderMap| async move { serve(&h, size, &name, None) }))
             .route("/needs-cookie/{size}", get(|Path(size): Path<usize>, h: HeaderMap| async move { needs_cookie(&h, size) }))
             // A small web page with a stylesheet and an image, for "save page".

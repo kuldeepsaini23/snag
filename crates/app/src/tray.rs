@@ -1,22 +1,29 @@
 //! The notification-area (tray) icon: Snag keeps running there when its window is closed.
-//! Windows: it lives on the UI thread. Linux: on its own GTK thread (an AppIndicator; GNOME
-//! shows it with the AppIndicator extension), which the `Tray` handle sends new icons to.
-//! macOS: a menu bar item, made on the main thread once the app is running (`Message::MakeTray`),
-//! drawn as a template image in the menu bar's own colour.
+//! Windows: it lives on the UI thread. Linux: a StatusNotifierItem over D-Bus (ksni, no GTK),
+//! served from a thread of its own, which the `Tray` handle sends new icons to; KDE, Cinnamon
+//! and Xfce show it, GNOME with the AppIndicator extension. With no tray host it waits quietly
+//! for one. macOS: a menu bar item, made on the main thread once the app is running
+//! (`Message::MakeTray`), drawn as a template image in the menu bar's own colour.
 
 use crate::update::Message;
 use iced::futures::SinkExt;
-use iced::Subscription;
+use iced::{Color, Subscription};
+#[cfg(not(target_os = "linux"))]
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+#[cfg(not(target_os = "linux"))]
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 pub const ICON_32: &[u8] = include_bytes!("../assets/icon-32.rgba");
 pub const ICON_64: &[u8] = include_bytes!("../assets/icon-64.rgba");
 
+#[cfg(not(target_os = "linux"))]
 const OPEN: &str = "open";
+#[cfg(not(target_os = "linux"))]
 const PAUSE_ALL: &str = "pause-all";
+#[cfg(not(target_os = "linux"))]
 const RESUME_ALL: &str = "resume-all";
+#[cfg(not(target_os = "linux"))]
 const QUIT: &str = "quit";
 
 /// Keeps the icon alive (dropping it removes it from the tray).
@@ -25,12 +32,12 @@ pub struct Tray(TrayIcon);
 
 #[cfg(not(target_os = "linux"))]
 impl Tray {
-    /// Redraws the tray icon (32×32 RGBA), e.g. in a new accent. (macOS keeps its template.)
-    pub fn set_icon(&self, rgba: Vec<u8>) {
+    /// Redraws the tray icon in a new accent. (macOS keeps its template.)
+    pub fn set_icon(&self, accent: Color) {
         if cfg!(target_os = "macos") {
             return;
         }
-        if let Ok(icon) = Icon::from_rgba(rgba, 32, 32) {
+        if let Ok(icon) = Icon::from_rgba(crate::ui::icon::tray_icon(accent), 32, 32) {
             let _ = self.0.set_icon(Some(icon));
         }
     }
@@ -43,58 +50,113 @@ pub fn create() -> Option<Tray> {
     build().map(Tray)
 }
 
-/// Linux: the icon's GTK thread takes new pictures from here (dropping it ends the thread).
+/// Linux: the icon's thread takes new pictures from here (dropping it removes the icon).
 #[cfg(target_os = "linux")]
-pub struct Tray(std::sync::mpsc::Sender<Vec<u8>>);
+pub struct Tray(std::sync::mpsc::Sender<Vec<ksni::Icon>>);
 
 #[cfg(target_os = "linux")]
 impl Tray {
-    /// Redraws the tray icon (32×32 RGBA), e.g. in a new accent.
-    pub fn set_icon(&self, rgba: Vec<u8>) {
-        let _ = self.0.send(rgba);
+    /// Redraws the tray icon in a new accent.
+    pub fn set_icon(&self, accent: Color) {
+        let _ = self.0.send(pixmaps(&crate::ui::icon::tray_icon(accent), &crate::ui::icon::taskbar_icon(accent)));
     }
 }
 
-/// Linux: starts GTK on a thread of its own and builds the icon there (tray-icon needs a GTK
-/// main loop on the thread that made it). `None` when there is no display or GTK won't start.
+/// Linux: puts the icon on the session bus from a thread of its own (ksni's blocking calls can't
+/// run inside the UI's runtime). Without a tray host yet (or ever) it waits for one, quietly.
+/// `None` when there is no session bus or the tray watcher turns the icon down.
 #[cfg(target_os = "linux")]
 pub fn create() -> Option<Tray> {
-    let (icons, rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    use ksni::blocking::TrayMethods;
+    let (icons, rx) = std::sync::mpsc::channel::<Vec<ksni::Icon>>();
     let (ready, started) = std::sync::mpsc::channel();
     std::thread::Builder::new()
         .name("tray".into())
         .spawn(move || {
-            if gtk::init().is_err() {
-                let _ = ready.send(false);
-                return;
-            }
-            let Some(tray) = build() else {
-                let _ = ready.send(false);
-                return;
+            let tray = LinuxTray { icons: pixmaps(ICON_32, ICON_64) }; // replaced by the accent's at once
+            let handle = match tray.assume_sni_available(true).spawn() {
+                Ok(handle) => handle,
+                Err(e) => {
+                    eprintln!("tray: {e}");
+                    let _ = ready.send(false);
+                    return;
+                }
             };
             let _ = ready.send(true);
-            gtk::glib::timeout_add_local(std::time::Duration::from_millis(250), move || {
-                loop {
-                    match rx.try_recv() {
-                        Ok(rgba) => {
-                            if let Ok(icon) = Icon::from_rgba(rgba, 32, 32) {
-                                let _ = tray.set_icon(Some(icon));
-                            }
-                        }
-                        Err(std::sync::mpsc::TryRecvError::Empty) => return gtk::glib::ControlFlow::Continue,
-                        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                            gtk::main_quit();
-                            return gtk::glib::ControlFlow::Break;
-                        }
-                    }
-                }
-            });
-            gtk::main();
+            while let Ok(icons) = rx.recv() {
+                handle.update(|tray| tray.icons = icons);
+            }
+            handle.shutdown().wait();
         })
         .ok()?;
-    started.recv().ok()?.then_some(Tray(icons))
+    // A session bus that doesn't answer mustn't hold up the window: the icon comes when it can.
+    match started.recv_timeout(std::time::Duration::from_secs(2)) {
+        Ok(true) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Some(Tray(icons)),
+        Ok(false) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => None,
+    }
 }
 
+/// Linux: the icon at 32 and 64 px (RGBA in), as StatusNotifierItem pixmaps want them: ARGB32 in
+/// network byte order.
+#[cfg(target_os = "linux")]
+fn pixmaps(small: &[u8], big: &[u8]) -> Vec<ksni::Icon> {
+    [(small, 32), (big, 64)]
+        .into_iter()
+        .map(|(rgba, size)| ksni::Icon {
+            width: size,
+            height: size,
+            data: rgba.as_chunks::<4>().0.iter().flat_map(|&[r, g, b, a]| [a, r, g, b]).collect(),
+        })
+        .collect()
+}
+
+#[cfg(target_os = "linux")]
+struct LinuxTray {
+    icons: Vec<ksni::Icon>,
+}
+
+#[cfg(target_os = "linux")]
+impl ksni::Tray for LinuxTray {
+    fn id(&self) -> String {
+        "snag".into()
+    }
+
+    fn title(&self) -> String {
+        "Snag".into()
+    }
+
+    fn category(&self) -> ksni::Category {
+        ksni::Category::ApplicationStatus
+    }
+
+    fn icon_pixmap(&self) -> Vec<ksni::Icon> {
+        self.icons.clone()
+    }
+
+    fn tool_tip(&self) -> ksni::ToolTip {
+        ksni::ToolTip { title: "Snag".into(), ..Default::default() }
+    }
+
+    /// A left click opens the window.
+    fn activate(&mut self, _x: i32, _y: i32) {
+        send(Message::TrayOpen);
+    }
+
+    fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
+        let item = |label: &str, message: fn() -> Message| {
+            ksni::menu::StandardItem { label: label.into(), activate: Box::new(move |_: &mut Self| send(message())), ..Default::default() }.into()
+        };
+        vec![
+            item("Open Snag", || Message::TrayOpen),
+            item("Pause all", || Message::PauseAll),
+            item("Resume all", || Message::ResumeAll),
+            ksni::MenuItem::Separator,
+            item("Quit Snag", || Message::TrayQuit),
+        ]
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
 fn build() -> Option<TrayIcon> {
     let menu = Menu::new();
     menu.append_items(&[
@@ -118,12 +180,17 @@ fn build() -> Option<TrayIcon> {
 /// Where tray clicks go (the running `events` stream).
 static SHOW: std::sync::Mutex<Option<tokio::sync::mpsc::UnboundedSender<Message>>> = std::sync::Mutex::new(None);
 
+/// Hands a tray click to the app.
+fn send(message: Message) {
+    if let Some(tx) = SHOW.lock().ok().and_then(|o| o.clone()) {
+        let _ = tx.send(message);
+    }
+}
+
 /// Shows the window, as the tray's Open Snag does (macOS: a click on the Dock icon).
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn open_window() {
-    if let Some(tx) = SHOW.lock().ok().and_then(|o| o.clone()) {
-        let _ = tx.send(Message::TrayOpen);
-    }
+    send(Message::TrayOpen);
 }
 
 pub fn subscription() -> Subscription<Message> {
@@ -133,35 +200,55 @@ pub fn subscription() -> Subscription<Message> {
 fn events() -> impl iced::futures::Stream<Item = Message> {
     iced::stream::channel(32, async |mut out: iced::futures::channel::mpsc::Sender<Message>| {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        let clicks = tx.clone();
         if let Ok(mut open) = SHOW.lock() {
             *open = Some(tx.clone());
         }
-        MenuEvent::set_event_handler(Some(move |e: MenuEvent| {
-            let message = match e.id.0.as_str() {
-                OPEN => Some(Message::TrayOpen),
-                PAUSE_ALL => Some(Message::PauseAll),
-                RESUME_ALL => Some(Message::ResumeAll),
-                QUIT => Some(Message::TrayQuit),
-                _ => None,
-            };
-            if let Some(m) = message {
-                let _ = tx.send(m);
-            }
-        }));
-        TrayIconEvent::set_event_handler(Some(move |e: TrayIconEvent| {
-            let open = matches!(
-                e,
-                TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } | TrayIconEvent::DoubleClick { button: MouseButton::Left, .. }
-            );
-            if open {
-                let _ = clicks.send(Message::TrayOpen);
-            }
-        }));
+        // Linux: the icon's thread sends its clicks through `SHOW`.
+        #[cfg(not(target_os = "linux"))]
+        listen(tx);
         while let Some(m) = rx.recv().await {
             if out.send(m).await.is_err() {
                 break;
             }
         }
     })
+}
+
+/// Windows and macOS: tray-icon's menu and click events, into the `events` stream.
+#[cfg(not(target_os = "linux"))]
+fn listen(tx: tokio::sync::mpsc::UnboundedSender<Message>) {
+    let clicks = tx.clone();
+    MenuEvent::set_event_handler(Some(move |e: MenuEvent| {
+        let message = match e.id.0.as_str() {
+            OPEN => Some(Message::TrayOpen),
+            PAUSE_ALL => Some(Message::PauseAll),
+            RESUME_ALL => Some(Message::ResumeAll),
+            QUIT => Some(Message::TrayQuit),
+            _ => None,
+        };
+        if let Some(m) = message {
+            let _ = tx.send(m);
+        }
+    }));
+    TrayIconEvent::set_event_handler(Some(move |e: TrayIconEvent| {
+        let open = matches!(
+            e,
+            TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } | TrayIconEvent::DoubleClick { button: MouseButton::Left, .. }
+        );
+        if open {
+            let _ = clicks.send(Message::TrayOpen);
+        }
+    }));
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    #[test]
+    fn pixmaps_are_argb_at_32_and_64_px() {
+        let icons = super::pixmaps(&[1, 2, 3, 4].repeat(32 * 32), &[5, 6, 7, 8].repeat(64 * 64));
+        assert_eq!((icons[0].width, icons[0].height, icons[0].data.len()), (32, 32, 32 * 32 * 4));
+        assert_eq!((icons[1].width, icons[1].height, icons[1].data.len()), (64, 64, 64 * 64 * 4));
+        assert_eq!(icons[0].data[..4], [4, 1, 2, 3]);
+        assert_eq!(icons[1].data[..4], [8, 5, 6, 7]);
+    }
 }

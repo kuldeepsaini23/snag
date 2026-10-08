@@ -75,8 +75,8 @@ pub fn open(target: impl AsRef<OsStr>) {
 }
 
 /// Linux: a program of the desktop's (xdg-open, the file manager, gsettings), started without
-/// what the AppImage's launcher set up for Snag itself: its bundled GTK modules, schemas and data
-/// folders (`$APPDIR/…`) would break the programs it starts, and vanish when Snag exits.
+/// what the AppImage's launcher set up for Snag itself: paths into its bundle (`$APPDIR/…`) would
+/// break the programs it starts, and vanish when Snag exits.
 #[cfg(target_os = "linux")]
 pub fn host_command(program: impl AsRef<OsStr>) -> std::process::Command {
     let mut cmd = std::process::Command::new(program);

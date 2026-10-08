@@ -21,22 +21,22 @@ chrono.workspace = true
 serde_json.workspace = true
 # Thumbnails of downloaded pictures (iced already builds it for its image widget).
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp"] }
-tray-icon = "0.26.0"
 window-vibrancy = "0.8.1"
 sha1_smol = "1.0.1"
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 rfd = "0.15"
+tray-icon = "0.26.0"
 
 [target.'cfg(windows)'.dependencies]
 tauri-winrt-notification = "0.8.1"
 winreg = "0.56.0"
 windows-sys = { version = "0.61.2", features = ["Win32_UI_WindowsAndMessaging"] }
 
-# Linux: the tray icon lives on its own GTK thread; notifications go over D-Bus. The folder
-# picker asks the desktop portal (zenity without one) rather than GTK, which the tray owns.
+# Linux: no GTK. The tray icon is a StatusNotifierItem and notifications go over D-Bus; the
+# folder picker asks the desktop portal (zenity without one).
 [target.'cfg(target_os = "linux")'.dependencies]
-gtk = "0.18"
+ksni = { version = "0.3.6", features = ["blocking"] }
 notify-rust = "4"
 rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
 
@@ -67,9 +67,9 @@ through yt-dlp, image galleries, torrents and whole web pages."""
 section = "net"
 priority = "optional"
 revision = ""
-# $auto: GTK, xdo and OpenSSL from the binary. The tray icon needs an AppIndicator library
-# (loaded at run time); xdg-open opens files and folders.
-depends = "$auto, libayatana-appindicator3-1 | libappindicator3-1, xdg-utils"
+# $auto: what the binary links (glibc). The window loads X11 and xkbcommon at run time (dlopen),
+# so they're named here; xdg-open opens files and folders.
+depends = "$auto, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxrandr2, libxkbcommon0, libxkbcommon-x11-0, xdg-utils"
 assets = [
     ["target/release/snag", "usr/bin/", "755"],
     ["../../packaging/linux/snag.desktop", "usr/share/applications/", "644"],

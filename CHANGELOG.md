@@ -2,6 +2,12 @@
 
 Newest first. Snag shows the newest entry once after an update; the Help menu (?) has the full list.
 
+## 1.1.1 — 2026-10-08
+
+### Fixed
+- Linux: Snag no longer crashes at start on Linux Mint (Cinnamon) and similar desktops. Its tray icon no longer uses GTK, so the AppImage is smaller too.
+- Linux: the AppImage starts on systems without libxkbcommon-x11.
+
 ## 1.1.0 — 2026-10-08
 
 ### New
