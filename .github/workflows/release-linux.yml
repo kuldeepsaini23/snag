@@ -20,6 +20,10 @@ jobs:
   linux:
     # The oldest supported Ubuntu: its glibc (2.35) is the oldest the binaries run on.
     runs-on: ubuntu-22.04
+    # Takes turns with the macOS release job at the checksums file (release-macos.yml).
+    concurrency:
+      group: release-checksums-${{ github.event.release.tag_name || inputs.tag }}
+      cancel-in-progress: false
     env:
       TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:

@@ -1,0 +1,76 @@
+name: macOS release
+
+# Builds the macOS packages for a published release and attaches them to it: Snag-macOS.zip (what
+# Snag's updater installs), Snag-macOS.dmg, and their lines in SHA256SUMS-<version>.txt. Like the
+# Linux release job, it keeps the lines already there (Windows, Linux) and adds its own; the two
+# jobs take turns at that file (the shared concurrency group), so neither drops the other's lines.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and upload to (e.g. v1.0.4)
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Build Snag.app, the zip and the disk image
+        run: bash packaging/macos/build.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snag-macos-release
+          path: |
+            target/macos/Snag-macOS.zip
+            target/macos/Snag-macOS.dmg
+          if-no-files-found: error
+
+  upload:
+    needs: build
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release-checksums-${{ github.event.release.tag_name || inputs.tag }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: snag-macos-release
+          path: macos
+
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          version="${TAG#v}"
+          sums="SHA256SUMS-$version.txt"
+          # The release's checksums so far, minus macOS lines from an earlier run of this job;
+          # then this build's, as macos/<file> (crates/core/src/selfupdate.rs reads the name).
+          gh release download "$TAG" --pattern "$sums" --dir . --clobber || : > "$sums"
+          grep -v -e 'Snag-macOS\.zip$' -e 'Snag-macOS\.dmg$' "$sums" > sums.tmp || true
+          (cd macos && sha256sum Snag-macOS.zip Snag-macOS.dmg) | sed 's#  #  macos/#' >> sums.tmp
+          mv sums.tmp "$sums"
+          cat "$sums"
+          gh release upload "$TAG" macos/Snag-macOS.zip macos/Snag-macOS.dmg "$sums" --clobber
