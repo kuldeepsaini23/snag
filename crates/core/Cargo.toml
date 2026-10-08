@@ -25,8 +25,14 @@ tar = "0.4"
 xz2 = "0.1"
 
 [dev-dependencies]
-librqbit = { version = "9.0.1", default-features = false, features = ["default-tls"] }
 tokio = { workspace = true, features = ["test-util"] }
 axum.workspace = true
 tempfile.workspace = true
 futures-util.workspace = true
+
+# The same TLS and hashing as rdm-torrent (its librqbit features must match).
+[target.'cfg(windows)'.dev-dependencies]
+librqbit = { version = "9.0.1", default-features = false, features = ["default-tls"] }
+
+[target.'cfg(not(windows))'.dev-dependencies]
+librqbit = { version = "9.0.1", default-features = false, features = ["rust-tls"] }

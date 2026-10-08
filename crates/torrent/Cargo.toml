@@ -4,9 +4,16 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-librqbit = { version = "9.0.1", default-features = false, features = ["default-tls"] }
 tokio.workspace = true
 tokio-util.workspace = true
+
+# Windows: the system TLS and hashing (SChannel, CryptoAPI). Elsewhere rustls and aws-lc, like the
+# rest of Snag, so the Linux build needs no OpenSSL.
+[target.'cfg(windows)'.dependencies]
+librqbit = { version = "9.0.1", default-features = false, features = ["default-tls"] }
+
+[target.'cfg(not(windows))'.dependencies]
+librqbit = { version = "9.0.1", default-features = false, features = ["rust-tls"] }
 
 [dev-dependencies]
 tempfile.workspace = true
