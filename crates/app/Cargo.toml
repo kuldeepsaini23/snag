@@ -45,3 +45,27 @@ tempfile.workspace = true
 [build-dependencies]
 winresource = "0.1.31"
 
+# `cargo deb -p rdm-app` (packaging/linux/build.sh): snag_<version>_amd64.deb.
+[package.metadata.deb]
+name = "snag"
+maintainer = "Kuldeep Saini <89005887+kuldeepsaini23@users.noreply.github.com>"
+copyright = "2026, Kuldeep Saini"
+license-file = ["../../LICENSE", "0"]
+extended-description = """\
+A fast, free download manager with a browser extension that catches videos: \
+files over up to 8 connections with pause and resume, videos and music from 1,800+ sites \
+through yt-dlp, image galleries, torrents and whole web pages."""
+section = "net"
+priority = "optional"
+revision = ""
+# $auto: GTK, xdo and OpenSSL from the binary. The tray icon needs an AppIndicator library
+# (loaded at run time); xdg-open opens files and folders.
+depends = "$auto, libayatana-appindicator3-1 | libappindicator3-1, xdg-utils"
+assets = [
+    ["target/release/snag", "usr/bin/", "755"],
+    ["../../packaging/linux/snag.desktop", "usr/share/applications/", "644"],
+    ["assets/logo/snag-64.png", "usr/share/icons/hicolor/64x64/apps/snag.png", "644"],
+    ["assets/logo/snag-128.png", "usr/share/icons/hicolor/128x128/apps/snag.png", "644"],
+    ["assets/logo/snag-256.png", "usr/share/icons/hicolor/256x256/apps/snag.png", "644"],
+    ["../../packaging/linux/snag-512.png", "usr/share/icons/hicolor/512x512/apps/snag.png", "644"],
+]

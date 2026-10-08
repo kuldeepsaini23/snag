@@ -1,0 +1,63 @@
+name: Linux release
+
+# Builds the Linux packages for a published release and attaches them to it:
+# Snag-x86_64.AppImage, snag_<version>_amd64.deb, and their lines in SHA256SUMS-<version>.txt.
+# The Windows installer is still built and uploaded by hand (installer/build.sh): publish the
+# release with it and its SHA256SUMS file first; this job keeps those lines and adds its own.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and upload to (e.g. v1.0.4)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    # The oldest supported Ubuntu: its glibc (2.35) is the oldest the binaries run on.
+    runs-on: ubuntu-22.04
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config curl file \
+            libgtk-3-dev libayatana-appindicator3-dev libxdo-dev libxkbcommon-dev libwayland-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-deb
+        run: cargo install cargo-deb --locked
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Build the AppImage and .deb
+        run: bash packaging/linux/build.sh
+
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${TAG#v}"
+          sums="SHA256SUMS-$version.txt"
+          cd target
+          # The release's checksums so far (the Windows installer and store packages), minus Linux
+          # lines from an earlier run of this job; then this build's, as linux/<file>.
+          gh release download "$TAG" --pattern "$sums" --dir . --clobber || : > "$sums"
+          grep -v -e 'Snag-x86_64\.AppImage$' -e '_amd64\.deb$' "$sums" > sums.tmp || true
+          (cd linux && sha256sum Snag-x86_64.AppImage "snag_${version}_amd64.deb") | sed 's#  #  linux/#' >> sums.tmp
+          mv sums.tmp "$sums"
+          cat "$sums"
+          gh release upload "$TAG" linux/Snag-x86_64.AppImage "linux/snag_${version}_amd64.deb" "$sums" --clobber

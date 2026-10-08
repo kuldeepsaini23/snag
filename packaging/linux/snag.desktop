@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Snag
+GenericName=Download Manager
+Comment=Fast downloads, videos, music, pictures and torrents
+Exec=snag
+Icon=snag
+Terminal=false
+Categories=Network;FileTransfer;
+Keywords=download;manager;video;youtube;torrent;
+StartupWMClass=snag
+StartupNotify=true
