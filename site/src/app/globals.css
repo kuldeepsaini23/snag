@@ -256,37 +256,6 @@ body {
     backdrop-filter: blur(18px) saturate(1.4);
   }
 }
-/* Two lines in one row of the page: name and part on the left, the download and its numbers in
-   the middle, links between them on wide screens. On phones the part label sits under the bar. */
-.dl-bar__grid {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-areas:
-    "logo seg dl"
-    "logo lab dl";
-  grid-template-rows: auto auto;
-  align-content: center;
-  column-gap: 0.75rem;
-  row-gap: 0.25rem;
-}
-@media (min-width: 640px) {
-  .dl-bar__grid {
-    grid-template-columns: auto minmax(7.5rem, auto) minmax(6rem, 1fr) auto auto auto;
-    grid-template-areas:
-      "logo brand seg th gh dl"
-      "logo lab pct th gh dl";
-    column-gap: 1rem;
-  }
-}
-@media (min-width: 1024px) {
-  .dl-bar__grid {
-    grid-template-columns: auto minmax(9.5rem, auto) 1fr minmax(8rem, 13rem) auto auto auto;
-    grid-template-areas:
-      "logo brand nav seg th gh dl"
-      "logo lab nav pct th gh dl";
-    column-gap: 1.25rem;
-  }
-}
 .dl-bar__seg {
   background: var(--hairline);
   transition: box-shadow 0.4s ease-out;

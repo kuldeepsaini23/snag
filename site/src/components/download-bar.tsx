@@ -135,7 +135,20 @@ export function DownloadBar({
 
   return (
     <header data-done={done || undefined} className="dl-bar sticky top-0 z-40">
-      <div className="dl-bar__grid mx-auto h-(--bar-h) max-w-6xl px-4 sm:px-6">
+      {/* One row, two lines: name and part on the left, the download and its numbers in the middle,
+          links between them on wide screens; on phones the part label sits under the segments.
+          The layout lives in these classes so it always ships with the markup it places; the
+          breakpoint ranges don't overlap, so no template depends on the order of the rules. */}
+      <div
+        className={[
+          "mx-auto grid h-(--bar-h) max-w-6xl content-center gap-x-3 gap-y-1 px-4",
+          "grid-cols-[auto_minmax(0,1fr)_auto] [grid-template-areas:'logo_seg_dl'_'logo_lab_dl']",
+          "sm:gap-x-4 sm:px-6 sm:max-[1199px]:grid-cols-[auto_minmax(7.5rem,auto)_minmax(6rem,1fr)_auto_auto_auto]",
+          "sm:max-[1199px]:[grid-template-areas:'logo_brand_seg_th_gh_dl'_'logo_lab_pct_th_gh_dl']",
+          "min-[1200px]:grid-cols-[auto_minmax(9.5rem,auto)_1fr_minmax(8rem,13rem)_auto_auto_auto] min-[1200px]:gap-x-5",
+          "min-[1200px]:[grid-template-areas:'logo_brand_nav_seg_th_gh_dl'_'logo_lab_nav_pct_th_gh_dl']",
+        ].join(" ")}
+      >
         <Link href="/" aria-label="Snag home" className="[grid-area:logo] self-center">
           <LogoMark size={32} className="size-8 shadow-[0_0_0_1px_var(--hairline)]" />
         </Link>
@@ -204,7 +217,7 @@ export function DownloadBar({
           </nav>
         </details>
 
-        <nav aria-label="Sections" className="hidden items-center gap-6 self-center justify-self-center [grid-area:nav] lg:flex">
+        <nav aria-label="Sections" className="hidden items-center gap-6 self-center justify-self-center [grid-area:nav] min-[1200px]:flex">
           {links.map((link) => {
             const active = home && link.parts.includes(parts[current].id);
             return (
