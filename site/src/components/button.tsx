@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils";
 
 const variants = {
   primary: "bg-accent text-on-accent hover:brightness-110",
-  secondary: "bg-raised text-text hover:bg-selected",
+  secondary: "text-text shadow-[inset_0_0_0_1px_var(--line-strong)] hover:bg-surface-2",
 };
 
 const sizes = {
@@ -10,7 +10,8 @@ const sizes = {
   lg: "h-12 px-6 text-[0.95rem]",
 };
 
-// The app's "+ Add" button: a rounded pill, orange for the main action, warm grey otherwise.
+// Square-shouldered buttons, like the type blocks of a catalogue: orange for the main action,
+// a ruled outline otherwise.
 export function ButtonLink({
   href,
   variant = "primary",
@@ -28,7 +29,7 @@ export function ButtonLink({
     <a
       href={href}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-full font-semibold whitespace-nowrap transition-[background-color,filter,transform] active:scale-[0.97]",
+        "inline-flex items-center justify-center gap-2.5 rounded-[3px] font-semibold whitespace-nowrap transition-[background-color,filter,transform] active:scale-[0.97]",
         variants[variant],
         sizes[size],
         className,

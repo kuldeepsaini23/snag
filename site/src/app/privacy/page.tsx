@@ -18,44 +18,66 @@ export const metadata: Metadata = {
   },
 };
 
+const order = ["extension", "app", "never", "website", "contact"];
+
+// Each section is a numbered article of the notice, ruled off from the next.
 function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return (
-    <section id={id} className="mt-4 rounded-2xl bg-panel p-5 shadow-[0_0_0_1px_var(--line)] sm:p-8">
-      <h2 className="text-2xl font-bold tracking-tight">{title}</h2>
-      <div className="mt-4 grid max-w-[68ch] gap-4 leading-relaxed text-muted [&_strong]:font-semibold [&_strong]:text-text">
-        {children}
+    <section
+      id={id}
+      className="grid gap-x-10 gap-y-4 border-t border-line py-12 md:grid-cols-[6rem_minmax(0,1fr)] md:py-16"
+      data-reveal
+    >
+      <p className="font-display text-4xl leading-none font-light text-faint md:text-5xl">
+        <span className="text-xl italic">§</span> {order.indexOf(id) + 1}
+      </p>
+      <div>
+        <h2 className="headline text-3xl md:text-4xl">{title}</h2>
+        <div className="mt-6 grid max-w-[68ch] gap-4 leading-relaxed text-muted [&_strong]:font-semibold [&_strong]:text-text">
+          {children}
+        </div>
       </div>
     </section>
   );
 }
 
 function List({ children }: { children: React.ReactNode }) {
-  return <ul className="grid list-disc gap-2 pl-5 marker:text-accent">{children}</ul>;
+  return <ul className="grid list-[square] gap-2 pl-5 marker:text-accent">{children}</ul>;
 }
 
 function Code({ children }: { children: React.ReactNode }) {
-  return <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[0.85em] text-text">{children}</code>;
+  return <code className="bg-surface-2 px-1.5 py-0.5 font-mono text-[0.85em] text-text">{children}</code>;
 }
 
-const link = "text-accent underline decoration-accent/40 underline-offset-4 hover:decoration-accent";
+const link = "text-text underline decoration-accent underline-offset-4 hover:text-accent-text";
 
 export default function PrivacyPage() {
   return (
-    <article className="mx-auto max-w-3xl px-4 pt-12 pb-24 sm:px-6 md:pt-20">
-      <header>
-        <p className="font-mono text-xs text-faint">Effective 7 October 2026</p>
-        <h1 className="mt-3 text-5xl font-bold tracking-tight md:text-6xl">Privacy policy</h1>
-        <p className="mt-5 max-w-[60ch] text-lg leading-relaxed text-muted">
+    <article className="relative mx-auto max-w-5xl overflow-hidden px-4 pt-14 pb-24 sm:px-6 md:pt-24">
+      <div aria-hidden="true" className="rosette pointer-events-none absolute -top-40 -right-56 size-[36rem] md:-right-40" />
+      <header className="relative">
+        <p className="label">Effective 7 October 2026</p>
+        <h1 className="headline mt-6 text-[clamp(3.25rem,13vw,7rem)]">
+          Privacy <em>policy</em>.
+        </h1>
+        <p className="mt-6 max-w-[48ch] text-lg leading-relaxed text-muted md:text-xl">
           For the Snag desktop app and the Snag browser extension for Chrome, Edge and Firefox.
         </p>
       </header>
 
-      <div className="mt-10 rounded-2xl bg-raised p-5 sm:p-8">
-        <p className="flex items-center gap-2 font-mono text-xs text-accent">In short</p>
-        <p className="mt-3 text-lg leading-relaxed">
-          Snag has no account, no analytics, no ads and no server of its own. The extension sends what it reads only to
-          the Snag app on the same computer. Nothing is sent to the developer or to any third party, and nothing is sold.
-        </p>
+      {/* The short version, printed on paper. */}
+      <div className="paper relative mt-14 mb-16 border border-line-strong p-1.5 md:mt-20">
+        <div className="relative border border-line p-6 sm:p-10">
+          <div
+            aria-hidden="true"
+            className="hatch absolute inset-y-0 right-0 w-1/2 [mask-image:linear-gradient(to_left,black,transparent_85%)]"
+          />
+          <p className="label relative">In short</p>
+          <p className="relative mt-4 font-display text-[clamp(1.35rem,4vw,1.85rem)] leading-snug">
+            Snag has no account, no analytics, no ads and no server of its own. The extension sends what it reads only to
+            the Snag app on the same computer. Nothing is sent to the developer or to any third party, and nothing is sold.
+          </p>
+        </div>
       </div>
 
       <Section id="extension" title="The browser extension">

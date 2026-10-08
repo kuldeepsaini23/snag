@@ -5,13 +5,16 @@ import { ISSUES_URL, RELEASES_URL, REPO_URL } from "@/lib/site";
 
 export function SiteFooter() {
   return (
-    <footer className="border-t border-line bg-panel">
-      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-8 sm:flex-row sm:items-center sm:px-6">
-        <div className="flex flex-col gap-1.5">
+    <footer className="border-t border-line">
+      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-[1fr_auto] md:items-end">
+        <div className="flex flex-col gap-2">
           <Logo />
           <p className="text-sm text-faint">MIT © 2026 Kuldeep Saini</p>
+          <p className="font-display text-sm text-faint italic">
+            Set in Fraunces, Inter and JetBrains Mono. Snag itself is written in Rust.
+          </p>
         </div>
-        <nav aria-label="Footer" className="sm:ml-auto">
+        <nav aria-label="Footer">
           <ul className="flex flex-wrap gap-x-6 gap-y-3 text-sm text-muted">
             <li>
               <a href={REPO_URL} className="hover:text-text">
@@ -19,7 +22,8 @@ export function SiteFooter() {
               </a>
             </li>
             <li>
-              <Link href="/privacy/" className="hover:text-text">
+              {/* Not prefetched: the static export doesn't write the file the router would prefetch, so it would 404. */}
+              <Link href="/privacy/" prefetch={false} className="hover:text-text">
                 Privacy
               </Link>
             </li>

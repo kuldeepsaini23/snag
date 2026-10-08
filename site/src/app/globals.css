@@ -1,42 +1,64 @@
 @import "tailwindcss";
 
-/* The Snag app's own palette: warm dark greys, one orange accent. */
+/* An engraved catalogue: ink-black page, warm paper type, one orange accent (Snag's logo colours).
+   `.paper` turns a block to paper with ink type; everything inside follows the same tokens. */
 :root {
-  --bg: #1a1816;
-  --panel: #211f1c;
-  --raised: #2a2724;
-  --selected: #36322e;
-  --line: #34302c;
-  --line-strong: #4a4540;
-  --text: #f0ece6;
-  --muted: #aaa49b;
-  --faint: #979087;
+  --bg: #0b0b0c;
+  --surface: #121211;
+  --surface-2: #1a1917;
+  --line: #262422;
+  --line-strong: #3a3733;
+  --text: #efe9dc;
+  --muted: #b5afa3;
+  --faint: #8c877d;
   --accent: #ff9f0a;
-  --on-accent: #1a1816;
+  --on-accent: #0b0b0c;
+  /* The accent as text: the accent itself on ink, a darker cut of it on paper. */
+  --accent-text: var(--accent);
+  /* The faint line-work of the engravings. */
+  --etch: color-mix(in srgb, var(--text) 9%, transparent);
 
   --bar-h: 3.5rem;
 
   color-scheme: dark;
 }
 
+@layer components {
+  .paper {
+    --bg: #efe9dc;
+    --surface: #e7e0d0;
+    --surface-2: #ddd5c3;
+    --line: #cfc6b3;
+    --line-strong: #a9a08c;
+    --text: #0b0b0c;
+    --muted: #45413b;
+    --faint: #5f5a51;
+    --accent-text: color-mix(in oklab, var(--accent) 50%, #000);
+    --etch: color-mix(in srgb, var(--text) 12%, transparent);
+    background: var(--bg);
+    color: var(--text);
+    color-scheme: light;
+  }
+}
+
 @theme inline {
   --color-bg: var(--bg);
-  --color-panel: var(--panel);
-  --color-raised: var(--raised);
-  --color-selected: var(--selected);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
   --color-text: var(--text);
   --color-muted: var(--muted);
   --color-faint: var(--faint);
   --color-accent: var(--accent);
+  --color-accent-text: var(--accent-text);
   --color-on-accent: var(--on-accent);
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-fraunces), Georgia, "Times New Roman", serif;
   --font-mono: var(--font-jetbrains), ui-monospace, "Cascadia Mono", monospace;
 
   --animate-fill-loop: fill-loop var(--fill-duration, 4s) var(--fill-delay, 0s) cubic-bezier(0.45, 0.05, 0.25, 1) infinite;
-  --animate-speed: speed-scroll var(--speed-duration, 18s) linear infinite;
 
   /* A part fills, holds while the others catch up, then the next file starts. */
   @keyframes fill-loop {
@@ -49,16 +71,6 @@
     }
     100% {
       transform: scaleX(0);
-    }
-  }
-
-  /* The speed graph is drawn twice side by side, so sliding it by half loops seamlessly. */
-  @keyframes speed-scroll {
-    from {
-      transform: translateX(0);
-    }
-    to {
-      transform: translateX(-50%);
     }
   }
 }
@@ -83,12 +95,119 @@ body {
 
 :focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 6px;
+  outline-offset: 3px;
 }
 
-/* ---- The top bar: the page's own download. Parts ease toward the scroll position, then
-   on reaching the bottom the gaps close, a shine runs across, and Done pops in. ---- */
+/* Component classes sit in their layer, so utilities on the same element still win. */
+@layer components {
+  /* ---- Type ---- */
+
+  /* Headlines: a tight grotesque with one word cut in the serif italic. */
+  .headline {
+    font-weight: 600;
+    letter-spacing: -0.045em;
+    line-height: 0.98;
+    text-wrap: balance;
+  }
+  .headline em {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    letter-spacing: -0.015em;
+    padding-right: 0.02em;
+  }
+
+  /* Small mono labels, like the plate numbers in a catalogue's margin. */
+  .label {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    line-height: 1rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+
+  /* Dot leaders between a name and its value, as in a price list. */
+  .leader {
+    flex: 1 1 0;
+    min-width: 1.25rem;
+    height: 2px;
+    margin-bottom: 0.35em;
+    align-self: flex-end;
+    background-image: radial-gradient(circle, var(--line-strong) 0.8px, transparent 1.1px);
+    background-size: 6px 2px;
+    background-repeat: repeat-x;
+  }
+
+  /* ---- Engraving: hatching, guilloche and plates ---- */
+
+  /* Cross-hatching: two sets of fine lines at a low contrast. */
+  .hatch {
+    background-image:
+      repeating-linear-gradient(45deg, var(--etch) 0 1px, transparent 1px 7px),
+      repeating-linear-gradient(-45deg, var(--etch) 0 1px, transparent 1px 7px);
+  }
+  /* Single hatching, for the parts of a download still to come. */
+  .hatch-1 {
+    background-image: repeating-linear-gradient(-55deg, var(--etch) 0 1px, transparent 1px 4px);
+  }
+
+  /* The guilloche drawings are masks, so their lines take the element's colour. */
+  .rosette {
+    -webkit-mask: url("/images/rosette.svg") center / contain no-repeat;
+    mask: url("/images/rosette.svg") center / contain no-repeat;
+    background: var(--etch);
+  }
+  .band {
+    height: 2.25rem;
+    -webkit-mask: url("/images/band.svg") 0 0 / 15rem 100% repeat-x;
+    mask: url("/images/band.svg") 0 0 / 15rem 100% repeat-x;
+    background: var(--etch);
+    animation: band-drift 40s linear infinite;
+  }
+  @keyframes band-drift {
+    to {
+      -webkit-mask-position: -15rem 0;
+      mask-position: -15rem 0;
+    }
+  }
+
+  /* A plate: the picture inside a thin double rule, its caption set below in italic. */
+  .plate {
+    border: 1px solid var(--line-strong);
+    padding: 5px;
+  }
+  .plate__frame {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    background: var(--surface);
+  }
+}
+
+/* ---- Reveal: content arrives soft and sharpens as it scrolls in, like a print developing.
+   Without scripts nothing is hidden; the observer only hides what is still below the fold. ---- */
+[data-reveal] {
+  transition:
+    opacity 0.9s cubic-bezier(0.2, 0.7, 0.2, 1),
+    filter 0.9s cubic-bezier(0.2, 0.7, 0.2, 1),
+    translate 0.9s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition-delay: var(--reveal-delay, 0s);
+}
+[data-reveal="hidden"] {
+  opacity: 0;
+  filter: blur(6px);
+  translate: 0 18px;
+}
+.plate img {
+  transition: filter 1.4s 0.2s ease-out;
+}
+[data-reveal="hidden"] .plate img {
+  filter: grayscale(1) contrast(0.7) brightness(0.75);
+}
+
+/* ---- The top bar: the page's own download. Each part fills as you read its section; at the
+   bottom the gaps close, a shine runs across, and Done pops in. ---- */
 .dl-bar__fill,
 .dl-bar__line {
   transition: transform 0.22s cubic-bezier(0.2, 0.7, 0.2, 1);
@@ -126,109 +245,51 @@ body {
     transform: scale(0.6);
   }
 }
-
-/* ---- The hero word, downloaded: eight slices fill left to right at their own speeds. ---- */
-.seg-word {
-  position: relative;
+/* The part's name slides in when you move to the next part. */
+.dl-bar__name {
   display: inline-block;
-  white-space: nowrap;
+  animation: name-in 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
-/* Once every part is in, the plain word takes over, so no seams remain between slices. */
-.seg-word__base {
-  color: var(--raised);
-  animation: seg-settle 0.01s 2.9s both;
-}
-@keyframes seg-settle {
-  to {
-    color: var(--text);
-  }
-}
-.seg-word__slice {
-  position: absolute;
-  inset: 0;
-  color: var(--text);
-  clip-path: inset(-25% var(--r) -35% var(--l));
-  animation:
-    seg-fill var(--d) var(--delay, 0.2s) cubic-bezier(0.45, 0.05, 0.25, 1) both,
-    seg-gap 0.01s 2.9s both;
-}
-@keyframes seg-fill {
+@keyframes name-in {
   from {
-    clip-path: inset(-25% calc(100% - var(--l)) -35% var(--l));
-  }
-  to {
-    clip-path: inset(-25% var(--r) -35% var(--l));
-  }
-}
-/* Thin gaps between the slices while they download; they close once every part is in. */
-.seg-word__gap {
-  position: absolute;
-  top: -25%;
-  bottom: -35%;
-  width: 0.06em;
-  background: var(--bg);
-  transform: translateX(-50%);
-  animation: seg-gap 0.5s 2.9s ease-out both;
-}
-@keyframes seg-gap {
-  to {
     opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.dl-bar__contents {
+  animation: contents-in 0.2s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  transform-origin: top left;
+}
+@keyframes contents-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
   }
 }
 
-/* ---- Download rows: queued until seen, then the bar runs and the row opens. Without scripts
-   every row is simply done and open. ---- */
-.dl-row .dl-fill {
-  transform-origin: left;
+/* ---- The hook hangs from the bar and sways a little. ---- */
+.hook {
+  transform-origin: 50% 0;
+  animation: sway 6s ease-in-out infinite alternate;
 }
-.dl-row[data-state="queued"] .dl-fill {
-  transform: scaleX(0);
-}
-.dl-row[data-state="downloading"] .dl-fill {
-  animation: dl-run var(--run, 1.4s) cubic-bezier(0.35, 0.1, 0.25, 1) both;
-}
-@keyframes dl-run {
+@keyframes sway {
   from {
-    transform: scaleX(0);
+    transform: rotate(-1.4deg);
   }
   to {
-    transform: scaleX(1);
+    transform: rotate(1.6deg);
   }
-}
-.dl-row .dl-status-run {
-  display: none;
-}
-.dl-row:is([data-state="queued"], [data-state="downloading"]) .dl-status-run {
-  display: inline;
-}
-.dl-row:is([data-state="queued"], [data-state="downloading"]) .dl-status-done {
-  display: none;
-}
-.dl-body {
-  display: grid;
-  grid-template-rows: 1fr;
-  transition:
-    grid-template-rows 0.45s cubic-bezier(0.2, 0.7, 0.2, 1),
-    opacity 0.45s ease-out;
-}
-.dl-row:is([data-state="queued"], [data-state="downloading"]) .dl-body {
-  grid-template-rows: 0fr;
-  opacity: 0;
-}
-.dl-body > * {
-  min-height: 0;
-  overflow: hidden;
 }
 
 /* Data moving along a wire in the privacy diagram. */
 .wire {
-  background: repeating-linear-gradient(to bottom, var(--accent) 0 5px, transparent 5px 10px);
-  background-size: 100% 10px;
+  background: repeating-linear-gradient(to bottom, var(--text) 0 4px, transparent 4px 9px);
+  background-size: 100% 9px;
   animation: wire 0.9s linear infinite;
 }
 @keyframes wire {
   to {
-    background-position: 0 10px;
+    background-position: 0 9px;
   }
 }
 
@@ -252,7 +313,8 @@ details > summary::-webkit-details-marker {
     transition-duration: 0.001ms !important;
   }
   .animate-fill-loop,
-  .animate-speed,
+  .band,
+  .hook,
   .wire {
     animation: none !important;
   }

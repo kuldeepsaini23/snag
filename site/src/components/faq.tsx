@@ -1,6 +1,10 @@
-import { CaretDown } from "@phosphor-icons/react/dist/ssr";
+import { Plus } from "@phosphor-icons/react/dist/ssr";
 
+import { Section, SectionHead } from "@/components/catalogue";
+import { pad } from "@/lib/parts";
 import { RELEASES_URL, REPO_URL } from "@/lib/site";
+
+const link = "text-text underline decoration-accent underline-offset-4 hover:text-accent-text";
 
 const questions: { q: string; value: string; a: React.ReactNode }[] = [
   {
@@ -9,7 +13,7 @@ const questions: { q: string; value: string; a: React.ReactNode }[] = [
     a: (
       <>
         Yes, completely. Snag is open source under the MIT licence: no trial, no ads, no paid tier. The code is on{" "}
-        <a href={REPO_URL} className="text-accent underline decoration-accent/40 underline-offset-4 hover:decoration-accent">
+        <a href={REPO_URL} className={link}>
           GitHub
         </a>
         .
@@ -23,7 +27,7 @@ const questions: { q: string; value: string; a: React.ReactNode }[] = [
       <>
         <p>
           The whole app is open source, so anyone can read what it does. Each{" "}
-          <a href={RELEASES_URL} className="text-accent underline decoration-accent/40 underline-offset-4 hover:decoration-accent">
+          <a href={RELEASES_URL} className={link}>
             release on GitHub
           </a>{" "}
           lists the installer’s SHA-256 checksum, so you can check your file is the one that was published.
@@ -53,27 +57,38 @@ const questions: { q: string; value: string; a: React.ReactNode }[] = [
   },
 ];
 
-// Styled after the app's details panel: a label on the left, its value on the right; open a row for the rest.
+// Set like an index: the question, a dotted leader, the short answer; open a row for the rest.
 export function Faq() {
   return (
-    <section id="faq" className="mx-auto max-w-6xl px-4 pt-24 sm:px-6 md:pt-32">
-      <h2 className="text-4xl font-bold tracking-tight md:text-5xl">Questions</h2>
-      <div className="mt-10 max-w-3xl divide-y divide-line overflow-hidden rounded-2xl bg-panel shadow-[0_0_0_1px_var(--line)]">
-        {questions.map(({ q, value, a }) => (
-          <details key={q} className="group">
-            <summary className="flex cursor-pointer items-center gap-4 px-5 py-4 transition-colors hover:bg-raised/50 group-open:bg-raised/50">
-              <span className="font-medium">{q}</span>
-              <span className="ml-auto hidden shrink-0 font-mono text-sm text-muted sm:inline">{value}</span>
-              <CaretDown
-                weight="bold"
-                className="size-4 shrink-0 text-faint transition-transform duration-200 group-open:rotate-180"
+    <Section id="faq" className="mx-auto max-w-6xl px-4 pt-28 sm:px-6 md:pt-40">
+      <SectionHead
+        id="faq"
+        title={
+          <>
+            Fair <em>questions</em>.
+          </>
+        }
+      />
+      <div className="mt-14 border-b border-line md:mt-20" data-reveal>
+        {questions.map(({ q, value, a }, i) => (
+          <details key={q} className="group border-t border-line">
+            <summary className="flex cursor-pointer items-baseline gap-4 py-6 md:py-7">
+              <span className="w-8 shrink-0 font-mono text-xs text-faint">Q{pad(i + 1)}</span>
+              <span className="text-lg font-medium tracking-tight transition-colors group-hover:text-accent-text md:text-2xl">
+                {q}
+              </span>
+              <span aria-hidden="true" className="leader hidden sm:block" />
+              <span className="hidden shrink-0 font-mono text-sm text-muted sm:inline">{value}</span>
+              <Plus
+                weight="light"
+                className="ml-auto size-5 shrink-0 self-center text-faint transition-transform duration-300 group-open:rotate-45 sm:ml-0"
                 aria-hidden
               />
             </summary>
-            <div className="max-w-[64ch] px-5 pt-1 pb-5 leading-relaxed text-muted">{a}</div>
+            <div className="max-w-[64ch] pb-8 pl-12 leading-relaxed text-muted md:text-lg">{a}</div>
           </details>
         ))}
       </div>
-    </section>
+    </Section>
   );
 }

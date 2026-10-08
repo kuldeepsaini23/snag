@@ -5,12 +5,12 @@ import {
   Clipboard,
   Cookie,
   DeviceMobile,
-  Gear,
   Globe,
   HardDrives,
   ShieldCheck,
 } from "@phosphor-icons/react/dist/ssr";
 
+import { Band, Plate, Section, SectionHead, Shot } from "@/components/catalogue";
 import { LogoMark } from "@/components/logo";
 import { cn } from "@/lib/utils";
 
@@ -30,9 +30,12 @@ function Toggle({ on }: { on: boolean }) {
   return (
     <span
       aria-hidden="true"
-      className={cn("relative h-5 w-9 shrink-0 rounded-full transition-colors", on ? "bg-accent" : "bg-selected")}
+      className={cn(
+        "relative h-5 w-9 shrink-0 rounded-full",
+        on ? "bg-accent" : "bg-surface-2 shadow-[inset_0_0_0_1px_var(--line-strong)]",
+      )}
     >
-      <span className={cn("absolute top-0.5 size-4 rounded-full bg-text", on ? "right-0.5" : "left-0.5")} />
+      <span className={cn("absolute top-0.5 size-4 rounded-full", on ? "right-0.5 bg-text" : "left-0.5 bg-faint")} />
     </span>
   );
 }
@@ -49,125 +52,138 @@ function Node({
   accent?: boolean;
 }) {
   return (
-    <div
-      className={cn(
-        "flex items-center gap-3 rounded-xl bg-raised px-4 py-3",
-        accent && "shadow-[0_0_0_1.5px_var(--accent)]",
-      )}
-    >
-      {Icon ? <Icon className="size-6 shrink-0 text-text" aria-hidden /> : <LogoMark size={28} />}
-      <div className="min-w-0">
-        <p className="text-sm font-semibold">{title}</p>
-        <p className="font-mono text-[11px] leading-snug text-faint">{detail}</p>
+    <div className={cn("border p-[3px]", accent ? "border-text" : "border-line-strong")}>
+      <div className={cn("flex items-center gap-3 border px-3.5 py-3", accent ? "border-text bg-bg" : "border-line bg-bg")}>
+        {Icon ? <Icon className="size-6 shrink-0" aria-hidden /> : <LogoMark size={28} />}
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">{title}</p>
+          <p className="font-mono text-[11px] leading-snug text-faint">{detail}</p>
+        </div>
       </div>
     </div>
   );
 }
 
 function Wire({ className }: { className?: string }) {
-  return <span aria-hidden="true" className={cn("wire mx-auto block h-8 w-0.5", className)} />;
+  return <span aria-hidden="true" className={cn("wire mx-auto block h-9 w-px", className)} />;
 }
 
+// The one paper-coloured part of the page: ink type, engraved hatching, like a printed notice.
 export function PrivacySection() {
   return (
-    <section id="privacy" className="mx-auto max-w-6xl px-4 pt-24 sm:px-6 md:pt-32">
-      <h2 className="text-4xl font-bold tracking-tight md:text-5xl">Everything stays on your PC</h2>
-      <p className="mt-4 max-w-[56ch] text-lg leading-relaxed text-muted">
-        No account, no analytics, no server of our own. Your downloads, settings and history stay in{" "}
-        <code className="font-mono text-[0.9em] text-text">%APPDATA%\Snag</code>.
-      </p>
+    <Section id="privacy" className="paper mt-28 overflow-hidden md:mt-40">
+      <Band className="mt-3" />
+      {/* Hatching and a rosette in the margin: the engraver's shading on the notice. */}
+      <div
+        aria-hidden="true"
+        className="hatch pointer-events-none absolute inset-x-0 top-12 h-56 [mask-image:linear-gradient(to_bottom,black,transparent)]"
+      />
+      <div aria-hidden="true" className="rosette pointer-events-none absolute -top-24 -right-40 size-[34rem] md:-right-24" />
 
-      <div className="mt-10 grid gap-5 lg:grid-cols-[1.15fr_1fr]">
-        {/* Styled after the last card of Snag's first-run tour. */}
-        <div className="rounded-2xl bg-panel p-5 shadow-[0_0_0_1px_var(--line)] sm:p-6">
-          <div className="flex items-center gap-4">
-            <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-accent/15">
-              <Gear className="size-6 text-accent" aria-hidden />
-            </span>
-            <div>
-              <h3 className="text-lg font-semibold">You decide what Snag may use</h3>
-              <p className="text-sm text-muted">Change any of these later in Settings.</p>
-            </div>
+      <div className="relative mx-auto max-w-6xl px-4 pt-16 pb-24 sm:px-6 md:pt-24 md:pb-32">
+        <SectionHead
+          id="privacy"
+          title={
+            <>
+              Everything stays on <em>your</em> PC.
+            </>
+          }
+          intro={
+            <>
+              No account, no analytics, no server of our own. Your downloads, settings and history stay in{" "}
+              <code className="font-mono text-[0.9em] text-text">%APPDATA%\Snag</code>.
+            </>
+          }
+        />
+
+        <div className="mt-14 grid gap-x-14 gap-y-16 md:mt-20 lg:grid-cols-[1.1fr_1fr]">
+          {/* Styled after the last card of Snag's first-run tour. */}
+          <div data-reveal>
+            <h3 className="font-display text-3xl italic">You decide what Snag may use</h3>
+            <p className="mt-2 text-muted">Change any of these later in Settings.</p>
+            <ul className="mt-6 border-t border-text">
+              {switches.map(({ icon: Icon, title, body, on }) => (
+                <li key={title} className="flex items-center gap-4 border-b border-line py-4">
+                  <Icon className="size-5 shrink-0" aria-hidden />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">{title}</p>
+                    <p className="text-sm leading-relaxed text-muted">{body}</p>
+                  </div>
+                  <Toggle on={on} />
+                  <span className="sr-only">{on ? "on by default" : "off by default"}</span>
+                </li>
+              ))}
+            </ul>
+            <ul className="mt-8 border-t border-text">
+              {facts.map(({ icon: Icon, title, body }) => (
+                <li key={title} className="flex items-start gap-4 border-b border-line py-4">
+                  <Icon className="mt-0.5 size-5 shrink-0" aria-hidden />
+                  <div>
+                    <p className="font-medium">{title}</p>
+                    <p className="text-sm leading-relaxed text-muted">{body}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
-          <ul className="mt-5 divide-y divide-line rounded-xl bg-raised/60">
-            {switches.map(({ icon: Icon, title, body, on }) => (
-              <li key={title} className="flex items-center gap-3 px-4 py-3">
-                <Icon className="size-5 shrink-0 text-accent" aria-hidden />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">{title}</p>
-                  <p className="text-xs leading-relaxed text-faint">{body}</p>
-                </div>
-                <Toggle on={on} />
-                <span className="sr-only">{on ? "on by default" : "off by default"}</span>
-              </li>
-            ))}
-          </ul>
-          <ul className="mt-3 divide-y divide-line rounded-xl bg-raised/60">
-            {facts.map(({ icon: Icon, title, body }) => (
-              <li key={title} className="flex items-start gap-3 px-4 py-3">
-                <Icon className="mt-0.5 size-5 shrink-0 text-accent" aria-hidden />
-                <div>
-                  <p className="text-sm font-medium">{title}</p>
-                  <p className="text-xs leading-relaxed text-faint">{body}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
+
+          {/* Every connection Snag makes. There is no line to a Snag server because there isn't one. */}
+          <div data-reveal>
+            <h3 className="font-display text-3xl italic">Where your data goes</h3>
+            <p className="mt-2 text-muted">The extension talks only to Snag on this computer, after you press Allow.</p>
+            <div
+              className="relative mt-8"
+              role="img"
+              aria-label="The browser extension and the sites you download from connect only to Snag on your PC at 127.0.0.1, which saves files to your own disk."
+            >
+              <div className="grid grid-cols-2 gap-3">
+                <Node icon={Browser} title="Extension" detail="in your browser" />
+                <Node icon={Globe} title="Sites" detail="you download from" />
+              </div>
+              <div className="grid grid-cols-2">
+                <Wire />
+                <Wire />
+              </div>
+              <div className="mx-auto max-w-xs">
+                <Node title="Snag" detail="127.0.0.1 · this PC" accent />
+              </div>
+              <Wire />
+              <div className="mx-auto max-w-xs">
+                <Node icon={HardDrives} title="Your disk" detail="Downloads · %APPDATA%\Snag" />
+              </div>
+            </div>
+            {/* Set like a rubber stamp on the notice. */}
+            <p className="mx-auto mt-10 w-fit -rotate-3 border-[3px] border-double border-accent-text px-4 py-1.5 font-mono text-sm tracking-[0.18em] text-accent-text uppercase">
+              Snag servers: none
+            </p>
+          </div>
         </div>
 
-        {/* Every connection Snag makes. There is no line to a Snag server because there isn't one. */}
-        <div className="flex flex-col justify-center rounded-2xl bg-panel p-5 shadow-[0_0_0_1px_var(--line)] sm:p-6">
-          <p className="text-sm font-semibold">Where your data goes</p>
-          <p className="mt-1 text-sm text-faint">The extension talks only to Snag on this computer, after you press Allow.</p>
-          <div
-            className="mt-6"
-            role="img"
-            aria-label="The browser extension and the sites you download from connect only to Snag on your PC at 127.0.0.1, which saves files to your own disk."
-          >
-            <div className="grid grid-cols-2 gap-3">
-              <Node icon={Browser} title="Extension" detail="in your browser" />
-              <Node icon={Globe} title="Sites" detail="you download from" />
-            </div>
-            <div className="grid grid-cols-2">
-              <Wire />
-              <Wire />
-            </div>
-            <div className="mx-auto max-w-xs">
-              <Node title="Snag" detail="127.0.0.1 · this PC" accent />
-            </div>
-            <Wire />
-            <div className="mx-auto max-w-xs">
-              <Node icon={HardDrives} title="Your disk" detail="Downloads · %APPDATA%\Snag" />
-            </div>
+        <div className="mt-20 grid items-center gap-x-14 gap-y-8 md:grid-cols-[minmax(0,26rem)_1fr]" data-reveal>
+          <Plate fig={5} caption="the first-run tour’s last card.">
+            <Shot
+              name="permissions"
+              widths={[580]}
+              height={656}
+              sizes="(min-width: 768px) 416px, calc(100vw - 44px)"
+              alt="Snag’s first-run tour: switches for copied links, notifications and phone sharing, and what Snag does with cookies, the internet and the safety check"
+            />
+          </Plate>
+          <div>
+            <p className="font-display text-[clamp(2rem,6vw,3.25rem)] leading-[1.05] tracking-tight italic">
+              The real thing: the first time you open Snag, it asks.
+            </p>
+            <Link
+              href="/privacy/"
+              prefetch={false}
+              className="mt-8 inline-flex items-center gap-2 border-b border-text pb-1 font-semibold hover:border-accent-text hover:text-accent-text"
+            >
+              Read the privacy policy →
+            </Link>
           </div>
-          <p className="mt-6 text-center font-mono text-xs text-faint">Snag servers: none</p>
         </div>
       </div>
-
-      <figure className="mt-5 overflow-hidden rounded-2xl bg-panel shadow-[0_0_0_1px_var(--line)]">
-        <picture>
-          <source
-            type="image/webp"
-            srcSet="/images/permissions-760.webp 760w, /images/permissions-1382.webp 1382w"
-            sizes="(min-width: 1152px) 1104px, calc(100vw - 32px)"
-          />
-          <img
-            src="/images/permissions-1382.webp"
-            alt="Snag's first-run tour: switches for copied links, notifications and phone sharing, and what Snag does with cookies, the internet and the safety check"
-            width={1382}
-            height={864}
-            loading="lazy"
-            decoding="async"
-            className="block h-auto w-full"
-          />
-        </picture>
-        <figcaption className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 text-sm text-muted">
-          The real thing: the first time you open Snag, it asks.
-          <Link href="/privacy/" className="font-semibold text-accent underline decoration-accent/40 underline-offset-4 hover:decoration-accent">
-            Read the privacy policy
-          </Link>
-        </figcaption>
-      </figure>
-    </section>
+      <Band className="mb-3" />
+    </Section>
   );
 }

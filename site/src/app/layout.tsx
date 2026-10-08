@@ -1,12 +1,21 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 
 import { DownloadBar } from "@/components/download-bar";
+import { Reveal } from "@/components/reveal";
 import { SiteFooter } from "@/components/site-footer";
 import { DOWNLOAD_URL, PITCH, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"], display: "swap" });
+// The catalogue serif: the italic words in headlines, the numerals, and the captions.
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+  axes: ["opsz"],
+  display: "swap",
+});
 const jetbrains = JetBrains_Mono({
   variable: "--font-jetbrains",
   subsets: ["latin"],
@@ -53,24 +62,25 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1a1816",
+  themeColor: "#0b0b0c",
   colorScheme: "dark",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${inter.variable} ${jetbrains.variable} antialiased`}>
+    <html lang="en" className={`${inter.variable} ${fraunces.variable} ${jetbrains.variable} antialiased`}>
       {/* Browser extensions often add attributes to <body> before React loads; that is not a real mismatch. */}
       <body className="min-h-dvh" suppressHydrationWarning>
         <a
           href="#main"
-          className="sr-only z-50 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-on-accent focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
+          className="sr-only z-50 bg-accent px-4 py-2 text-sm font-semibold text-on-accent focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
         >
           Skip to content
         </a>
         <DownloadBar downloadUrl={DOWNLOAD_URL} />
         <main id="main">{children}</main>
         <SiteFooter />
+        <Reveal />
       </body>
     </html>
   );
