@@ -1100,7 +1100,8 @@ async fn a_web_page_is_told_apart_from_a_file() {
     assert!(!m.is_web_page("http://127.0.0.1:1/unreachable".into()).await, "unknown: let the download say what's wrong");
 }
 
-/// The real ffmpeg fetch (35 MB from gyan.dev; Linux: 150 MB from BtbN's GitHub builds): checksum, unpack, found afterwards.
+/// The real ffmpeg fetch (35 MB from gyan.dev; Linux: 150 MB from BtbN's GitHub builds; macOS: two zips
+/// from Martin Riedl's builds, unless Homebrew has one): checksum, unpack, found afterwards.
 /// Run with: cargo test -p rdm-core --test manager real_ffmpeg_fetch -- --ignored --nocapture
 #[tokio::test]
 #[ignore]
