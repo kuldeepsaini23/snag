@@ -1199,3 +1199,14 @@ async fn a_download_refused_for_stale_cookies_is_retried_without_them() {
     let item = wait_item(&mut rx, |i| i.id == id && matches!(i.status, Status::Done | Status::Failed(_))).await;
     assert_eq!(item.status, Status::Done, "fetched without the stale cookies");
 }
+
+/// Real network: the published latest release as Snag sees it. Run with --ignored.
+#[tokio::test]
+#[ignore]
+async fn real_latest_release_from_github() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), |_| {}).await;
+    let release = m.latest_release().await;
+    println!("latest release: {release:?}");
+    assert!(release.is_some(), "GitHub's latest release should be readable");
+}
