@@ -34,6 +34,7 @@ Run it again whenever a screenshot or the logo changes, and commit the results. 
 - `src/app/page.tsx`: the landing page, one component per part in `src/components/`
 - `src/lib/parts.ts`: the eight parts in order, with the names the top bar shows
 - `src/components/download-bar.tsx`: the sticky bar that fills part by part and lists the contents
+- `src/components/download-menu.tsx`: the split Download button (Windows installer, or the menu of platforms) used in the bar, the hero and the last card
 - `src/components/catalogue.tsx`: the shared pieces (part headings, numbered entries, plates)
 - `src/components/features.tsx`: the catalogue entries No. 01–12 (edit the entry lists)
 - `src/app/privacy/page.tsx`: the privacy policy (update the effective date when it changes)
