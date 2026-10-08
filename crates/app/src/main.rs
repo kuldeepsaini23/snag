@@ -9,6 +9,8 @@ mod dropped;
 mod format;
 mod hsv;
 mod local_thumb;
+#[cfg(target_os = "macos")]
+mod macos;
 mod motion;
 mod queues;
 mod renderer;
