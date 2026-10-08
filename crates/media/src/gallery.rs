@@ -9,8 +9,12 @@ use tokio_util::sync::CancellationToken;
 /// gallery-dl's official standalone builds (its main repo no longer attaches the exe).
 #[cfg(windows)]
 pub const GALLERY_DL_URL: &str = "https://github.com/gdl-org/builds/releases/latest/download/gallery-dl_windows.exe";
-#[cfg(not(windows))]
+#[cfg(all(unix, not(target_os = "macos")))]
 pub const GALLERY_DL_URL: &str = "https://github.com/gdl-org/builds/releases/latest/download/gallery-dl_linux";
+/// macOS: Apple silicon only (there's no Intel build; an Intel Mac uses one on the PATH, e.g.
+/// Homebrew's).
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+pub const GALLERY_DL_URL: &str = "https://github.com/gdl-org/builds/releases/latest/download/gallery-dl_macos";
 
 /// Sites that are mostly images: their links go to gallery-dl rather than yt-dlp or the file engine.
 const HOSTS: [&str; 13] = [
