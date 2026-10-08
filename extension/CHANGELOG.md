@@ -2,6 +2,10 @@
 
 Newest first. The desktop app has its own list in the repository's CHANGELOG.md.
 
+## 1.0.3
+
+- Snag's new copper colour: the icon, the Download button on pages and the popup.
+
 ## 1.0.2
 
 - A new icon: an engraved hook catching a download arrow, matching the Snag app.
