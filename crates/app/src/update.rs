@@ -24,6 +24,8 @@ pub struct App {
     /// Phone sharing while it's switched on (the server, its link and QR code), and a start that failed.
     pub phone: crate::sharing::PhoneSharing<Phone>,
     pub motion: Motion,
+    /// Windows' "Animation effects" are off (read at start).
+    pub system_reduced: bool,
     /// The instant the view draws (animations are read at it).
     pub now: Instant,
     /// The item the inspector shows, kept while it slides closed.
@@ -197,6 +199,7 @@ pub enum Message {
     DraftAsk(bool),
     DraftAccent(String),
     DraftTheme(ThemeMode),
+    DraftAnimations(rdm_core::Animations),
     DraftTranslucent(bool),
     DraftGpu(bool),
     /// Windows' app mode now (true = light), while the theme follows it.
@@ -277,7 +280,8 @@ pub fn boot(manager: Manager, bridge_status: String, data_dir: PathBuf, runtime:
     let model = Model { bridge_status, system_light: crate::appearance::system_light(), ..Model::default() };
     let tray = crate::tray::create();
     crate::notify::register(&data_dir);
-    let motion = Motion::new(crate::view::motion_targets(&model), crate::motion::system_reduced_motion());
+    let system_reduced = crate::motion::system_reduced_motion();
+    let motion = Motion::new(crate::view::motion_targets(&model), system_reduced);
     let app = App {
         model,
         manager,
@@ -286,6 +290,7 @@ pub fn boot(manager: Manager, bridge_status: String, data_dir: PathBuf, runtime:
         runtime,
         phone: Default::default(),
         motion,
+        system_reduced,
         now: Instant::now(),
         inspector_item: None,
         bug_text: text_editor::Content::new(),
@@ -362,6 +367,11 @@ fn save_settings(app: &App, settings: rdm_core::Settings) -> Task<Message> {
 /// Points the animations at what the model shows now; the view reads them at `app.now`.
 fn sync_motion(app: &mut App, animate: bool) {
     let now = Instant::now();
+    // Settings → Appearance → Animations (or Windows' choice) changed: start over at the new pace.
+    let reduced = crate::motion::reduced_for(app.model.settings.animations, app.system_reduced);
+    if app.motion.reduced != reduced {
+        app.motion = Motion::new(crate::view::motion_targets(&app.model), reduced);
+    }
     app.motion.sync(crate::view::motion_targets(&app.model), now);
     app.motion.sync_rows(&crate::view::row_targets(&app.model), now, animate);
     if let Some(item) = app.model.inspected() {
@@ -898,6 +908,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::DraftAsk(v) => model.draft.ask_quality = v,
         Message::DraftAccent(v) => model.type_accent(v),
         Message::DraftTheme(mode) => model.draft.theme = mode,
+        Message::DraftAnimations(a) => model.draft.animations = a,
         Message::DraftTranslucent(on) => model.draft.translucent = on,
         Message::DraftGpu(on) => model.draft.use_gpu = on,
         Message::SystemTheme(light) => model.system_light = light,

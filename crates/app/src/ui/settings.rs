@@ -283,6 +283,11 @@ fn appearance(m: &Model, c: Colors) -> Element<'_, Message> {
         let on = m.draft.theme == mode;
         r.push(button(text(label).size(12).font(if on { style::SEMIBOLD } else { style::INTER })).padding([4, 10]).style(style::choice(c, on, 5.0)).on_press(Message::DraftTheme(mode)))
     });
+    let paces = [(rdm_core::Animations::On, "On"), (rdm_core::Animations::Off, "Off"), (rdm_core::Animations::System, "Follow Windows")];
+    let pace = paces.iter().fold(row![].spacing(2), |r, &(a, label)| {
+        let on = m.draft.animations == a;
+        r.push(button(text(label).size(12).font(if on { style::SEMIBOLD } else { style::INTER })).padding([4, 10]).style(style::choice(c, on, 5.0)).on_press(Message::DraftAnimations(a)))
+    });
     let mica = if m.draft.translucent && !m.backdrop && m.settings.translucent {
         "Mica isn't available here, so the window stays solid"
     } else {
@@ -294,6 +299,12 @@ fn appearance(m: &Model, c: Colors) -> Element<'_, Message> {
             vec![
                 line("Theme", "Follow Windows switches with your app mode in Windows settings", container(segments).padding(3).style(style::segmented(c)).into(), c),
                 line("Translucent window", mica, switch(m.draft.translucent, Message::DraftTranslucent, c), c),
+                line(
+                    "Animations",
+                    "Sliding panels, fading rows and growing charts. Off makes everything jump into place",
+                    container(pace).padding(3).style(style::segmented(c)).into(),
+                    c,
+                ),
                 line(
                     "Draw with the graphics card",
                     if m.draft.use_gpu != m.settings.use_gpu {

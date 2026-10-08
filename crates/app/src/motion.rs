@@ -251,6 +251,15 @@ pub fn system_reduced_motion() -> bool {
     ok != 0 && on == 0
 }
 
+/// Whether the window jumps instead of animating: Snag's own setting, else Windows' choice.
+pub fn reduced_for(setting: rdm_core::Animations, system_reduced: bool) -> bool {
+    match setting {
+        rdm_core::Animations::System => system_reduced,
+        rdm_core::Animations::On => false,
+        rdm_core::Animations::Off => true,
+    }
+}
+
 #[cfg(not(windows))]
 pub fn system_reduced_motion() -> bool {
     false
@@ -316,6 +325,15 @@ mod tests {
         let samples: Vec<f32> = (0..=12).map(|i| m.open(&m.sidebar, t0 + Duration::from_millis(i * 20))).collect();
         assert!(samples.windows(2).all(|w| w[1] <= w[0] + f32::EPSILON), "closing only ever closes: {samples:?}");
         assert_eq!(*samples.last().unwrap(), 0.0);
+    }
+
+    #[test]
+    fn the_animations_setting_overrides_windows() {
+        use rdm_core::Animations;
+        assert!(reduced_for(Animations::System, true), "Windows' animation effects off: none");
+        assert!(!reduced_for(Animations::System, false));
+        assert!(!reduced_for(Animations::On, true), "switched on in Snag even when Windows has them off");
+        assert!(reduced_for(Animations::Off, false), "switched off in Snag");
     }
 
     #[test]

@@ -167,6 +167,7 @@ pub struct Draft {
     /// After-download rules (saved with the rest when Settings closes).
     pub rules: Vec<rdm_core::rules::Rule>,
     pub theme: ThemeMode,
+    pub animations: rdm_core::Animations,
     pub translucent: bool,
     pub use_gpu: bool,
 }
@@ -194,6 +195,7 @@ impl Draft {
             rules: s.rules.clone(),
             accent: s.accent.clone(),
             theme: s.theme,
+            animations: s.animations,
             translucent: s.translucent,
             use_gpu: s.use_gpu,
         }
@@ -234,6 +236,7 @@ impl Draft {
             rules: self.rules.clone(),
             accent: accent.to_string(),
             theme: self.theme,
+            animations: self.animations,
             translucent: self.translucent,
             use_gpu: self.use_gpu,
             ..base.clone()

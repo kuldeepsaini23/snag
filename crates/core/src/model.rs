@@ -148,6 +148,8 @@ pub struct Settings {
     pub rules: Vec<crate::rules::Rule>,
     /// Dark, light, or whatever Windows uses for apps.
     pub theme: ThemeMode,
+    /// Panels slide, rows fade and charts grow, or everything jumps into place.
+    pub animations: Animations,
     /// Mica (acrylic on Windows 10) behind the window, with slightly see-through panels.
     pub translucent: bool,
     /// The first-run tour was finished or skipped (or this install predates it).
@@ -158,6 +160,17 @@ pub struct Settings {
     /// The phone page's own code (in its link and QR code): the extension's code never travels
     /// over the home network. Settings from before it existed get one when loaded.
     pub phone_token: String,
+}
+
+/// Settings → Appearance → Animations.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Animations {
+    /// Follows Windows' "Animation effects".
+    #[default]
+    System,
+    On,
+    Off,
 }
 
 /// The window's colours: Settings → Appearance → Theme.
@@ -197,6 +210,7 @@ impl Default for Settings {
             virustotal_key: String::new(),
             rules: Vec::new(),
             theme: ThemeMode::Dark,
+            animations: Animations::System,
             translucent: false,
             tour_done: false,
             use_gpu: false,
@@ -325,6 +339,9 @@ mod tests {
         assert!(!old.tour_done);
         assert!(old.check_updates, "updates are looked for unless switched off");
         assert_eq!(Settings::default().accent, "#d9682b", "Snag's copper");
+        assert_eq!(old.animations, Animations::System, "animations follow Windows unless chosen");
+        let off = Settings { animations: Animations::Off, ..Settings::default() };
+        assert!(serde_json::to_string(&off).unwrap().contains(r#""animations":"off""#));
         assert_eq!(old.accent, "#0a84ff");
         let s = Settings { theme: ThemeMode::System, translucent: true, tour_done: true, ..Settings::default() };
         let json = serde_json::to_string(&s).unwrap();
