@@ -2,6 +2,12 @@
 
 Newest first. Snag shows the newest entry once after an update; the Help menu (?) has the full list.
 
+## 1.1.2 — 2026-10-10
+
+### Fixed
+- Clicking a Snag notification (download finished or failed, update ready) now opens Snag, even when it's hidden in the tray. (Windows and Linux.)
+- The copied-link card now shows what you copied: the file's name, or the page's address, and what kind of download it is. Hover it to see the whole link.
+
 ## 1.1.1 — 2026-10-08
 
 ### Fixed
