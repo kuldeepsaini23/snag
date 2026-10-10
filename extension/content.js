@@ -300,11 +300,13 @@
     const page = prefetch.next(hidden ? "" : location.href, Date.now());
     if (page) askQuick({ type: "prefetch", url: page });
   }
-  chrome.runtime.onMessage.addListener((msg) => {
+  chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     if (msg.type === "media-count") {
       mediaSeen = msg.n;
       sync();
     }
+    // A download of this page's stream: its subtitle tracks go to Snag with it.
+    if (msg.type === "track-list") reply(trackList(document.querySelectorAll("video track, audio track")));
   });
   askQuick({ type: "media-list" }).then((r) => {
     mediaSeen = (r.items && r.items.length) || 0;

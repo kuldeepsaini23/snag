@@ -2,6 +2,10 @@
 
 Newest first. The desktop app has its own list in the repository's CHANGELOG.md.
 
+## 1.1.0
+
+- Subtitles come with sniffed videos: when a page's player loads its captions as separate files (.vtt, .srt, .ass), and when the page lists them as subtitle tracks, the extension sends them to Snag along with the stream, from the Download button on the page and from the popup. Snag saves them next to the video under the video's name (for example `Movie.en.vtt`), so VLC, mpv and other players show them; with Subtitles switched on in Snag's settings they also go inside the video. Needs a Snag version that supports it; older ones download the video as before.
+
 ## 1.0.3
 
 - Snag's new copper colour: the icon, the Download button on pages and the popup.

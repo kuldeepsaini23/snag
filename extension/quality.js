@@ -180,4 +180,19 @@ function tabOf(msg, sender) {
   return sender && sender.tab ? sender.tab.id : msg.tabId;
 }
 
-if (typeof module !== "undefined") module.exports = { sizeLabel, qualityRows, sniffedRows, ProbeCache, PrefetchPlan, pageKey, safeAccent, makeAsk, contextTarget, fullSizeImage, tabOf, DEFAULT_ACCENT };
+/**
+ * The page's subtitle tracks (`<track>` elements of its videos) as `{url, lang, label}`: web
+ * links only, captions and subtitles only (not chapters or metadata).
+ */
+function trackList(elements) {
+  const out = [];
+  for (const t of elements || []) {
+    const kind = (t.kind || "subtitles").toLowerCase();
+    if (kind !== "subtitles" && kind !== "captions") continue;
+    if (!/^https?:\/\//i.test(t.src || "")) continue;
+    out.push({ url: t.src, lang: t.srclang || "", label: t.label || "" });
+  }
+  return out;
+}
+
+if (typeof module !== "undefined") module.exports = { sizeLabel, qualityRows, sniffedRows, ProbeCache, PrefetchPlan, pageKey, safeAccent, makeAsk, contextTarget, fullSizeImage, tabOf, trackList, DEFAULT_ACCENT };

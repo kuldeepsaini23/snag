@@ -49,7 +49,45 @@ async function mediaOf(tabId) {
 
 function forgetMedia(tabId) {
   tabMedia.delete(tabId);
-  chrome.storage.session.remove(`media:${tabId}`).catch(() => {});
+  tabSubs.delete(tabId);
+  chrome.storage.session.remove([`media:${tabId}`, `subs:${tabId}`]).catch(() => {});
+}
+
+/** tabId -> SubtitleList of the subtitle files the page's player fetched (kept like `tabMedia`). */
+const tabSubs = new Map();
+
+async function subsOf(tabId) {
+  let list = tabSubs.get(tabId);
+  if (!list) {
+    list = new SubtitleList(30);
+    try {
+      const saved = (await chrome.storage.session.get(`subs:${tabId}`))[`subs:${tabId}`] || [];
+      for (const sub of saved) list.add(sub);
+    } catch (_) {
+      // No session storage: memory only.
+    }
+    tabSubs.set(tabId, list);
+  }
+  return list;
+}
+
+/** The page's own subtitle tracks (`<track>`), from its content script; none if it can't say. */
+function pageTracks(tabId) {
+  const ask = chrome.tabs.sendMessage(tabId, { type: "track-list" }).catch(() => []);
+  const late = new Promise((resolve) => setTimeout(() => resolve([]), 1500));
+  return Promise.race([ask, late]).then((t) => (Array.isArray(t) ? t : []));
+}
+
+/**
+ * The subtitles to send with a download from tab `tabId`: only when `url` is a stream (or file)
+ * that tab's player played; then whatever subtitle files it loaded and the page's tracks.
+ */
+async function subtitlesFor(tabId, url) {
+  if (tabId === undefined || !url) return [];
+  const media = await mediaOf(tabId);
+  const key = mediaKey(url);
+  if (!media.items.some((i) => mediaKey(i.url) === key)) return [];
+  return subtitlesToSend((await subsOf(tabId)).items, await pageTracks(tabId));
 }
 
 function header(headers, name) {
@@ -66,6 +104,13 @@ function showCount(tabId) {
 chrome.webRequest.onResponseStarted.addListener(
   (d) => {
     if (d.tabId < 0) return;
+    const sub = classifySubtitle({ url: d.url, contentType: header(d.responseHeaders, "content-type"), status: d.statusCode });
+    if (sub) {
+      subsOf(d.tabId).then((list) => {
+        if (list.add(sub)) chrome.storage.session.set({ [`subs:${d.tabId}`]: list.items }).catch(() => {});
+      });
+      return;
+    }
     const size = Number(header(d.responseHeaders, "content-length")) || 0;
     const found = classifyMedia({
       url: d.url,
@@ -98,13 +143,24 @@ chrome.tabs.onUpdated.addListener((tabId, change) => {
 });
 chrome.tabs.onRemoved.addListener((tabId) => forgetMedia(tabId));
 
-/** `mayPair`: the user just clicked, so Snag may ask "Allow?" first (see `pairedApp`). */
-async function sendToApp(url, kind, referrer, fallback, { mayPair = false } = {}) {
+/**
+ * `mayPair`: the user just clicked, so Snag may ask "Allow?" first (see `pairedApp`).
+ * `subtitles`: the subtitle files the page's player loaded (a newer Snag saves them; older ones
+ * ignore them).
+ */
+async function sendToApp(url, kind, referrer, fallback, { mayPair = false, subtitles } = {}) {
   const { app, token } = await pairedApp({ mayPair });
   const resp = await fetch(`http://127.0.0.1:${app.port}/add`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-RDM-Token": token },
-    body: JSON.stringify({ url, kind, referrer: referrer || undefined, fallback: fallback || undefined, cookies: await cookiesFor(url) }),
+    body: JSON.stringify({
+      url,
+      kind,
+      referrer: referrer || undefined,
+      fallback: fallback || undefined,
+      subtitles: subtitles && subtitles.length ? subtitles : undefined,
+      cookies: await cookiesFor(url),
+    }),
   });
   const body = await resp.json().catch(() => ({}));
   // `permanent`: Snag will never take this link, so a waiting one is dropped (see drainLater).
@@ -145,7 +201,7 @@ async function probeInApp(url, { click = false } = {}) {
 // links inside go stale.
 const probes = new ProbeCache((url, opts) => probeInApp(url, opts), () => Date.now(), 10 * 60 * 1000);
 
-/** The quality picked in the menu: Snag adds it straight away. */
+/** The quality picked in the menu (or a stream's "NOW" row): Snag adds it straight away. */
 async function addMediaInApp(choice) {
   const { app, token } = await pairedApp({ mayPair: true });
   const resp = await fetch(`http://127.0.0.1:${app.port}/add-media`, {
@@ -179,13 +235,14 @@ async function showLater() {
 }
 
 /** A link the user sent: now, or kept for when Snag runs again. Returns true if it was kept. */
-async function sendOrSave(url, kind, referrer, fallback) {
+async function sendOrSave(url, kind, referrer, fallback, subtitles) {
   try {
-    await sendToApp(url, kind, referrer, fallback, { mayPair: true });
+    await sendToApp(url, kind, referrer, fallback, { mayPair: true, subtitles });
     return false;
   } catch (e) {
     if (e.message !== "Snag isn't running") throw e;
-    const list = addLater(await savedLinks(), { url, kind, referrer, fallback }, Date.now());
+    const entry = subtitles && subtitles.length ? { url, kind, referrer, fallback, subtitles } : { url, kind, referrer, fallback };
+    const list = addLater(await savedLinks(), entry, Date.now());
     await chrome.storage.local.set({ later: list });
     showLater();
     return true;
@@ -202,7 +259,7 @@ function sendSaved() {
   draining ??= (async () => {
     const list = await savedLinks();
     if (!list.length) return;
-    const left = await drainLater(list, (e) => sendToApp(e.url, e.kind, e.referrer, e.fallback, { mayPair: false }));
+    const left = await drainLater(list, (e) => sendToApp(e.url, e.kind, e.referrer, e.fallback, { mayPair: false, subtitles: e.subtitles }));
     // Links saved while this ran are kept too.
     const now = await savedLinks();
     const sent = new Set(list.slice(0, list.length - left.length).map((e) => e.url));
@@ -289,7 +346,12 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     const tabId = tabOf(msg, sender);
     const best = msg.withFallback && tabId !== undefined ? mediaOf(tabId).then((l) => bestMedia(l.items)) : Promise.resolve(null);
     best
-      .then((b) => sendOrSave(msg.url, msg.kind, msg.referrer, b && b.url !== msg.url ? b.url : undefined))
+      .then(async (b) => {
+        const fallback = b && b.url !== msg.url ? b.url : undefined;
+        // A stream the page played (sent itself, or as the fallback): its subtitles go with it.
+        const subtitles = await subtitlesFor(tabId, fallback || msg.url);
+        return sendOrSave(msg.url, msg.kind, msg.referrer, fallback, subtitles);
+      })
       .then((later) => {
         if (!later) flash(true);
         reply({ ok: true, later });
@@ -312,7 +374,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     return false;
   }
   if (msg.type === "add-media") {
-    addMediaInApp(msg.choice)
+    subtitlesFor(tabOf(msg, sender), msg.choice && msg.choice.url)
+      .catch(() => [])
+      .then((subtitles) => addMediaInApp(subtitles.length ? { ...msg.choice, subtitles } : msg.choice))
       .then(() => reply({ ok: true }))
       .catch((e) => reply({ ok: false, error: e.message }));
     return true;
