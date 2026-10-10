@@ -187,8 +187,8 @@ fn send(message: Message) {
     }
 }
 
-/// Shows the window, as the tray's Open Snag does (macOS: a click on the Dock icon).
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+/// Shows the window, as the tray's Open Snag does (a click on a notification; macOS: on the Dock
+/// icon). Any thread.
 pub fn open_window() {
     send(Message::TrayOpen);
 }
@@ -241,8 +241,20 @@ fn listen(tx: tokio::sync::mpsc::UnboundedSender<Message>) {
     }));
 }
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn open_window_asks_the_app_to_show_its_window() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        *SHOW.lock().unwrap() = Some(tx);
+        open_window();
+        *SHOW.lock().unwrap() = None;
+        assert!(matches!(rx.try_recv(), Ok(Message::TrayOpen)));
+    }
+
+    #[cfg(target_os = "linux")]
     #[test]
     fn pixmaps_are_argb_at_32_and_64_px() {
         let icons = super::pixmaps(&[1, 2, 3, 4].repeat(32 * 32), &[5, 6, 7, 8].repeat(64 * 64));

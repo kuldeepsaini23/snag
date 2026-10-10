@@ -383,6 +383,44 @@ pub fn link_tag(url: &str) -> Option<LinkTag> {
     }
 }
 
+/// What a copied link is, for the clipboard card: the file's name for a file link
+/// ("ubuntu-24.04-desktop-amd64.iso"), a magnet's name, otherwise the host and path
+/// ("youtube.com/watch?v=dQw4w9WgXcQ"); at most `max` characters, cut in the middle. With its kind:
+/// "Video", "Archive", "Torrent"… ("Link" when there's nothing better to say).
+pub fn clipboard_label(url: &str, max: usize) -> (String, &'static str) {
+    use percent_encoding::percent_decode_str;
+    let url = url.trim();
+    let tag = link_tag(url);
+    let decode = |s: &str| percent_decode_str(s).decode_utf8_lossy().into_owned();
+    if let Some(query) = url.strip_prefix("magnet:?") {
+        let name = query.split('&').find_map(|p| p.strip_prefix("dn=")).map(|n| decode(&n.replace('+', " ")));
+        return (ellipsize_middle(name.as_deref().filter(|n| !n.trim().is_empty()).unwrap_or("Magnet link"), max), "Torrent");
+    }
+    let rest = url.split_once("://").map_or(url, |(_, r)| r).split('#').next().unwrap_or("");
+    let path = rest.split_once('/').map_or("", |(_, p)| p);
+    let last = path.split('?').next().unwrap_or("").rsplit('/').next().unwrap_or("");
+    let has_ext = last.rsplit_once('.').is_some_and(|(stem, e)| !stem.is_empty() && (1..=9).contains(&e.len()) && e.chars().all(|c| c.is_ascii_alphanumeric()));
+    let file = matches!(tag, Some(LinkTag::File | LinkTag::Torrent)) && has_ext;
+    let kind = match tag {
+        Some(LinkTag::Video) => "Video",
+        Some(LinkTag::Playlist) => "Playlist",
+        Some(LinkTag::Images) => "Images",
+        Some(LinkTag::Torrent) => "Torrent",
+        Some(LinkTag::File) if file => match Category::from_name(last) {
+            Category::Video => "Video",
+            Category::Music => "Audio",
+            Category::Archive => "Archive",
+            Category::Document => "Document",
+            Category::Program => "Program",
+            Category::Image => "Image",
+            Category::Other => "File",
+        },
+        _ => "Link",
+    };
+    let label = if file { decode(last) } else { format!("{}/{}", host(url), decode(path)).trim_end_matches('/').to_string() };
+    (ellipsize_middle(&label, max), kind)
+}
+
 /// "1080p · MP4", "Audio · MP3", or the file extension ("ZIP"); empty if unknown.
 pub fn kind_label(item: &Item) -> String {
     match &item.kind {
@@ -555,6 +593,17 @@ pub fn ellipsize(s: &str, max: usize) -> String {
     let mut cut: String = s.chars().take(max.saturating_sub(1)).collect();
     cut.push('…');
     cut
+}
+
+/// At most `max` characters, keeping both ends ("ubuntu-24.…-amd64.iso"): for names and links.
+pub fn ellipsize_middle(s: &str, max: usize) -> String {
+    let n = s.chars().count();
+    if n <= max {
+        return s.to_string();
+    }
+    let keep = max.saturating_sub(1);
+    let (head, tail) = (keep.div_ceil(2), keep / 2);
+    s.chars().take(head).chain(std::iter::once('…')).chain(s.chars().skip(n - tail)).collect()
 }
 
 /// At most `max` characters, keeping the end ("…ads\\RDM\\Videos"): for paths.
@@ -927,6 +976,43 @@ mod tests {
         let cut = ellipsize(&long, 40);
         assert_eq!(cut.chars().count(), 40);
         assert!(cut.ends_with('…'));
+    }
+
+    #[test]
+    fn ellipsize_middle_keeps_both_ends() {
+        assert_eq!(ellipsize_middle("short.iso", 20), "short.iso");
+        let cut = ellipsize_middle("ubuntu-24.04.1-desktop-amd64.iso", 21);
+        assert_eq!(cut.chars().count(), 21);
+        assert_eq!(cut, "ubuntu-24.…-amd64.iso");
+        assert_eq!(ellipsize_middle(&"😳".repeat(50), 9).chars().count(), 9, "on char boundaries");
+    }
+
+    #[test]
+    fn clipboard_label_says_what_was_copied() {
+        let label = |url| clipboard_label(url, 40);
+        assert_eq!(
+            label("https://releases.ubuntu.com/24.04/ubuntu-24.04-desktop-amd64.iso"),
+            ("ubuntu-24.04-desktop-amd64.iso".into(), "Archive"),
+            "a file link: its name"
+        );
+        assert_eq!(label("https://cdn.example.com/files/My%20Report%20(final).pdf?token=abc"), ("My Report (final).pdf".into(), "Document"), "decoded, no query");
+        assert_eq!(label("https://cdn.example.com/files/setup.exe"), ("setup.exe".into(), "Program"));
+        assert_eq!(label("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), ("youtube.com/watch?v=dQw4w9WgXcQ".into(), "Video"), "a page: host and path");
+        assert_eq!(label("https://www.youtube.com/playlist?list=PL1"), ("youtube.com/playlist?list=PL1".into(), "Playlist"));
+        assert_eq!(label("https://github.com/rust-lang/rustlings/"), ("github.com/rust-lang/rustlings".into(), "Link"));
+        assert_eq!(label("https://x.com/someone/status/123"), ("x.com/someone/status/123".into(), "Video"));
+        assert_eq!(
+            label("magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=ubuntu-24.04-desktop-amd64.iso&tr=udp%3A%2F%2Ft"),
+            ("ubuntu-24.04-desktop-amd64.iso".into(), "Torrent"),
+            "a magnet: its name"
+        );
+        assert_eq!(label("magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Big+Buck+Bunny"), ("Big Buck Bunny".into(), "Torrent"));
+        assert_eq!(label("magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567"), ("Magnet link".into(), "Torrent"));
+        assert_eq!(label("https://site.org/ubuntu.iso.torrent"), ("ubuntu.iso.torrent".into(), "Torrent"));
+        let (long, kind) = label("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42s&feature=share&si=AbCdEfGhIjKlMnOp");
+        assert_eq!(kind, "Video");
+        assert_eq!(long.chars().count(), 40, "cut to fit");
+        assert!(long.starts_with("youtube.com/watch?v=") && long.ends_with("MnOp") && long.contains('…'), "{long}");
     }
 
     #[test]

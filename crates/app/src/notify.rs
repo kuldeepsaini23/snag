@@ -1,8 +1,14 @@
 //! Notifications for finished and failed downloads: Windows toasts, desktop notifications over
-//! D-Bus on Linux, the Notification Center on macOS.
+//! D-Bus on Linux, the Notification Center on macOS. A click on one brings Snag's window to the
+//! front, from the tray too.
 
 use crate::state::Note;
 use std::path::Path;
+
+/// How long a shown notification's worker thread waits for a click on it, at most. (A click
+/// later, from the Action Center or the notification list, finds nobody listening.)
+#[cfg(not(target_os = "macos"))]
+const CLICK_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// The identity Windows shows toasts under (registered per user at start-up).
 #[cfg(windows)]
@@ -21,10 +27,39 @@ pub fn register(data_dir: &Path) {
     }
 }
 
-/// Shows one toast (blocking: call off the UI thread).
+/// Shows one toast and waits for a click on it, which opens the window (blocking, up to
+/// `CLICK_WAIT`: call off the UI thread, one thread per toast).
 #[cfg(windows)]
 pub fn show(note: &Note) {
-    let _ = tauri_winrt_notification::Toast::new(APP_ID).title(&note.title).text1(&note.body).show();
+    show_then(note, crate::tray::open_window, CLICK_WAIT);
+}
+
+/// Shows a toast; `clicked` runs if it's clicked within `wait`. Windows calls the handlers on a
+/// thread of its own; this one keeps them (in `toast`) while it waits. Ends early on a click or
+/// when the user closes the toast; one that times out into the Action Center keeps its handlers
+/// until `wait` is up.
+#[cfg(windows)]
+fn show_then(note: &Note, clicked: impl Fn() + Send + 'static, wait: std::time::Duration) {
+    use tauri_winrt_notification::{Toast, ToastDismissalReason};
+    let (done, ended) = std::sync::mpsc::channel();
+    let closed = done.clone();
+    let toast = Toast::new(APP_ID)
+        .title(&note.title)
+        .text1(&note.body)
+        .on_activated(move |_| {
+            clicked();
+            let _ = done.send(());
+            Ok(())
+        })
+        .on_dismissed(move |reason| {
+            if reason != Some(ToastDismissalReason::TimedOut) {
+                let _ = closed.send(());
+            }
+            Ok(())
+        });
+    if toast.show().is_ok() {
+        let _ = ended.recv_timeout(wait);
+    }
 }
 
 /// Linux: the icon notifications show, as a PNG in the data folder (an installed `snag` icon
@@ -48,23 +83,41 @@ pub fn register(_data_dir: &Path) {
     let _ = notify_rust::set_application(crate::platform::BUNDLE_ID);
 }
 
-/// macOS: one Notification Center notification (blocking: call off the UI thread).
+/// macOS: one Notification Center notification (blocking: call off the UI thread). A click on it
+/// activates Snag.app (the notifications go out under its bundle identifier); waiting for the
+/// click here isn't bounded (mac-notification-sys blocks until the notification is clicked or
+/// cleared from the Notification Center, which can be days), so it isn't waited for.
 #[cfg(target_os = "macos")]
 pub fn show(note: &Note) {
     let _ = notify_rust::Notification::new().summary(&note.title).body(&note.body).show();
 }
 
-/// One desktop notification (blocking: call off the UI thread).
+/// One desktop notification, whose click (its "default" action) opens the window; waited for
+/// up to `CLICK_WAIT` (blocking: call off the UI thread, in the tokio runtime, one per notification).
 #[cfg(target_os = "linux")]
 pub fn show(note: &Note) {
     let mut n = notify_rust::Notification::new();
-    n.appname("Snag").summary(&note.title).body(&note.body);
+    n.appname("Snag").summary(&note.title).body(&note.body).action(CLICK, "Open Snag");
     match ICON.get() {
         Some(icon) => n.icon(&icon.to_string_lossy()),
         None => n.icon("snag"),
     };
-    let _ = n.show();
+    let Ok(shown) = n.show() else { return };
+    // GNOME keeps a notification in its list until it's cleared: the wait has an end of its own.
+    let Ok(runtime) = tokio::runtime::Handle::try_current() else { return };
+    runtime.block_on(async {
+        let click = shown.wait_for_action_async(|response| {
+            if matches!(response, notify_rust::NotificationResponse::Default) {
+                crate::tray::open_window();
+            }
+        });
+        let _ = tokio::time::timeout(CLICK_WAIT, click).await;
+    });
 }
+
+/// The action a click on the notification itself sends (freedesktop.org notification spec).
+#[cfg(target_os = "linux")]
+const CLICK: &str = "default";
 
 /// A single-image .ico (32-bit BMP payload) from top-down RGBA pixels.
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -118,6 +171,23 @@ mod tests {
 
 #[cfg(all(test, windows))]
 mod real {
+    use crate::state::Note;
+    use std::time::Duration;
+
+    /// A click on a real toast runs its handler: `cargo test -p rdm-app real_toast_click --
+    /// --ignored --nocapture`, then click the toast within 30 s. It shows under Snag's toast
+    /// identity as already registered (run Snag once first) and writes nothing.
+    #[test]
+    #[ignore]
+    fn real_toast_click() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let note = Note { title: "Click me".into(), body: "real_toast_click: a click ends the test".into() };
+        let started = std::time::Instant::now();
+        super::show_then(&note, move || tx.send(()).unwrap_or_default(), Duration::from_secs(30));
+        assert!(rx.try_recv().is_ok(), "no click on the toast (waited {:?})", started.elapsed());
+        println!("clicked after {:?}", started.elapsed());
+    }
+
     /// Shows a real toast on this PC: `cargo test -p rdm-app real_toast -- --ignored`.
     #[test]
     #[ignore]
