@@ -28,7 +28,7 @@ use crate::state::{Model, Screen};
 use crate::update::{App, DuplicateChoice, Message};
 use crate::view;
 use icon::{Icon, icon};
-use iced::widget::{Space, button, column, container, float, mouse_area, opaque, row, scrollable, stack, text};
+use iced::widget::{Space, button, column, container, float, mouse_area, opaque, row, scrollable, stack, text, tooltip};
 use iced::window::Direction;
 use iced::{Alignment, Color, Element, Fill, Length, Padding, Vector, mouse};
 use std::time::Instant;
@@ -323,16 +323,18 @@ fn toast(m: &Model, c: Colors) -> Option<Element<'_, Message>> {
         return m.update.as_ref().map(|u| card(update_offer(u, c)).into());
     }
     if let Some(link) = &m.toast {
-        let what = view::link_tag(link).map(|t| t.label()).unwrap_or("Link");
+        // What was copied: the file's name, or the page's host and path; the whole link on hover.
+        let (what, kind) = view::clipboard_label(link, 30);
         let badge = container(icon(Icon::ClipboardText, 16).color(c.accent)).center(32).style(style::tag(c.accent_soft, c.accent));
+        let full = container(text(view::ellipsize_middle(link, 300)).size(11.5)).style(style::sheet(c)).padding([6, 10]).max_width(420);
         let body = row![
             badge,
-            column![
-                text("Link detected from clipboard").size(13).font(style::SEMIBOLD),
-                small(format!("{} · {what}", view::ellipsize(&view::host(link), 32)), c.text3),
-            ]
-            .spacing(2)
-            .width(Fill),
+            tooltip(
+                column![text(what).size(13).font(style::SEMIBOLD), small(format!("Copied link · {kind}"), c.text3)].spacing(2).width(Fill),
+                full,
+                tooltip::Position::Top
+            )
+            .gap(6),
             button(row![icon(Icon::Download, 13), text("Download").size(12.5).font(style::SEMIBOLD)].spacing(6).align_y(Alignment::Center))
                 .style(style::accent(c))
                 .padding([7, 12])

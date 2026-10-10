@@ -263,6 +263,8 @@ fn apply(m: &mut Model, scene: &str) {
             m.open_stats();
         }
         "toast" => m.toast = Some("https://vimeo.com/824123456".into()),
+        "toast-file" => m.toast = Some("https://releases.ubuntu.com/24.04.1/ubuntu-24.04.1-desktop-amd64%20(daily%20build).iso".into()),
+        "toast-page" => m.toast = Some("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ&start_radio=1&t=42s&si=AbCdEfGhIjKlMnOp".into()),
         "notice" => m.notice = Some("Added “Rust Async Explained” (1080p)".into()),
         "empty" => m.items.clear(),
         "blue" => m.settings.accent = "#0a84ff".into(),
