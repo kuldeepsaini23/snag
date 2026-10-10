@@ -641,7 +641,9 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             if !notes.is_empty() {
                 return Task::perform(
                     async move {
-                        let _ = tokio::task::spawn_blocking(move || notes.iter().for_each(crate::notify::show)).await;
+                        // A thread each: one waits for a click on its notification.
+                        let shown = notes.into_iter().map(|note| tokio::task::spawn_blocking(move || crate::notify::show(&note)));
+                        futures_util::future::join_all(shown).await;
                     },
                     |_| Message::Done,
                 );
