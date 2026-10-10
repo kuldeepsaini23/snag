@@ -285,7 +285,11 @@ pub fn boot(manager: Manager, bridge_status: String, data_dir: PathBuf, runtime:
     let model = Model { bridge_status, system_light: crate::appearance::system_light(), autostart: crate::platform::autostart(), ..Model::default() };
     // macOS: the menu bar icon can only be made once the app runs (`Message::MakeTray`).
     let tray = if cfg!(target_os = "macos") { None } else { crate::tray::create() };
-    crate::notify::register(&data_dir);
+    // Debug runs with a stand-in data folder (tests, snapshots) must leave the installed Snag's
+    // per-user notification registration alone: it points at the real data folder.
+    if !(cfg!(debug_assertions) && std::env::var_os("RDM_TEST_OFFSCREEN").is_some()) {
+        crate::notify::register(&data_dir);
+    }
     let system_reduced = crate::motion::system_reduced_motion();
     let motion = Motion::new(crate::view::motion_targets(&model), system_reduced);
     let app = App {
