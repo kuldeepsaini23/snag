@@ -98,6 +98,25 @@ pub struct Item {
     /// after a restart the item is simply failed.
     #[serde(skip)]
     pub retry_at: Option<i64>,
+    /// Subtitle files the page's player loaded (from the browser extension): fetched next to
+    /// the finished file.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub subtitle_links: Vec<SubtitleLink>,
+    /// The subtitle files saved next to the finished file.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub subtitle_files: Vec<PathBuf>,
+}
+
+/// A subtitle file for a video: its link, and what the page said about it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubtitleLink {
+    pub url: String,
+    /// Its language (`en`, `pt-BR`), when the page or the file's name says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lang: Option<String>,
+    /// The name the player shows for it ("English (CC)").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

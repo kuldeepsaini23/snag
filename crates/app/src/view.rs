@@ -634,6 +634,15 @@ pub fn speed_parts(bps: u64) -> (String, String) {
 }
 
 /// ("Today", "14:02") or ("Sep 30", "09:05") for a unix time, in local time.
+/// The subtitle files saved next to a download, for its details ("2 files saved").
+pub fn subtitles_label(item: &Item) -> Option<String> {
+    match item.subtitle_files.len() {
+        0 => None,
+        1 => Some("1 file saved".into()),
+        n => Some(format!("{n} files saved")),
+    }
+}
+
 /// VirusTotal's verdict in words, and whether it is a warning.
 pub fn safety_label(verdict: &rdm_core::safety::Safety) -> (String, bool) {
     use rdm_core::safety::Safety;
@@ -678,6 +687,8 @@ mod tests {
             thumbnail: None,
             duration: None,
             retry_at: None,
+            subtitle_links: Vec::new(),
+            subtitle_files: Vec::new(),
         }
     }
 
@@ -761,6 +772,16 @@ mod tests {
         m.filter = Filter::All;
         m.apply(Event::Removed(ItemId(2)));
         assert_eq!(m.inspected(), None);
+    }
+
+    #[test]
+    fn saved_subtitles_are_counted() {
+        let mut video = item(1, "v.mp4", Category::Video, Status::Done);
+        assert_eq!(subtitles_label(&video), None);
+        video.subtitle_files = vec!["v.en.vtt".into()];
+        assert_eq!(subtitles_label(&video).as_deref(), Some("1 file saved"));
+        video.subtitle_files.push("v.2.srt".into());
+        assert_eq!(subtitles_label(&video).as_deref(), Some("2 files saved"));
     }
 
     #[test]

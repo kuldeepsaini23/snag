@@ -1,6 +1,6 @@
 use crate::category::Category;
 use crate::cookies::{Cookie, Jar};
-use crate::model::{AppState, Item, ItemId, Kind, Queue, QueueId, Settings, Status};
+use crate::model::{AppState, Item, ItemId, Kind, Queue, QueueId, Settings, Status, SubtitleLink};
 use crate::planner::{pick_next, queue_active};
 use crate::schedule::Now;
 use crate::store;
@@ -76,6 +76,9 @@ pub struct Manager {
     cookie_dir: PathBuf,
     /// Media link → the page it was found on (sent as Referer to yt-dlp). Memory only.
     referrers: Referrers,
+    /// Link → the subtitle files its page's player loaded (from the extension). Memory only,
+    /// until the download is added.
+    subtitles: Subtitles,
     torrents: Arc<Torrents>,
     /// Extensions waiting for the user's answer to "connect?".
     pairs: Arc<Mutex<HashMap<u64, oneshot::Sender<bool>>>>,
@@ -87,6 +90,11 @@ pub struct Manager {
 const PROBES_AT_ONCE: usize = 2;
 
 type Referrers = Arc<Mutex<HashMap<String, String>>>;
+type Subtitles = Arc<Mutex<HashMap<String, Vec<SubtitleLink>>>>;
+
+/// Subtitle lists waiting for their download to be added (a quality picker left open, a page
+/// that couldn't be read): past this many the oldest are forgotten.
+const SUBTITLES_WAITING: usize = 100;
 
 /// The torrent engine, started on first use.
 #[derive(Default)]
@@ -375,14 +383,16 @@ impl Manager {
         // Cookie files left by a run that was killed or crashed: never leave sessions on disk.
         let _ = std::fs::remove_dir_all(&cookie_dir);
         let referrers = Referrers::default();
+        let subtitles = Subtitles::default();
         let torrents = Arc::new(Torrents::default());
         let mut actor = Actor::new(state_path, events.clone(), tools.clone(), jar.clone(), cookie_dir.clone());
         actor.retry_base = retry_base;
         actor.referrers = referrers.clone();
+        actor.subtitles = subtitles.clone();
         actor.torrents = torrents.clone();
         tokio::spawn(actor.run(rx));
         let probes = Arc::new(tokio::sync::Semaphore::new(PROBES_AT_ONCE));
-        Manager { tx, events, tools, jar, cookie_dir, referrers, torrents, pairs: Arc::default(), probes }
+        Manager { tx, events, tools, jar, cookie_dir, referrers, subtitles, torrents, pairs: Arc::default(), probes }
     }
 
     /// Reads a video/audio page (title, qualities, playlist entries). Fetches yt-dlp
@@ -634,6 +644,22 @@ impl Manager {
         }
     }
 
+    /// Subtitle files the page's player loaded for the media at `url` (the extension's sniffer):
+    /// the download added next for `url` saves them next to its file. Unsafe links are dropped
+    /// (see `subtitles::clean`).
+    pub fn remember_subtitles(&self, url: String, links: Vec<SubtitleLink>) {
+        let links = crate::subtitles::clean(links);
+        if links.is_empty() {
+            return;
+        }
+        if let Ok(mut map) = self.subtitles.lock() {
+            if map.len() >= SUBTITLES_WAITING && !map.contains_key(&url) {
+                map.clear();
+            }
+            map.insert(url, links);
+        }
+    }
+
     pub fn remember_cookies(&self, cookies: Vec<Cookie>) {
         if let Ok(mut jar) = self.jar.lock() {
             jar.add(cookies);
@@ -692,6 +718,21 @@ impl Manager {
             let _ = rx.await;
         }
     }
+}
+
+/// Saves `video`'s subtitles next to it, and puts them inside it when the user wants subtitles
+/// and there is an ffmpeg. Returns the files saved and whether they went inside the video.
+async fn save_subtitles(tools: &Tools, video: &Path, jobs: Vec<(SubtitleLink, Client)>, embed: bool) -> (Vec<PathBuf>, bool) {
+    let saved = crate::subtitles::save_all(video, jobs).await;
+    let ffmpeg = if embed && !saved.is_empty() { tools.ffmpeg() } else { None };
+    let embedded = match ffmpeg {
+        Some(ffmpeg) => {
+            let (video, subs) = (video.to_path_buf(), saved.clone());
+            matches!(tokio::task::spawn_blocking(move || crate::subtitles::embed(&ffmpeg, &video, &subs)).await, Ok(Ok(())))
+        }
+        None => false,
+    };
+    (saved.into_iter().map(|s| s.path).collect(), embedded)
 }
 
 /// Where a video/audio item's final file goes.
@@ -799,6 +840,9 @@ enum Msg {
     Safety(ItemId, crate::safety::Safety),
     /// A torrent picked its folder: remembered so a resume writes there again.
     TorrentFolder(ItemId, PathBuf),
+    /// The subtitles of a finished download were saved next to the file at that path (and put
+    /// inside it, when `embedded`).
+    Subtitles { id: ItemId, video: PathBuf, files: Vec<PathBuf>, embedded: bool },
     /// An after-download rule finished (the item now points at its result).
     /// The rule ran on the file at that path (the item may have changed since).
     RuleDone(ItemId, PathBuf, Result<crate::rules::Applied, String>),
@@ -835,6 +879,7 @@ struct Actor {
     /// Automatic retries used per item since it last started by hand or finished.
     retries: HashMap<ItemId, u32>,
     referrers: Referrers,
+    subtitles: Subtitles,
     torrents: Arc<Torrents>,
     /// Watches being read right now.
     watching: HashSet<u32>,
@@ -872,6 +917,7 @@ impl Actor {
             last_save: Instant::now(),
             retries: HashMap::new(),
             referrers: Referrers::default(),
+            subtitles: Subtitles::default(),
             torrents: Arc::default(),
             watching: HashSet::new(),
             retry_gen: HashMap::new(),
@@ -1047,6 +1093,7 @@ impl Actor {
                     }
                     item.status = Status::Queued;
                     item.dest = None;
+                    item.subtitle_files.clear();
                     item.downloaded = 0;
                     item.total = None;
                     item.speed_bps = 0;
@@ -1214,6 +1261,7 @@ impl Actor {
     }
 
     fn push_item(&mut self, url: String, name: String, category: Category, kind: Kind, referrer: Option<String>, queue: QueueId) -> ItemId {
+        let subtitle_links = self.subtitles.lock().ok().and_then(|mut m| m.remove(&url)).unwrap_or_default();
         let id = ItemId(self.state.next_id);
         self.state.next_id += 1;
         let item = Item {
@@ -1234,6 +1282,8 @@ impl Actor {
             thumbnail: None,
             duration: None,
             retry_at: None,
+            subtitle_links,
+            subtitle_files: Vec::new(),
         };
         self.state.items.push(item.clone());
         self.emit(Event::Added(item));
@@ -1368,6 +1418,28 @@ impl Actor {
             headers.insert(REFERER, value);
         }
         if headers.is_empty() { self.client.clone() } else { client_with(headers) }
+    }
+
+    /// Each subtitle link of `id` with its client: the browser's cookies for it, and the page as
+    /// Referer and Origin (as the page's player fetched it).
+    fn subtitle_jobs(&self, id: ItemId) -> Vec<(SubtitleLink, Client)> {
+        use rdm_engine::header::{COOKIE, HeaderMap, HeaderValue, ORIGIN, REFERER};
+        let Some(item) = self.state.item(id) else { return Vec::new() };
+        let referrer = item.referrer.as_deref();
+        let origin = referrer.and_then(|r| url::Url::parse(r).ok()).map(|u| u.origin().ascii_serialization()).filter(|o| o != "null");
+        item.subtitle_links
+            .iter()
+            .map(|link| {
+                let mut headers = HeaderMap::new();
+                let cookie = self.jar.lock().ok().and_then(|jar| jar.header(&link.url));
+                for (name, value) in [(COOKIE, cookie.as_deref()), (REFERER, referrer), (ORIGIN, origin.as_deref())] {
+                    if let Some(value) = value.and_then(|v| HeaderValue::from_str(v).ok()) {
+                        headers.insert(name, value);
+                    }
+                }
+                (link.clone(), client_with(headers))
+            })
+            .collect()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1619,6 +1691,16 @@ impl Actor {
                     self.dirty = true;
                 }
             }
+            Msg::Subtitles { id, video, files, embedded } => {
+                // Removed or downloaded again since: nothing to note.
+                let Some(item) = self.state.item_mut(id).filter(|i| i.status == Status::Done && i.dest.as_deref() == Some(video.as_path())) else { return };
+                item.subtitle_files = files;
+                if embedded && let Ok(meta) = std::fs::metadata(&video) {
+                    item.downloaded = meta.len();
+                    item.total = Some(meta.len());
+                }
+                self.updated(id);
+            }
             Msg::RuleDone(id, from, outcome) => {
                 // Removed, re-downloaded or moved since: the item isn't pointed at the result.
                 let Some(item) = self.state.item_mut(id).filter(|i| i.status == Status::Done && i.dest.as_deref() == Some(from.as_path())) else { return };
@@ -1681,6 +1763,9 @@ impl Actor {
                 let rules = self.state.settings.rules.clone();
                 let tools = self.tools.clone();
                 let used = self.retries.get(&id).copied().unwrap_or(0);
+                // Subtitles the page's player loaded: fetched once the file is there.
+                let sub_jobs = if matches!(result, Ok(Outcome::Completed(_))) { self.subtitle_jobs(id) } else { Vec::new() };
+                let embed_subs = self.state.settings.subtitles;
                 if let Some(item) = self.state.item_mut(id) {
                     item.speed_bps = 0;
                     item.downloaded = last.downloaded.max(item.downloaded);
@@ -1731,19 +1816,27 @@ impl Actor {
                     if item.status == Status::Done {
                         self.retries.remove(&id);
                         // Programs get a safety check (hash only), if the user set a VirusTotal key.
-                        // A matching after-download rule (files only, not galleries or torrent folders).
-                        if let Some(path) = item.dest.clone().filter(|p| p.is_file())
-                            && let Some(rule) = crate::rules::matching(&rules, &item.url, &path, item.category).cloned()
-                        {
-                            let rule_tx = safety_tx.clone();
-                            tokio::spawn(async move {
-                                // Converting rules fetch ffmpeg first if there is none yet.
-                                let converts = matches!(rule.action, crate::rules::Action::ToMp3 | crate::rules::Action::SmallerMp4 { .. });
-                                let ffmpeg = if converts { tools.ensure_ffmpeg(|| {}).await.ok() } else { tools.ffmpeg() };
-                                let from = path.clone();
-                                let done = tokio::task::spawn_blocking(move || crate::rules::apply(&rule, &path, ffmpeg.as_deref())).await;
-                                let _ = rule_tx.send(Msg::RuleDone(id, from, done.unwrap_or_else(|e| Err(e.to_string()))));
-                            });
+                        // Its subtitles, then a matching after-download rule (files only, not galleries
+                        // or torrent folders).
+                        if let Some(path) = item.dest.clone().filter(|p| p.is_file()) {
+                            let rule = crate::rules::matching(&rules, &item.url, &path, item.category).cloned();
+                            item.subtitle_files.clear();
+                            if rule.is_some() || !sub_jobs.is_empty() {
+                                let after_tx = safety_tx.clone();
+                                tokio::spawn(async move {
+                                    if !sub_jobs.is_empty() {
+                                        let (files, embedded) = save_subtitles(&tools, &path, sub_jobs, embed_subs).await;
+                                        let _ = after_tx.send(Msg::Subtitles { id, video: path.clone(), files, embedded });
+                                    }
+                                    let Some(rule) = rule else { return };
+                                    // Converting rules fetch ffmpeg first if there is none yet.
+                                    let converts = matches!(rule.action, crate::rules::Action::ToMp3 | crate::rules::Action::SmallerMp4 { .. });
+                                    let ffmpeg = if converts { tools.ensure_ffmpeg(|| {}).await.ok() } else { tools.ffmpeg() };
+                                    let from = path.clone();
+                                    let done = tokio::task::spawn_blocking(move || crate::rules::apply(&rule, &path, ffmpeg.as_deref())).await;
+                                    let _ = after_tx.send(Msg::RuleDone(id, from, done.unwrap_or_else(|e| Err(e.to_string()))));
+                                });
+                            }
                         }
                         if let Some(path) = item.dest.clone().filter(|p| !vt_key.trim().is_empty() && crate::safety::worth_checking(p)) {
                             tokio::spawn(async move {
@@ -1794,6 +1887,8 @@ impl Actor {
         }
         let shared = item.dest.as_ref().is_some_and(|d| self.state.items.iter().any(|other| other.dest.as_ref() == Some(d)));
         let trash_it = item.dest.clone().filter(|d| delete_file && !shared && d.exists());
+        // Its subtitle files go with it.
+        let sidecars: Vec<PathBuf> = if trash_it.is_some() { item.subtitle_files.iter().filter(|p| p.is_file()).cloned().collect() } else { Vec::new() };
         if let Some(dest) = &item.dest {
             let _ = std::fs::remove_file(part_path(dest));
             let _ = std::fs::remove_file(state_path(dest));
@@ -1806,6 +1901,9 @@ impl Actor {
             tokio::spawn(async move {
                 if let Some(engine) = engine {
                     engine.forget(&url).await;
+                }
+                if !sidecars.is_empty() {
+                    let _ = tokio::task::spawn_blocking(move || trash::delete_all(&sidecars)).await;
                 }
                 if let Some(dest) = trash_it {
                     // Recycle Bin, never a permanent delete: a misclick must be undoable.

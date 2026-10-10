@@ -14,11 +14,12 @@ pub mod safety;
 pub mod selfupdate;
 pub mod schedule;
 pub mod store;
+pub mod subtitles;
 
 pub use category::Category;
 pub use cookies::{Cookie, Jar};
 pub use manager::{Event, Manager, PairAnswer};
-pub use model::{AppState, DayTotal, Item, ItemId, Kind, Queue, QueueId, Settings, Status, ThemeMode, new_token};
+pub use model::{AppState, DayTotal, Item, ItemId, Kind, Queue, QueueId, Settings, Status, SubtitleLink, ThemeMode, new_token};
 pub use model::Animations;
 pub use rdm_media::{Entry, MediaFormat, MediaInfo, QualityOption};
 pub use planner::pick_next;
