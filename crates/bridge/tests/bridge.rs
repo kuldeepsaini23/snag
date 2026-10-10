@@ -522,3 +522,67 @@ async fn grab_all_skips_what_is_already_downloaded_quietly() {
         assert!(!matches!(event, rdm_core::Event::Duplicate(_)), "quiet in a batch");
     }
 }
+
+#[tokio::test]
+async fn a_caught_stream_brings_the_subtitles_its_player_loaded() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path()).await;
+    let b = start(m.clone(), 48391..=48400).await.unwrap();
+    // Extension 1.1: the subtitle files the page's player fetched come with the stream; entries
+    // that aren't web links or don't parse are left out.
+    let choice = json!({
+        "url": "https://cdn.example/hls/master.m3u8?sig=1",
+        "title": "Some video",
+        "format": { "Video": { "max_height": 4320 } },
+        "referrer": "https://player.example/e/42",
+        "subtitles": [
+            { "url": "https://cdn.example/subs/en.vtt", "lang": "en", "label": "English" },
+            { "url": "https://cdn.example/subs/2.srt?token=x" },
+            { "url": "file:///C:/Windows/win.ini", "lang": "en" },
+            { "lang": "fr" },
+            "https://cdn.example/not-an-object.vtt"
+        ],
+    });
+    let (status, reply) = post_to(b.port, "/add-media", choice, TOKEN).await;
+    assert_eq!(status, 200, "{reply}");
+    let items = m.snapshot().await.items;
+    let links = &items[0].subtitle_links;
+    assert_eq!(links.len(), 2, "{links:?}");
+    assert_eq!((links[0].url.as_str(), links[0].lang.as_deref(), links[0].label.as_deref()), ("https://cdn.example/subs/en.vtt", Some("en"), Some("English")));
+    assert_eq!((links[1].url.as_str(), links[1].lang.as_deref()), ("https://cdn.example/subs/2.srt?token=x", None));
+
+    // From an older extension (no subtitles): the same as before.
+    let old = json!({ "url": "https://cdn.example/hls/other.m3u8", "title": "Old", "format": { "Video": { "max_height": 720 } } });
+    assert_eq!(post_to(b.port, "/add-media", old, TOKEN).await.0, 200);
+    let items = m.snapshot().await.items;
+    assert!(items[1].subtitle_links.is_empty());
+}
+
+#[tokio::test]
+async fn a_sniffed_file_and_a_fallback_stream_keep_their_subtitles() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let m = manager(dir.path()).await;
+    let b = start(m.clone(), 48401..=48410).await.unwrap();
+    let subs = json!([{ "url": "https://cdn.example/subs/en.vtt", "lang": "en" }]);
+    let (status, reply) = post(b.port, json!({ "url": "https://cdn.example/v/clip.mp4", "kind": "file", "referrer": "https://site.example/watch", "subtitles": subs }), TOKEN).await;
+    assert_eq!(status, 200, "{reply}");
+    let items = m.snapshot().await.items;
+    assert_eq!(items[0].subtitle_links.len(), 1, "a direct video file gets them too");
+
+    // A page Snag can't read: the stream it played is added instead, with the subtitles.
+    let mut rx = m.subscribe();
+    let body = json!({ "url": "https://videos.example/watch/fail", "referrer": "https://videos.example/watch/fail", "fallback": "https://cdn.example/v/movie.mp4", "subtitles": subs });
+    assert_eq!(post(b.port, body, TOKEN).await.0, 202);
+    let item = tokio::time::timeout(std::time::Duration::from_secs(20), async {
+        loop {
+            if let Ok(rdm_core::Event::Added(i)) = rx.recv().await {
+                return i;
+            }
+        }
+    })
+    .await
+    .expect("the fallback was added");
+    assert_eq!(item.url, "https://cdn.example/v/movie.mp4");
+    assert_eq!(item.subtitle_links.len(), 1);
+}

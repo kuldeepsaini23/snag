@@ -167,7 +167,7 @@ Intro text that isn't part of any release.
 
         // In the app: the first load after an update opens the sheet and notes the version.
         use crate::state::{Info, Model};
-        let item = |id| rdm_core::Item { id: rdm_core::ItemId(id), url: String::new(), name: String::new(), category: rdm_core::Category::Other, status: rdm_core::Status::Done, dest: None, downloaded: 0, total: None, speed_bps: 0, queue: 0, added: 0, kind: Default::default(), referrer: None, work_dir: None, thumbnail: None, duration: None, retry_at: None };
+        let item = |id| rdm_core::Item { id: rdm_core::ItemId(id), url: String::new(), name: String::new(), category: rdm_core::Category::Other, status: rdm_core::Status::Done, dest: None, downloaded: 0, total: None, speed_bps: 0, queue: 0, added: 0, kind: Default::default(), referrer: None, work_dir: None, thumbnail: None, duration: None, retry_at: None, subtitle_links: Vec::new(), subtitle_files: Vec::new() };
         let mut m = Model { items: vec![item(1)], ..Model::default() };
         m.settings.last_seen_version = "0.1.0".into();
         let saved = m.check_version("0.2.0").expect("the new version is noted");

@@ -134,7 +134,8 @@ async function showMedia(tab) {
     go.addEventListener("click", async () => {
       say("Sending…");
       const kind = item.kind === "file" ? "file" : "media";
-      const result = await chrome.runtime.sendMessage({ type: "send", url: item.url, kind, referrer: tab.url });
+      // The tab: the subtitles its player loaded go with the stream.
+      const result = await chrome.runtime.sendMessage({ type: "send", url: item.url, kind, referrer: tab.url, tabId: tab.id });
       say(result.ok ? (result.later ? "Saved: goes to Snag when it opens" : "Sent to Snag ✓") : result.error);
     });
     row.append(tag, name, go);

@@ -2,6 +2,15 @@
 
 Newest first. Snag shows the newest entry once after an update; the Help menu (?) has the full list.
 
+## 1.1.3 — 2026-10-11
+
+### New
+- Subtitles from video pages: when a site's player loads its subtitles as separate files, the browser extension (1.1.0) sends them with the video, and Snag saves them next to it (VLC and most players pick them up). With Settings → Subtitles on, they are also added inside the video file.
+
+### Improved
+- Snag looks for updates every hour, and when you open its window from the tray.
+- The copied-link card only pops up for a video, a post or a file, not for every link (no more YouTube home pages, GitHub repositories or .json/.txt links).
+
 ## 1.1.2 — 2026-10-10
 
 ### Fixed

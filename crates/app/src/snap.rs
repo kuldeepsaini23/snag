@@ -527,6 +527,8 @@ fn demo_items() -> Vec<Item> {
         thumbnail: None,
         duration: None,
         retry_at: None,
+        subtitle_links: Vec::new(),
+        subtitle_files: Vec::new(),
     };
     let video = Kind::Media(MediaFormat::Video { max_height: 1080 });
     vec![

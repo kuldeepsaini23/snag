@@ -70,6 +70,15 @@ struct AddRequest {
     /// The best stream the extension saw playing on the page: used if yt-dlp can't read the page.
     #[serde(default)]
     fallback: Option<String>,
+    /// Subtitle files the page's player loaded for this media (extension 1.1+): saved next to
+    /// the video. Entries that don't parse are skipped.
+    #[serde(default)]
+    subtitles: Vec<Value>,
+}
+
+/// The extension's subtitle list (`[{url, lang?, label?}]`), skipping entries that don't parse.
+fn subtitle_links(list: Vec<Value>) -> Vec<rdm_core::SubtitleLink> {
+    list.into_iter().filter_map(|v| serde_json::from_value(v).ok()).collect()
 }
 
 async fn add(State(manager): State<Manager>, headers: HeaderMap, Json(mut req): Json<AddRequest>) -> (StatusCode, Json<Value>) {
@@ -90,6 +99,14 @@ async fn add(State(manager): State<Manager>, headers: HeaderMap, Json(mut req): 
         manager.remember_cookies(cookies);
     }
     let referrer = req.referrer.filter(|r| r.starts_with("http"));
+    let subtitles = subtitle_links(req.subtitles);
+    if !subtitles.is_empty() {
+        // For the stream the page played too, in case Snag can't read the page and falls back on it.
+        if let Some(stream) = req.fallback.as_ref().filter(|f| f.starts_with("http")) {
+            manager.remember_subtitles(stream.clone(), subtitles.clone());
+        }
+        manager.remember_subtitles(req.url.clone(), subtitles);
+    }
     // "Save page with Snag": the page itself, as one offline file.
     if req.kind.as_deref() == Some("page") {
         let id = manager.save_page(req.url).await;
@@ -225,6 +242,9 @@ struct AddMediaRequest {
     referrer: Option<String>,
     #[serde(default)]
     cookies: Vec<Value>,
+    /// Subtitle files the page's player loaded (extension 1.1+), see `AddRequest::subtitles`.
+    #[serde(default)]
+    subtitles: Vec<Value>,
 }
 
 /// The quality the user picked in the extension: added straight away, no window in between.
@@ -242,6 +262,7 @@ async fn add_media_choice(State(manager): State<Manager>, headers: HeaderMap, Js
     if let Some(page) = req.referrer.filter(|r| r.starts_with("http")) {
         manager.remember_referrer(req.url.clone(), page);
     }
+    manager.remember_subtitles(req.url.clone(), subtitle_links(req.subtitles));
     // Only a web picture: never a local or network-share path.
     let thumbnail = req.thumbnail.filter(|t| rdm_core::model::is_web_link(t));
     let id = manager.add_media_meta(req.url, req.title, req.format, 0, thumbnail, req.duration).await;

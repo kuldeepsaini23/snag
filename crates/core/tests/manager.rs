@@ -1,6 +1,6 @@
 mod support;
 
-use rdm_core::{Cookie, Event, Item, ItemId, Kind, Manager, MediaFormat, MediaInfo, Queue, QualityOption, Schedule, Settings, Status};
+use rdm_core::{Cookie, Event, Item, ItemId, Kind, Manager, MediaFormat, MediaInfo, Queue, QualityOption, Schedule, Settings, Status, SubtitleLink};
 use std::collections::HashSet;
 use std::path::Path;
 use std::time::Duration;
@@ -1212,4 +1212,89 @@ async fn real_latest_release_from_github() {
     let release = m.latest_release().await;
     println!("latest release: {release:?}");
     assert!(release.is_some(), "GitHub's latest release should be readable");
+}
+
+/// A subtitle file the extension sends with a stream (served by the test server).
+fn sub(s: &TestServer, name: &str, lang: Option<&str>) -> SubtitleLink {
+    SubtitleLink { url: s.url(&format!("/subs/{name}")), lang: lang.map(String::from), label: None }
+}
+
+#[tokio::test]
+async fn a_streams_subtitles_are_saved_next_to_the_video() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let s = TestServer::start().await;
+    let m = manager(dir.path(), |_| {}).await;
+    let mut rx = m.subscribe();
+    let stream = s.url("/hls/master.m3u8");
+    m.remember_referrer(stream.clone(), "https://player.test/e/42".into());
+    m.remember_subtitles(stream.clone(), vec![sub(&s, "english.vtt", Some("en")), sub(&s, "track2.srt?token=1", None)]);
+    let id = m.add_media(stream, "Sintel".into(), MediaFormat::Video { max_height: 4320 }).await;
+    let item = wait_item(&mut rx, |i| i.id == id && i.status == Status::Done && !i.subtitle_files.is_empty()).await;
+    let dl = dir.path().join("dl");
+    assert_eq!(item.dest.as_deref(), Some(dl.join("Sintel [master].mp4").as_path()));
+    assert_eq!(item.subtitle_files, [dl.join("Sintel [master].en.vtt"), dl.join("Sintel [master].2.srt")]);
+    assert_eq!(std::fs::read_to_string(&item.subtitle_files[0]).unwrap(), support::subtitle_text("english.vtt"));
+    assert_eq!(std::fs::read_to_string(&item.subtitle_files[1]).unwrap(), support::subtitle_text("track2.srt"));
+    assert_eq!(std::fs::read(item.dest.unwrap()).unwrap(), vec![9u8; 2048], "subtitles off: the video is left as it is");
+    let saved = m.snapshot().await.items.into_iter().find(|i| i.id == id).unwrap();
+    assert_eq!(saved.subtitle_links.len(), 2, "kept with the item (a resume after a restart still fetches them)");
+}
+
+#[tokio::test]
+async fn a_subtitle_that_fails_never_fails_the_video() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path()); // its ffmpeg is a stand-in that can't run: embedding fails
+    let s = TestServer::start().await;
+    let m = manager(dir.path(), |s| s.subtitles = true).await;
+    let mut rx = m.subscribe();
+    let stream = s.url("/hls/master.m3u8");
+    m.remember_referrer(stream.clone(), "https://player.test/e/42".into());
+    m.remember_subtitles(stream.clone(), vec![sub(&s, "missing.vtt", Some("fr")), sub(&s, "english.vtt", Some("en"))]);
+    let id = m.add_media(stream, "Sintel".into(), MediaFormat::Video { max_height: 4320 }).await;
+    let item = wait_item(&mut rx, |i| i.id == id && i.status == Status::Done && !i.subtitle_files.is_empty()).await;
+    let dl = dir.path().join("dl");
+    assert_eq!(item.subtitle_files, [dl.join("Sintel [master].en.vtt")], "the 404 is skipped");
+    assert_eq!(std::fs::read(item.dest.as_ref().unwrap()).unwrap(), vec![9u8; 2048], "a failed embed keeps the video");
+    assert!(!dl.join("Sintel [master].fr.vtt").exists());
+    let left: Vec<String> = std::fs::read_dir(&dl).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().to_string()).filter(|n| n.contains("-part")).collect();
+    assert!(left.is_empty(), "nothing half-written left: {left:?}");
+
+    // Every subtitle refused (no Referer: the host says no): still just a finished video.
+    let other = s.url("/other/master.m3u8");
+    m.remember_subtitles(other.clone(), vec![sub(&s, "english.vtt", Some("en"))]);
+    let id = m.add_media(other, "Other".into(), MediaFormat::Video { max_height: 4320 }).await;
+    wait_item(&mut rx, has(id, Status::Done)).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let item = m.snapshot().await.items.into_iter().find(|i| i.id == id).unwrap();
+    assert_eq!(item.status, Status::Done);
+    assert!(item.subtitle_files.is_empty());
+}
+
+#[tokio::test]
+async fn a_direct_video_file_gets_its_subtitles_too() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = TestServer::start().await;
+    let m = manager(dir.path(), |_| {}).await;
+    let mut rx = m.subscribe();
+    let file = s.url("/named/clip.mp4/40000");
+    m.remember_subtitles(file.clone(), vec![sub(&s, "en.vtt", Some("en"))]);
+    let id = m.add_with(file, Some("https://player.test/e/42".into())).await;
+    let item = wait_item(&mut rx, |i| i.id == id && i.status == Status::Done && !i.subtitle_files.is_empty()).await;
+    assert_eq!(item.subtitle_files, [dir.path().join("dl").join("clip.en.vtt")]);
+    assert!(item.subtitle_files[0].exists());
+}
+
+#[tokio::test]
+async fn a_download_without_subtitles_is_unchanged() {
+    let dir = tempfile::tempdir().unwrap();
+    install_fake_ytdlp(dir.path());
+    let s = TestServer::start().await;
+    let m = manager(dir.path(), |s| s.subtitles = true).await;
+    let mut rx = m.subscribe();
+    let id = m.add_media(s.url("/hls/master.m3u8"), "Sintel".into(), MediaFormat::Video { max_height: 4320 }).await;
+    let item = wait_item(&mut rx, has(id, Status::Done)).await;
+    assert!(item.subtitle_links.is_empty() && item.subtitle_files.is_empty());
+    let names: Vec<String> = std::fs::read_dir(dir.path().join("dl")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().to_string()).collect();
+    assert!(!names.iter().any(|n| n.ends_with(".vtt") || n.ends_with(".srt")), "{names:?}");
 }

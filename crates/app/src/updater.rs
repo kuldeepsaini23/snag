@@ -4,7 +4,17 @@
 use std::path::Path;
 
 /// How often a running Snag looks again (it also looks shortly after it starts).
-pub const EVERY: std::time::Duration = std::time::Duration::from_secs(6 * 60 * 60);
+pub const EVERY: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+/// Opening the window (from the tray, a notification, a second start) looks again, but not more
+/// often than this.
+pub const ON_SHOW_GAP: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+
+/// Whether opening the window should look for an update now: never looked, or not for
+/// `ON_SHOW_GAP`.
+pub fn due_on_show(last: Option<std::time::Instant>, now: std::time::Instant) -> bool {
+    last.is_none_or(|at| now.saturating_duration_since(at) >= ON_SHOW_GAP)
+}
 
 /// Worth offering: `latest` is newer than this build and wasn't put off with "Later".
 pub fn offers(latest: &str, current: &str, later: Option<&str>) -> bool {
@@ -108,6 +118,19 @@ mod tests {
         assert!(!offers("1.0.0", "1.0.1", None), "an older one");
         assert!(!offers("1.0.2", "1.0.1", Some("1.0.2")), "put off with Later");
         assert!(offers("1.0.3", "1.0.1", Some("1.0.2")), "a newer one than the one put off");
+    }
+
+    #[test]
+    fn opening_the_window_looks_again_at_most_every_ten_minutes() {
+        use std::time::{Duration, Instant};
+        let now = Instant::now();
+        assert!(due_on_show(None, now), "never looked: look now");
+        assert!(!due_on_show(Some(now), now), "just looked");
+        assert!(!due_on_show(Some(now), now + Duration::from_secs(9 * 60 + 59)));
+        assert!(due_on_show(Some(now), now + Duration::from_secs(10 * 60)));
+        assert!(due_on_show(Some(now), now + Duration::from_secs(5 * 60 * 60)));
+        assert!(!due_on_show(Some(now + Duration::from_secs(60)), now), "a clock that went back isn't due");
+        assert_eq!(EVERY, Duration::from_secs(60 * 60), "and every hour while it runs");
     }
 
     #[test]

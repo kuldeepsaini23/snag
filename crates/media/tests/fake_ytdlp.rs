@@ -62,6 +62,14 @@ fn main() {
             println!("RDMP 1000 1000 NA 50");
             println!(r"RDMF C:\out\clip.mp4");
         }
+        "master.m3u8" => {
+            // A stream the browser's sniffer caught: a real file, so its subtitles can go beside it.
+            let home = args.windows(2).find(|w| w[0] == "-P" && !w[1].starts_with("temp:")).map(|w| w[1].clone()).unwrap_or_default();
+            let file = std::path::Path::new(&home).join("Sintel [master].mp4");
+            let _ = std::fs::write(&file, vec![9u8; 2048]);
+            println!("RDMP 2048 2048 NA 100");
+            println!("RDMF {}", file.display());
+        }
         "subfail" => {
             // The video is saved, but the subtitles were refused: yt-dlp exits 1 anyway.
             println!("RDMP 1000 1000 NA 50");

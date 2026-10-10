@@ -42,6 +42,9 @@ pub fn view<'a>(m: &'a Model, i: &'a Item, now: Instant, c: Colors) -> Element<'
         line("Speed", value(speed)),
         line("Save to", value(view::ellipsize_left(&folder.display().to_string(), 26))),
     ];
+    if let Some(saved) = view::subtitles_label(i) {
+        table.push(line("Subtitles", value(saved)));
+    }
     if let Some(verdict) = m.safety.get(&i.id) {
         let (label, warn) = view::safety_label(verdict);
         table.push(line("Safety", text(label).size(12.5).color(if warn { c.danger } else { c.text }).wrapping(text::Wrapping::WordOrGlyph).into()));

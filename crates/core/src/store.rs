@@ -79,6 +79,8 @@ mod tests {
             thumbnail: None,
             duration: None,
             retry_at: None,
+            subtitle_links: Vec::new(),
+            subtitle_files: Vec::new(),
         });
         s
     }

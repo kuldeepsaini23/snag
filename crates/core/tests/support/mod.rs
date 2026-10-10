@@ -39,6 +39,8 @@ impl TestServer {
             .route("/slow/{size}", get(|Path(size): Path<usize>, h: HeaderMap| async move { serve(&h, size, "test.bin", Some(Duration::from_millis(40))) }))
             .route("/named/{name}/{size}", get(|Path((name, size)): Path<(String, usize)>, h: HeaderMap| async move { serve(&h, size, &name, None) }))
             .route("/needs-cookie/{size}", get(|Path(size): Path<usize>, h: HeaderMap| async move { needs_cookie(&h, size) }))
+            // Subtitle files, as a video page's player fetches them: only with the page as Referer.
+            .route("/subs/{name}", get(|Path(name): Path<String>, h: HeaderMap| async move { subtitle(&h, &name) }))
             // A small web page with a stylesheet and an image, for "save page".
             .route("/page", get(|| async { ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], PAGE) }))
             .route("/style.css", get(|| async { ([(header::CONTENT_TYPE, "text/css")], "body { color: rgb(1, 2, 3); }") }))
@@ -61,6 +63,25 @@ fn needs_cookie(headers: &HeaderMap, size: usize) -> Response {
         return Response::builder().status(StatusCode::FORBIDDEN).body(Body::empty()).unwrap();
     }
     serve(headers, size, "private.bin", None)
+}
+
+/// The text of the subtitle file `/subs/<name>` serves (WebVTT for `.vtt`, SubRip otherwise).
+pub fn subtitle_text(name: &str) -> String {
+    if name.ends_with(".vtt") { format!("WEBVTT\n\n00:00.000 --> 00:01.000\n{name}\n") } else { format!("1\n00:00:00,000 --> 00:00:01,000\n{name}\n") }
+}
+
+/// `/subs/<name>`: a subtitle file; a name starting with "missing" is a 404. Needs the player's
+/// page as Referer and its origin as Origin, like many video hosts.
+fn subtitle(headers: &HeaderMap, name: &str) -> Response {
+    let has = |name: header::HeaderName, value: &str| headers.get(name).and_then(|v| v.to_str().ok()) == Some(value);
+    if !(has(header::REFERER, "https://player.test/e/42") && has(header::ORIGIN, "https://player.test")) {
+        return Response::builder().status(StatusCode::FORBIDDEN).body(Body::empty()).unwrap();
+    }
+    if name.starts_with("missing") {
+        return Response::builder().status(StatusCode::NOT_FOUND).body(Body::from("<html>Not found</html>")).unwrap();
+    }
+    // Servers often call subtitles plain text: Snag goes by the text itself.
+    Response::builder().header(header::CONTENT_TYPE, "text/plain").body(Body::from(subtitle_text(name))).unwrap()
 }
 
 /// Puts the test stand-in for yt-dlp where the manager looks for it (`<data dir>/bin/yt-dlp.exe`).
