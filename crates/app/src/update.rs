@@ -110,7 +110,7 @@ pub enum Message {
     DraftCheckUpdates(bool),
     /// Linux: start at sign-in on or off (applied at once: it's a file, not a setting).
     Autostart(bool),
-    /// Look for a newer Snag (at start, then every few hours).
+    /// Look for a newer Snag (at start, then every hour, and when the window is opened again).
     CheckUpdate,
     /// "Check for updates" in the ? menu: like `CheckUpdate`, but always answers.
     CheckUpdateNow,
@@ -575,7 +575,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             model.speeds.sample(&model.items, Instant::now());
             if pick {
                 // The extension sent a video, or RDM was started again: bring the (maybe hidden) window forward.
-                return show_window();
+                return reopen_window(app);
             }
         }
         Message::Loaded(state) => {
@@ -630,7 +630,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
                 });
             }
         }
-        Message::TrayOpen => return show_window(),
+        Message::TrayOpen => return reopen_window(app),
         Message::TrayQuit => {
             if model.request_quit() {
                 return iced::exit();
@@ -663,6 +663,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             if !model.settings.check_updates || model.update.as_ref().is_some_and(|u| u.busy) {
                 return Task::none();
             }
+            model.update_checked_at = Some(Instant::now());
             let m = app.manager.clone();
             return Task::perform(async move { m.latest_release().await }, Message::UpdateFound);
         }
@@ -670,6 +671,7 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
             model.help_open = false;
             model.update_later = None;
             model.update_checking = true;
+            model.update_checked_at = Some(Instant::now());
             if model.update.as_ref().is_some_and(|u| u.busy) {
                 return Task::none();
             }
@@ -1144,6 +1146,16 @@ fn handle(app: &mut App, message: Message) -> Task<Message> {
         Message::Done => {}
     }
     Task::none()
+}
+
+/// `show_window`, and a look for a newer Snag (at most every ten minutes): Snag can stay hidden
+/// in the tray for days, and the card about an update is only seen in the window.
+fn reopen_window(app: &mut App) -> Task<Message> {
+    let model = &app.model;
+    if model.settings.check_updates && crate::updater::due_on_show(model.update_checked_at, Instant::now()) {
+        return Task::batch([show_window(), update(app, Message::CheckUpdate)]);
+    }
+    show_window()
 }
 
 /// Un-hides, restores and focuses the window.

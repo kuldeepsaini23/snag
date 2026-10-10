@@ -128,7 +128,7 @@ pub struct Settings {
     pub preferred_quality: Option<MediaFormat>,
     /// Windows notifications when downloads finish or fail.
     pub notify: bool,
-    /// Look for a newer Snag on GitHub (at start, then daily) and offer it.
+    /// Look for a newer Snag on GitHub (at start, then hourly and when the window opens) and offer it.
     pub check_updates: bool,
     /// Videos: fetch subtitles and embed them in the file.
     pub subtitles: bool,

@@ -569,6 +569,8 @@ pub struct Model {
     pub update_later: Option<String>,
     /// "Check for updates" was clicked: the answer is shown even when there's nothing new.
     pub update_checking: bool,
+    /// When Snag last looked for a newer version (showing the window looks again, not too often).
+    pub update_checked_at: Option<std::time::Instant>,
     /// The mouse, in window coordinates (for the right-click menu).
     pub cursor: iced::Point,
     /// A download's right-click menu is open at this point.
@@ -678,6 +680,7 @@ impl Default for Model {
             update: None,
             update_later: None,
             update_checking: false,
+            update_checked_at: None,
             cursor: iced::Point::ORIGIN,
             row_menu: None,
             window: iced::Size::new(1280.0, 800.0),
