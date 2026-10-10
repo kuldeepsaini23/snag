@@ -245,16 +245,131 @@ impl Draft {
 }
 
 /// A link worth suggesting from the clipboard: a single link that isn't the last one seen and
-/// looks downloadable — a file, a video or image site, a torrent, a GitHub repository. Ordinary
-/// web pages (copied all day long) don't pop up.
+/// looks downloadable — a file, a torrent, or one video, post or picture on a video or image
+/// site. Ordinary web pages (copied all day long) don't pop up, nor do a site's home page, a
+/// profile, a channel, a GitHub repository, or data and text files. The address bar in the
+/// window still takes any link.
 pub fn clipboard_link(text: &str, last_seen: Option<&str>) -> Option<String> {
-    use rdm_core::route::{Route, github_zip, route};
+    use rdm_core::route::{Route, route};
     let link = text.trim();
     let web = link.starts_with("http://") || link.starts_with("https://") || rdm_core::is_torrent_link(link);
     let is_url = web && link.len() < 4096 && !link.contains(char::is_whitespace);
-    // `route` sends any page to the video reader; only known video sites count here.
-    let downloadable = route(link) != Route::Media || rdm_media::is_media_url(link) || github_zip(link).is_some();
+    let downloadable = match route(link) {
+        Route::Torrent => true,
+        Route::File => !CLIPBOARD_SKIPS.contains(&link_ext(link).as_str()),
+        // `route` sends any page to the video reader; only a video (or a file) on a known site
+        // counts here.
+        Route::Media => rdm_media::is_media_url(link) && (content_page(link) || names_a_file(link)),
+        Route::Gallery => content_page(link),
+    };
     (is_url && downloadable && last_seen != Some(link)).then(|| link.to_string())
+}
+
+/// Files people copy for reading, not downloading (API answers, feeds, notes, icons).
+const CLIPBOARD_SKIPS: [&str; 4] = ["json", "xml", "txt", "svg"];
+
+/// The lowercase extension of a link's last path segment ("" for none).
+fn link_ext(url: &str) -> String {
+    let path = url.split_once("://").map_or(url, |(_, r)| r).split(['?', '#']).next().unwrap_or("");
+    let last = path.split_once('/').map_or("", |(_, p)| p).split('/').rfind(|s| !s.is_empty()).unwrap_or("");
+    last.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default()
+}
+
+/// The link ends in a file name Snag sorts into a category (`a.zip`, `clip.mp4`).
+fn names_a_file(url: &str) -> bool {
+    let ext = link_ext(url);
+    !ext.is_empty() && !CLIPBOARD_SKIPS.contains(&ext.as_str()) && rdm_core::Category::from_name(&format!("file.{ext}")) != rdm_core::Category::Other
+}
+
+/// One video, post or picture on a video or image site (not its home page, a profile, a channel
+/// or a feed). Any other site: true.
+fn content_page(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("https://").or_else(|| url.strip_prefix("http://")) else { return false };
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let host = rest[..end].split(':').next().unwrap_or("").to_ascii_lowercase();
+    let after_host = rest[end..].split('#').next().unwrap_or("");
+    let (path, query) = after_host.split_once('?').unwrap_or((after_host, ""));
+    let seg: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    let on = |d: &str| host == d || host.ends_with(&format!(".{d}"));
+    let at = |i: usize| seg.get(i).copied().unwrap_or("");
+    let digits = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit());
+    let param = |name: &str| query.split('&').any(|p| p.split_once('=').is_some_and(|(k, v)| k == name && !v.is_empty()));
+    // A segment with something after it: `/status/123`, `/video/x8abc`.
+    let after = |word: &str| seg.iter().position(|s| *s == word).is_some_and(|i| i + 1 < seg.len());
+    if on("youtu.be") || on("fb.watch") || on("pin.it") {
+        return !seg.is_empty();
+    }
+    if on("youtube.com") {
+        return (at(0) == "watch" && param("v")) || (at(0) == "playlist" && param("list")) || (["shorts", "live", "embed"].contains(&at(0)) && seg.len() > 1);
+    }
+    if on("vimeo.com") {
+        return seg.iter().any(|s| digits(s));
+    }
+    if on("x.com") || on("twitter.com") {
+        return after("status");
+    }
+    if on("instagram.com") {
+        return (["p", "reel", "reels", "tv"].contains(&at(0)) && seg.len() > 1) || (at(0) == "stories" && seg.len() > 2);
+    }
+    if on("tiktok.com") {
+        // vm.tiktok.com/<code>: a shared video.
+        return after("video") || after("photo") || ((host.starts_with("vm.") || host.starts_with("vt.")) && !seg.is_empty());
+    }
+    if on("facebook.com") {
+        return (at(0) == "watch" && param("v")) || after("videos") || after("reel") || (at(0) == "share" && ["v", "r"].contains(&at(1)) && seg.len() > 2);
+    }
+    if on("dailymotion.com") || on("bilibili.com") {
+        return after("video");
+    }
+    if on("twitch.tv") {
+        return after("videos") || after("clip") || (host.starts_with("clips.") && !seg.is_empty());
+    }
+    if on("soundcloud.com") {
+        // soundcloud.com/<artist>/<track> or /<artist>/sets/<playlist>; not the site's own pages.
+        const OWN: [&str; 8] = ["discover", "search", "stream", "you", "charts", "upload", "feed", "pages"];
+        const LISTS: [&str; 7] = ["tracks", "albums", "reposts", "likes", "followers", "following", "popular-tracks"];
+        return seg.len() >= 2 && !OWN.contains(&at(0)) && !LISTS.contains(&at(1));
+    }
+    if on("reddit.com") {
+        return after("comments") || after("gallery") || (at(0) == "r" && at(2) == "s" && seg.len() > 3);
+    }
+    if on("pinterest.com") {
+        return after("pin");
+    }
+    if on("imgur.com") {
+        return after("a") || after("gallery") || (seg.len() == 1 && (5..=8).contains(&at(0).len()) && at(0).chars().all(|c| c.is_ascii_alphanumeric()));
+    }
+    if on("deviantart.com") {
+        return after("art");
+    }
+    if on("artstation.com") {
+        return after("artwork");
+    }
+    if on("flickr.com") {
+        return at(0) == "photos" && (digits(at(2)) || (at(2) == "albums" && seg.len() > 3));
+    }
+    if on("tumblr.com") {
+        return after("post") || (matches!(host.as_str(), "tumblr.com" | "www.tumblr.com") && seg.len() >= 2 && digits(at(1)));
+    }
+    if on("pixiv.net") {
+        return after("artworks");
+    }
+    if on("behance.net") {
+        return after("gallery");
+    }
+    if on("unsplash.com") {
+        return after("photos");
+    }
+    if on("danbooru.donmai.us") {
+        return at(0) == "posts" && digits(at(1));
+    }
+    if on("gelbooru.com") {
+        return param("id");
+    }
+    if on("wallhaven.cc") {
+        return after("w");
+    }
+    true
 }
 
 /// Explorer argument that selects `path`. Quoted, because file names can contain
@@ -1142,8 +1257,103 @@ mod tests {
             "https://cdn.example.com/files/setup.exe",
             "https://www.youtube.com/watch?v=abc",
             "https://x.com/someone/status/123",
-            "https://github.com/rust-lang/rustlings",
             "https://www.pinterest.com/pin/1/",
+        ] {
+            assert_eq!(clipboard_link(link, None).as_deref(), Some(link), "{link}");
+        }
+    }
+
+    #[test]
+    fn clipboard_wants_a_video_or_post_on_known_sites() {
+        // Copying a site's home page, a profile, a channel or a feed is browsing, not downloading.
+        for page in [
+            "https://www.youtube.com/",
+            "https://www.youtube.com/@channel",
+            "https://www.youtube.com/feed/subscriptions",
+            "https://www.youtube.com/watch",
+            "https://x.com/someone",
+            "https://twitter.com/home",
+            "https://www.reddit.com/r/rust/",
+            "https://www.instagram.com/someone/",
+            "https://www.tiktok.com/@someone",
+            "https://vimeo.com/channels",
+            "https://www.facebook.com/someone",
+            "https://www.twitch.tv/somechannel",
+            "https://soundcloud.com/discover",
+            "https://soundcloud.com/artist",
+            "https://www.pinterest.com/someone/boards/",
+            "https://imgur.com/user/someone",
+            "https://www.deviantart.com/someone",
+            "https://www.artstation.com/someone",
+            "https://www.flickr.com/photos/someone/",
+            "https://unsplash.com/",
+            "https://wallhaven.cc/toplist",
+            "https://www.bilibili.com/",
+        ] {
+            assert_eq!(clipboard_link(page, None), None, "{page}");
+        }
+        for link in [
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=10",
+            "https://m.youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://www.youtube.com/shorts/abc123",
+            "https://www.youtube.com/live/abc123",
+            "https://www.youtube.com/playlist?list=PL1",
+            "https://youtu.be/dQw4w9WgXcQ",
+            "https://twitter.com/someone/status/123/video/1",
+            "https://www.reddit.com/r/rust/comments/abc/title/",
+            "https://www.reddit.com/r/rust/s/AbCdEf",
+            "https://www.reddit.com/gallery/abc",
+            "https://www.instagram.com/p/Cabc/",
+            "https://www.instagram.com/reel/Cabc/",
+            "https://www.tiktok.com/@someone/video/7123",
+            "https://vm.tiktok.com/ZMabc/",
+            "https://vimeo.com/76979871",
+            "https://player.vimeo.com/video/76979871",
+            "https://www.facebook.com/watch/?v=123",
+            "https://www.facebook.com/someone/videos/123/",
+            "https://fb.watch/abc/",
+            "https://www.dailymotion.com/video/x8abc",
+            "https://www.twitch.tv/videos/123",
+            "https://www.twitch.tv/somechannel/clip/Abc",
+            "https://soundcloud.com/artist/track-name",
+            "https://www.bilibili.com/video/BV1xx",
+            "https://pin.it/abc",
+            "https://imgur.com/a/abc",
+            "https://imgur.com/AbC123x",
+            "https://www.deviantart.com/someone/art/Title-123",
+            "https://www.artstation.com/artwork/abc",
+            "https://www.flickr.com/photos/someone/53123/",
+            "https://someone.tumblr.com/post/123",
+            "https://www.pixiv.net/en/artworks/123",
+            "https://www.behance.net/gallery/123/Title",
+            "https://unsplash.com/photos/abc",
+            "https://danbooru.donmai.us/posts/123",
+            "https://gelbooru.com/index.php?page=post&s=view&id=123",
+            "https://wallhaven.cc/w/abc",
+        ] {
+            assert_eq!(clipboard_link(link, None).as_deref(), Some(link), "{link}");
+        }
+    }
+
+    #[test]
+    fn clipboard_skips_repos_and_text_files() {
+        for link in [
+            "https://github.com/rust-lang/rustlings",
+            "https://github.com/rust-lang/rustlings/tree/main",
+            "https://github.com/rust-lang/rustlings/",
+            "https://api.example.com/v1/items.json",
+            "https://example.com/feed.xml",
+            "https://example.com/notes.TXT",
+            "https://example.com/logo.svg?v=2",
+        ] {
+            assert_eq!(clipboard_link(link, None), None, "{link}");
+        }
+        for link in [
+            "https://github.com/a/b/releases/download/v1.0/app-setup.exe",
+            "https://github.com/a/b/archive/refs/heads/main.zip",
+            "https://github.com/a/b/archive/refs/tags/v1.0.tar.gz",
+            "https://cdn.example.com/photo.png",
+            "https://example.com/report.pdf",
         ] {
             assert_eq!(clipboard_link(link, None).as_deref(), Some(link), "{link}");
         }
